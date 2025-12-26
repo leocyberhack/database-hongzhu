@@ -1,0 +1,20 @@
+[
+  {
+    "id": "srph_1",
+    "supplier_resource_id": "sr_yulong_main",
+    "before_price": 110,
+    "after_price": 120,
+    "reason": "旺季调价",
+    "operator": "pm.zhang",
+    "operated_at": "2024-12-20T10:00:00Z"
+  },
+  {
+    "id": "srph_2",
+    "supplier_resource_id": "sr_oldtown_main",
+    "before_price": 75,
+    "after_price": 80,
+    "reason": "供应商提价",
+    "operator": "pm.zhang",
+    "operated_at": "2024-12-10T09:00:00Z"
+  }
+]

@@ -1,0 +1,40 @@
+[
+  {
+    "id": "sr_yulong_main",
+    "supplier_id": "sup_jade_dragon",
+    "resource_id": "res_yulong_ticket_adult",
+    "supply_status": "可供",
+    "settlement_price": 120,
+    "currency": "CNY",
+    "priority": 1,
+    "rule": { "inventory_source": "供应商报数" }
+  },
+  {
+    "id": "sr_oldtown_main",
+    "supplier_id": "sup_lijiang_travel",
+    "resource_id": "res_lijiang_oldtown_ticket",
+    "supply_status": "可供",
+    "settlement_price": 80,
+    "currency": "CNY",
+    "priority": 1,
+    "rule": { "inventory_source": "平台录入" }
+  },
+  {
+    "id": "sr_erhai_backup",
+    "supplier_id": "sup_lijiang_travel",
+    "resource_id": "res_erhai_cruise",
+    "supply_status": "暂停",
+    "settlement_price": 150,
+    "currency": "CNY",
+    "priority": 2
+  },
+  {
+    "id": "sr_cost_missing",
+    "supplier_id": "sup_cost_missing",
+    "resource_id": "res_lijiang_oldtown_ticket",
+    "supply_status": "可供",
+    "settlement_price": null,
+    "currency": "CNY",
+    "priority": 3
+  }
+]

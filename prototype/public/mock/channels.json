@@ -1,0 +1,33 @@
+[
+  {
+    "id": "ch_douyin",
+    "channel_name": "抖音",
+    "channel_type": "平台",
+    "parent_id": null,
+    "attrs": { "category": "短视频" },
+    "status": "启用"
+  },
+  {
+    "id": "ch_meituan",
+    "channel_name": "美团",
+    "channel_type": "平台",
+    "parent_id": null,
+    "attrs": { "category": "本地生活" },
+    "status": "启用"
+  },
+  {
+    "id": "ch_wechat_store",
+    "channel_name": "微信小程序-门店",
+    "channel_type": "子渠道",
+    "parent_id": "ch_wechat",
+    "attrs": { "city": "丽江" },
+    "status": "启用"
+  },
+  {
+    "id": "ch_wechat",
+    "channel_name": "微信小程序",
+    "channel_type": "平台",
+    "parent_id": null,
+    "status": "启用"
+  }
+]

@@ -1,0 +1,46 @@
+[
+  {
+    "id": "price_combo_active",
+    "sku_id": "sku_douyin_combo",
+    "channel_id": "ch_douyin",
+    "sale_price": 499,
+    "cost_price": 260,
+    "start_at": "2025-01-01",
+    "end_at": "2025-12-31",
+    "status": "生效",
+    "created_by": "pm.zhang"
+  },
+  {
+    "id": "price_combo_conflict",
+    "sku_id": "sku_douyin_combo",
+    "channel_id": "ch_douyin",
+    "sale_price": 520,
+    "cost_price": 270,
+    "start_at": "2025-02-10",
+    "end_at": "2025-02-20",
+    "status": "草稿",
+    "created_by": "pm.zhang"
+  },
+  {
+    "id": "price_oldtown_meituan",
+    "sku_id": "sku_meituan_oldtown_weekday",
+    "channel_id": "ch_meituan",
+    "sale_price": 150,
+    "cost_price": 60,
+    "start_at": "2025-01-01",
+    "end_at": "2025-07-31",
+    "status": "生效",
+    "created_by": "pm.zhang"
+  },
+  {
+    "id": "price_erhai_wechat",
+    "sku_id": "sku_erhai_cruise",
+    "channel_id": "ch_wechat_store",
+    "sale_price": 280,
+    "cost_price": 120,
+    "start_at": "2025-01-01",
+    "end_at": "2025-04-30",
+    "status": "生效",
+    "created_by": "pm.zhang"
+  }
+]

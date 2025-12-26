@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ap_price_1",
+    "object_type": "price",
+    "object_id": "price_combo_conflict",
+    "action_type": "调价",
+    "before_data": { "sale_price": 499, "start_at": "2025-01-01", "end_at": "2025-12-31" },
+    "after_data": { "sale_price": 520, "start_at": "2025-02-10", "end_at": "2025-02-20" },
+    "status": "待审批",
+    "applicant": "pm.zhang",
+    "approver": "主管",
+    "applied_at": "2024-12-26T09:00:00Z"
+  },
+  {
+    "id": "ap_sku_1",
+    "object_type": "sku",
+    "object_id": "sku_douyin_oldtown_holiday",
+    "action_type": "上架",
+    "before_data": { "status": "草稿" },
+    "after_data": { "status": "上架" },
+    "status": "待审批",
+    "applicant": "运营.yu",
+    "approver": "主管",
+    "applied_at": "2024-12-25T10:00:00Z"
+  },
+  {
+    "id": "ap_product_1",
+    "object_type": "product",
+    "object_id": "prod_erhai",
+    "action_type": "上架",
+    "before_data": { "status": "草稿" },
+    "after_data": { "status": "上架" },
+    "status": "待审批",
+    "applicant": "pm.zhang",
+    "approver": "主管",
+    "applied_at": "2024-12-25T08:00:00Z"
+  },
+  {
+    "id": "ap_inventory_1",
+    "object_type": "inventory",
+    "object_id": "inv_oldtown_0102",
+    "action_type": "人工调整",
+    "before_data": { "total": 0 },
+    "after_data": { "total": 5 },
+    "status": "待审批",
+    "applicant": "运营.yu",
+    "approver": "主管",
+    "applied_at": "2024-12-24T07:00:00Z"
+  },
+  {
+    "id": "ap_supplier_1",
+    "object_type": "supplier",
+    "object_id": "sr_cost_missing",
+    "action_type": "结算价变更",
+    "before_data": { "settlement_price": null },
+    "after_data": { "settlement_price": 90 },
+    "status": "待审批",
+    "applicant": "采购.he",
+    "approver": "主管",
+    "applied_at": "2024-12-24T06:00:00Z"
+  }
+]

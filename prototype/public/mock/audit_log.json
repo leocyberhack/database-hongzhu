@@ -1,0 +1,42 @@
+[
+  {
+    "id": "audit_price_1",
+    "table_name": "price",
+    "record_id": "price_combo_active",
+    "operation": "STATUS_CHANGE",
+    "diff_data": { "status": "生效" },
+    "operator": "pm.zhang",
+    "operated_at": "2024-12-15T09:00:00Z",
+    "source": "调价审批"
+  },
+  {
+    "id": "audit_sku_1",
+    "table_name": "sku",
+    "record_id": "sku_douyin_combo",
+    "operation": "STATUS_CHANGE",
+    "diff_data": { "status": "上架" },
+    "operator": "pm.zhang",
+    "operated_at": "2024-12-10T09:00:00Z",
+    "source": "审批"
+  },
+  {
+    "id": "audit_inventory_1",
+    "table_name": "inventory",
+    "record_id": "inv_erhai_0102",
+    "operation": "UPDATE",
+    "diff_data": { "total": { "from": 8, "to": 10 } },
+    "operator": "运营.yu",
+    "operated_at": "2024-12-24T07:00:00Z",
+    "source": "人工调整"
+  },
+  {
+    "id": "audit_order_1",
+    "table_name": "order",
+    "record_id": "order_1002",
+    "operation": "STATUS_CHANGE",
+    "diff_data": { "status": "已核销" },
+    "operator": "客服",
+    "operated_at": "2024-12-26T09:00:00Z",
+    "source": "核销"
+  }
+]

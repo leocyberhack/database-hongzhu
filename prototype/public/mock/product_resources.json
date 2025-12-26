@@ -1,0 +1,30 @@
+[
+  {
+    "id": "pr_combo_1",
+    "product_id": "prod_combo",
+    "resource_id": "res_yulong_ticket_adult",
+    "quantity": 1,
+    "required_flag": true
+  },
+  {
+    "id": "pr_combo_2",
+    "product_id": "prod_combo",
+    "resource_id": "res_lijiang_oldtown_ticket",
+    "quantity": 1,
+    "required_flag": true
+  },
+  {
+    "id": "pr_oldtown",
+    "product_id": "prod_oldtown",
+    "resource_id": "res_lijiang_oldtown_ticket",
+    "quantity": 1,
+    "required_flag": true
+  },
+  {
+    "id": "pr_erhai",
+    "product_id": "prod_erhai",
+    "resource_id": "res_erhai_cruise",
+    "quantity": 1,
+    "required_flag": true
+  }
+]

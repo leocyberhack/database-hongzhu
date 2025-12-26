@@ -1,0 +1,35 @@
+[
+  {
+    "id": "osh_1001_created",
+    "order_id": "order_1001",
+    "before_status": "创建",
+    "after_status": "已支付",
+    "operator": "客服",
+    "operated_at": "2024-12-26T08:00:00Z"
+  },
+  {
+    "id": "osh_1002_created",
+    "order_id": "order_1002",
+    "before_status": "创建",
+    "after_status": "已支付",
+    "operator": "客服",
+    "operated_at": "2024-12-26T08:30:00Z"
+  },
+  {
+    "id": "osh_1002_verified",
+    "order_id": "order_1002",
+    "before_status": "已支付",
+    "after_status": "已核销",
+    "operator": "客服",
+    "operated_at": "2024-12-26T09:00:00Z"
+  },
+  {
+    "id": "osh_1003_refund",
+    "order_id": "order_1003",
+    "before_status": "已支付",
+    "after_status": "已退款",
+    "operator": "客服",
+    "operated_at": "2024-12-25T07:30:00Z",
+    "reason": "游客取消"
+  }
+]

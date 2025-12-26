@@ -1,0 +1,74 @@
+[
+  {
+    "id": "inv_combo_0101",
+    "sku_id": "sku_douyin_combo",
+    "inventory_date": "2025-01-01",
+    "total_qty": 30,
+    "frozen_qty": 5,
+    "sold_qty": 3,
+    "status": "正常"
+  },
+  {
+    "id": "inv_combo_0102",
+    "sku_id": "sku_douyin_combo",
+    "inventory_date": "2025-01-02",
+    "total_qty": 30,
+    "frozen_qty": 8,
+    "sold_qty": 6,
+    "status": "正常"
+  },
+  {
+    "id": "inv_combo_0103",
+    "sku_id": "sku_douyin_combo",
+    "inventory_date": "2025-01-03",
+    "total_qty": 25,
+    "frozen_qty": 10,
+    "sold_qty": 5,
+    "status": "正常"
+  },
+  {
+    "id": "inv_combo_0104",
+    "sku_id": "sku_douyin_combo",
+    "inventory_date": "2025-01-04",
+    "total_qty": 20,
+    "frozen_qty": 2,
+    "sold_qty": 1,
+    "status": "正常"
+  },
+  {
+    "id": "inv_combo_0105",
+    "sku_id": "sku_douyin_combo",
+    "inventory_date": "2025-01-05",
+    "total_qty": 15,
+    "frozen_qty": 0,
+    "sold_qty": 0,
+    "status": "正常"
+  },
+  {
+    "id": "inv_oldtown_0101",
+    "sku_id": "sku_meituan_oldtown_weekday",
+    "inventory_date": "2025-01-01",
+    "total_qty": 5,
+    "frozen_qty": 3,
+    "sold_qty": 2,
+    "status": "正常"
+  },
+  {
+    "id": "inv_oldtown_0102",
+    "sku_id": "sku_meituan_oldtown_weekday",
+    "inventory_date": "2025-01-02",
+    "total_qty": 0,
+    "frozen_qty": 0,
+    "sold_qty": 0,
+    "status": "正常"
+  },
+  {
+    "id": "inv_erhai_0102",
+    "sku_id": "sku_erhai_cruise",
+    "inventory_date": "2025-01-02",
+    "total_qty": 10,
+    "frozen_qty": 8,
+    "sold_qty": 2,
+    "status": "正常"
+  }
+]

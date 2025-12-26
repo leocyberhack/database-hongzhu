@@ -1,0 +1,50 @@
+[
+  {
+    "id": "sku_douyin_combo",
+    "product_id": "prod_combo",
+    "sku_name": "抖音-玉龙雪山+古城工作日",
+    "sku_type": "常规",
+    "sale_start": "2024-12-01",
+    "sale_end": "2025-12-31",
+    "travel_start": "2024-12-01",
+    "travel_end": "2025-12-31",
+    "status": "上架",
+    "created_by": "pm.zhang"
+  },
+  {
+    "id": "sku_meituan_oldtown_weekday",
+    "product_id": "prod_oldtown",
+    "sku_name": "美团-古城工作日",
+    "sku_type": "常规",
+    "sale_start": "2024-12-01",
+    "sale_end": "2025-06-30",
+    "travel_start": "2024-12-01",
+    "travel_end": "2025-06-30",
+    "status": "上架",
+    "created_by": "pm.zhang"
+  },
+  {
+    "id": "sku_douyin_oldtown_holiday",
+    "product_id": "prod_oldtown",
+    "sku_name": "抖音-古城节假日",
+    "sku_type": "节假日",
+    "sale_start": "2024-12-01",
+    "sale_end": "2025-12-31",
+    "travel_start": "2024-12-01",
+    "travel_end": "2025-12-31",
+    "status": "草稿",
+    "created_by": "pm.zhang"
+  },
+  {
+    "id": "sku_erhai_cruise",
+    "product_id": "prod_erhai",
+    "sku_name": "小程序-洱海游船",
+    "sku_type": "常规",
+    "sale_start": "2024-12-15",
+    "sale_end": "2025-06-30",
+    "travel_start": "2024-12-15",
+    "travel_end": "2025-06-30",
+    "status": "下架",
+    "created_by": "pm.zhang"
+  }
+]

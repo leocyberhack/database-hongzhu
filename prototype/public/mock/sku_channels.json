@@ -1,0 +1,23 @@
+[
+  {
+    "id": "sc_combo_douyin",
+    "sku_id": "sku_douyin_combo",
+    "channel_id": "ch_douyin",
+    "channel_sku_code": "DY-COMBO-01",
+    "status": "上架"
+  },
+  {
+    "id": "sc_oldtown_meituan",
+    "sku_id": "sku_meituan_oldtown_weekday",
+    "channel_id": "ch_meituan",
+    "channel_sku_code": "MT-OLD-01",
+    "status": "上架"
+  },
+  {
+    "id": "sc_erhai_wechat",
+    "sku_id": "sku_erhai_cruise",
+    "channel_id": "ch_wechat_store",
+    "channel_sku_code": "WX-EH-01",
+    "status": "下架"
+  }
+]

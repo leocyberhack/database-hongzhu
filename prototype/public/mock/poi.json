@@ -1,0 +1,36 @@
+[
+  {
+    "id": "poi_lijiang_oldtown",
+    "poi_name": "丽江古城",
+    "poi_type": "景区",
+    "city": "丽江",
+    "address": "丽江市古城区",
+    "status": "active",
+    "tags": ["热门", "世界文化遗产"]
+  },
+  {
+    "id": "poi_yulong_snow",
+    "poi_name": "玉龙雪山",
+    "poi_type": "景区",
+    "city": "丽江",
+    "address": "玉龙县",
+    "status": "active",
+    "tags": ["雪山", "索道"]
+  },
+  {
+    "id": "poi_lijiang_oldtown_dup",
+    "poi_name": "丽江古城",
+    "poi_type": "景区",
+    "city": "丽江",
+    "address": "候选重复案例",
+    "status": "draft"
+  },
+  {
+    "id": "poi_dali_erhai",
+    "poi_name": "洱海码头",
+    "poi_type": "交通",
+    "city": "大理",
+    "address": "大理洱海",
+    "status": "active"
+  }
+]

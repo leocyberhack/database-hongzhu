@@ -1,0 +1,18 @@
+[
+  {
+    "id": "ph_combo",
+    "price_id": "price_combo_active",
+    "before_data": { "sale_price": 460, "start_at": "2024-12-01", "end_at": "2024-12-31" },
+    "after_data": { "sale_price": 499, "start_at": "2025-01-01", "end_at": "2025-12-31" },
+    "operator": "pm.zhang",
+    "operated_at": "2024-12-15T09:00:00Z"
+  },
+  {
+    "id": "ph_oldtown",
+    "price_id": "price_oldtown_meituan",
+    "before_data": { "sale_price": 120 },
+    "after_data": { "sale_price": 150 },
+    "operator": "pm.zhang",
+    "operated_at": "2024-12-05T09:00:00Z"
+  }
+]

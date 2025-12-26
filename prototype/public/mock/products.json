@@ -1,0 +1,31 @@
+[
+  {
+    "id": "prod_combo",
+    "product_name": "玉龙雪山+丽江古城一日游",
+    "description": "门票+古城漫游组合",
+    "status": "上架",
+    "structure_hash": "res_lijiang_oldtown_ticket:1:1|res_yulong_ticket_adult:1:1::a1b2",
+    "created_by": "pm.zhang",
+    "created_at": "2024-12-01T08:00:00Z",
+    "updated_at": "2024-12-05T08:00:00Z"
+  },
+  {
+    "id": "prod_oldtown",
+    "product_name": "丽江古城门票",
+    "description": "单资源产品",
+    "status": "上架",
+    "structure_hash": "res_lijiang_oldtown_ticket:1:1::c1d2",
+    "created_by": "pm.zhang",
+    "created_at": "2024-12-01T09:00:00Z",
+    "updated_at": "2024-12-01T09:00:00Z"
+  },
+  {
+    "id": "prod_erhai",
+    "product_name": "洱海游船半日游",
+    "status": "上架",
+    "structure_hash": "res_erhai_cruise:1:1::e1f2",
+    "created_by": "pm.zhang",
+    "created_at": "2024-12-03T09:00:00Z",
+    "updated_at": "2024-12-03T09:00:00Z"
+  }
+]

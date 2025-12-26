@@ -1,0 +1,29 @@
+[
+  {
+    "id": "sup_jade_dragon",
+    "supplier_name": "玉龙雪山运营方",
+    "supplier_type": "景区",
+    "status": "合作中",
+    "contact_info": { "contact": "张经理", "phone": "13800000001" },
+    "settlement_info": { "method": "月结" },
+    "tags": ["重点", "核心供给"]
+  },
+  {
+    "id": "sup_lijiang_travel",
+    "supplier_name": "丽江本地旅行社",
+    "supplier_type": "地接",
+    "status": "合作中",
+    "contact_info": { "contact": "和女士", "phone": "13800000002" },
+    "settlement_info": { "method": "周结" },
+    "tags": ["备选"]
+  },
+  {
+    "id": "sup_cost_missing",
+    "supplier_name": "成本待补供应商",
+    "supplier_type": "酒店",
+    "status": "潜在",
+    "contact_info": { "contact": "李四" },
+    "settlement_info": {},
+    "tags": ["成本缺失"]
+  }
+]

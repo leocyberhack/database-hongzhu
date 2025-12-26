@@ -1,0 +1,23 @@
+[
+  {
+    "id": "ps_combo",
+    "product_id": "prod_combo",
+    "snapshot_data": [
+      { "resource_id": "res_yulong_ticket_adult", "quantity": 1, "required_flag": true },
+      { "resource_id": "res_lijiang_oldtown_ticket", "quantity": 1, "required_flag": true }
+    ],
+    "created_at": "2024-12-05T08:00:00Z"
+  },
+  {
+    "id": "ps_oldtown",
+    "product_id": "prod_oldtown",
+    "snapshot_data": [{ "resource_id": "res_lijiang_oldtown_ticket", "quantity": 1, "required_flag": true }],
+    "created_at": "2024-12-01T09:00:00Z"
+  },
+  {
+    "id": "ps_erhai",
+    "product_id": "prod_erhai",
+    "snapshot_data": [{ "resource_id": "res_erhai_cruise", "quantity": 1, "required_flag": true }],
+    "created_at": "2024-12-03T09:00:00Z"
+  }
+]

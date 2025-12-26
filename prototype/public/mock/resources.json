@@ -1,0 +1,34 @@
+[
+  {
+    "id": "res_lijiang_oldtown_ticket",
+    "poi_id": "poi_lijiang_oldtown",
+    "resource_name": "丽江古城通票",
+    "resource_type": "门票",
+    "attrs": { "entry": "电子票", "valid_days": 1 },
+    "status": "active"
+  },
+  {
+    "id": "res_yulong_ticket_adult",
+    "poi_id": "poi_yulong_snow",
+    "resource_name": "玉龙雪山成人票",
+    "resource_type": "门票",
+    "attrs": { "entry": "纸质票", "valid_days": 1 },
+    "status": "active"
+  },
+  {
+    "id": "res_lijiang_oldtown_ticket_dup",
+    "poi_id": "poi_lijiang_oldtown",
+    "resource_name": "丽江古城通票",
+    "resource_type": "门票",
+    "attrs": { "entry": "二维码" },
+    "status": "draft"
+  },
+  {
+    "id": "res_erhai_cruise",
+    "poi_id": "poi_dali_erhai",
+    "resource_name": "洱海游船半日游",
+    "resource_type": "玩乐",
+    "attrs": { "slot": "09:00/14:00" },
+    "status": "active"
+  }
+]

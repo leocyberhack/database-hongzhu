@@ -1,0 +1,46 @@
+[
+  {
+    "id": "invlog_init_combo",
+    "sku_id": "sku_douyin_combo",
+    "inventory_date": "2025-01-01",
+    "change_type": "初始化",
+    "before_qty": { "total": 0, "frozen": 0, "sold": 0 },
+    "after_qty": { "total": 30, "frozen": 0, "sold": 0 },
+    "operator": "运营.yu",
+    "operated_at": "2024-12-20T10:00:00Z",
+    "remark": "批量导入"
+  },
+  {
+    "id": "invlog_freeze_order1",
+    "sku_id": "sku_douyin_combo",
+    "inventory_date": "2025-01-01",
+    "change_type": "冻结",
+    "before_qty": { "total": 30, "frozen": 0, "sold": 0 },
+    "after_qty": { "total": 30, "frozen": 2, "sold": 0 },
+    "related_order_id": "order_1001",
+    "operator": "客服",
+    "operated_at": "2024-12-26T08:00:00Z"
+  },
+  {
+    "id": "invlog_consume_order2",
+    "sku_id": "sku_meituan_oldtown_weekday",
+    "inventory_date": "2025-01-01",
+    "change_type": "核销",
+    "before_qty": { "total": 5, "frozen": 3, "sold": 1 },
+    "after_qty": { "total": 5, "frozen": 2, "sold": 2 },
+    "related_order_id": "order_1002",
+    "operator": "客服",
+    "operated_at": "2024-12-26T09:00:00Z"
+  },
+  {
+    "id": "invlog_adjust_erhai",
+    "sku_id": "sku_erhai_cruise",
+    "inventory_date": "2025-01-02",
+    "change_type": "人工调整",
+    "before_qty": { "total": 8, "frozen": 5, "sold": 2 },
+    "after_qty": { "total": 10, "frozen": 8, "sold": 2 },
+    "operator": "运营.yu",
+    "operated_at": "2024-12-24T07:00:00Z",
+    "remark": "供应商补量"
+  }
+]
