@@ -11,9 +11,7 @@ import ProductEditorPage from '@/pages/products/editor'
 import SKUListPage from '@/pages/skus/list'
 import ChannelsPage from '@/pages/skus/channels'
 import PricingCenterPage from '@/pages/pricing/center'
-import PriceHistoryPage from '@/pages/pricing/history'
 import InventoryCalendarPage from '@/pages/inventory/calendar'
-import InventoryAdjustPage from '@/pages/inventory/adjust'
 import OrdersListPage from '@/pages/orders/list'
 import OrdersImportPage from '@/pages/orders/import'
 import ApprovalsPendingPage from '@/pages/approvals/pending'
@@ -70,11 +68,11 @@ export default function AppRoutes() {
 
                 {/* Pricing M5 */}
                 <Route path="pricing/center" element={<PricingCenterPage />} />
-                <Route path="pricing/history" element={<PriceHistoryPage />} />
+
 
                 {/* Inventory M6 */}
                 <Route path="inventory/calendar" element={<InventoryCalendarPage />} />
-                <Route path="inventory/adjust" element={<InventoryAdjustPage />} />
+
 
                 {/* Orders M7 */}
                 <Route path="orders/list" element={<OrdersListPage />} />

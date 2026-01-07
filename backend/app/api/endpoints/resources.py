@@ -1,4 +1,4 @@
-from typing import Optional
+﻿from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -26,7 +26,7 @@ async def list_poi(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
+    page_size: int = Query(default=20, ge=1, le=1000),
     keyword: Optional[str] = Query(default=None),
 ):
     stmt = select(Poi)
@@ -118,7 +118,7 @@ async def batch_update_poi(
     Batch update POIs. Expects payload like:
     {
         "ids": [1, 2, 3],
-        "fields": {"city": "北京"}
+        "fields": {"city": "鍖椾含"}
     }
     """
     poi_ids = updates.get("ids", [])
@@ -216,9 +216,24 @@ async def delete_resource(
     db: DbSession,
     _: User = Depends(get_current_user),
 ):
+    from app.models import ProductResource, SupplierResource
+    
     resource = await db.get(Resource, resource_id)
     if not resource:
         raise HTTPException(status_code=404, detail="Resource not found")
+    
+    # Only check if resource is referenced by products (ProductResource)
+    product_resource_count = await db.scalar(
+        select(func.count()).select_from(ProductResource).where(ProductResource.resource_id == resource_id)
+    )
+    if product_resource_count and product_resource_count > 0:
+        raise HTTPException(status_code=400, detail=f"鏃犳硶鍒犻櫎锛氳璧勬簮琚?{product_resource_count} 涓骇鍝佸紩鐢紝璇峰厛鍒犻櫎鐩稿叧浜у搧璧勬簮鍏宠仈")
+    
+    # Delete related SupplierResource records first (supplier-resource associations)
+    # Note: ResourceInventory records are automatically cascade-deleted via SupplierResource FK
+    from sqlalchemy import delete
+    await db.execute(delete(SupplierResource).where(SupplierResource.resource_id == resource_id))
+    
     await db.delete(resource)
     await db.commit()
     return None
@@ -265,3 +280,6 @@ async def batch_update_resources(
     
     await db.commit()
     return {"updated": updated_count}
+
+
+

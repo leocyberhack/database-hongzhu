@@ -1,13 +1,62 @@
+
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
     Form, Input, Button, Select, Card, Space, InputNumber, Switch, Table,
     Modal, Tag, Divider, Row, Col, Statistic, message, List, Popconfirm, Spin
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, SearchOutlined, EditOutlined, CalculatorOutlined, CalendarOutlined, DownOutlined, CheckOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
 import type { Resource, Product, Supplier, SupplierResource } from '@/types'
+import ProductStockPreviewCalendar from '@/components/ProductStockPreviewCalendar'
+
+const { Option } = Select
+const { TextArea } = Input
+
+// -- Sub-components --
+
+// Helper component for Stock Ratio Input with Confirm Button
+const StockRatioInput = ({ value, onChange, disabled }: { value: number, onChange: (val: number) => void, disabled: boolean }) => {
+    const [val, setVal] = useState<number>(value || 0)
+
+    // Sync from parent if needed (e.g. initial load), but allow local editing
+    useEffect(() => {
+        setVal(value || 0)
+    }, [value])
+
+    const handleConfirm = () => {
+        onChange(val)
+        message.success('已更新占比')
+    }
+
+    return (
+        <Space>
+            <InputNumber
+                min={0}
+                max={100}
+                value={val}
+                disabled={disabled}
+                onChange={(v) => setVal(Number(v))}
+                onPressEnter={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleConfirm()
+                }}
+                style={{ width: 80 }}
+                placeholder="0"
+            />
+            <span style={{ marginLeft: 4 }}>%</span>
+            <Button
+                type="primary"
+                size="small"
+                icon={<CheckOutlined />}
+                onClick={handleConfirm}
+                disabled={disabled}
+            />
+        </Space>
+    )
+}
 
 // -- Resource Selector Modal (Server-Side Search) --
 interface ResourceSelectorProps {
@@ -111,7 +160,9 @@ function CategoryManager() {
     const { data, refresh } = useData()
     const categories = data?.product_categories ?? []
     const [form] = Form.useForm()
+    const [editForm] = Form.useForm()
     const [loading, setLoading] = useState(false)
+    const [editingCat, setEditingCat] = useState<any>(null)
 
     const handleAdd = async (values: any) => {
         setLoading(true)
@@ -137,6 +188,24 @@ function CategoryManager() {
         }
     }
 
+    const handleUpdate = async (values: any) => {
+        if (!editingCat) return
+        try {
+            await apiRequest(`/api/product-categories/${editingCat.id}`, { method: 'PUT', body: JSON.stringify(values) })
+            message.success('分类已更新')
+            setEditingCat(null)
+            await refresh()
+        } catch (err: any) {
+            message.error(err.message || '更新失败')
+        }
+    }
+
+    useEffect(() => {
+        if (editingCat) {
+            editForm.setFieldsValue(editingCat)
+        }
+    }, [editingCat, editForm])
+
     return (
         <Card title="产品分类管理" size="small" style={{ marginTop: 24 }}>
             <List
@@ -145,6 +214,7 @@ function CategoryManager() {
                 renderItem={(item) => (
                     <List.Item
                         actions={[
+                            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => setEditingCat(item)}>编辑</Button>,
                             <Popconfirm title="确定删除?" onConfirm={() => handleDelete(item.id)} key="del">
                                 <Button type="link" danger size="small">删除</Button>
                             </Popconfirm>
@@ -170,6 +240,29 @@ function CategoryManager() {
                     <Button type="primary" htmlType="submit" loading={loading} icon={<PlusOutlined />}>添加</Button>
                 </Form.Item>
             </Form>
+
+            <Modal
+                title="编辑分类"
+                open={!!editingCat}
+                onCancel={() => setEditingCat(null)}
+                footer={null}
+            >
+                <Form layout="vertical" form={editForm} onFinish={handleUpdate}>
+                    <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="description" label="描述">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="status" label="状态" initialValue="active">
+                        <Select options={[{ value: 'active', label: '正常' }, { value: 'archived', label: '归档' }]} />
+                    </Form.Item>
+                    <div style={{ textAlign: 'right' }}>
+                        <Button onClick={() => setEditingCat(null)} style={{ marginRight: 8 }}>取消</Button>
+                        <Button type="primary" htmlType="submit">保存</Button>
+                    </div>
+                </Form>
+            </Modal>
         </Card>
     )
 }
@@ -192,13 +285,22 @@ export default function ProductEditorPage() {
     const { data, refresh } = useData()
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
-    const productId = searchParams.get('id')
 
+    const productId = searchParams.get('id')
+    const isReadOnly = searchParams.get('readonly') === 'true'
+
+    const [suggestedPrice, setSuggestedPrice] = useState<number>(0)
     const [form] = Form.useForm()
     const [items, setItems] = useState<SelectedResourceItem[]>([])
     const [modalVisible, setModalVisible] = useState(false)
     const [loading, setLoading] = useState(false)
     const [initLoading, setInitLoading] = useState(false)
+    const [estimatedDailyStock, setEstimatedDailyStock] = useState<number | null>(null)
+    const [previewLoading, setPreviewLoading] = useState(false)
+    const [previewData, setPreviewData] = useState<Record<string, number>>({})
+    const [, forceUpdate] = useState({})
+    // Watch allowed_channels at the top level to avoid hook-in-loop error
+    const watchedAllocations = Form.useWatch('allowed_channels', form) || []
 
     // Local caches for this page (to support specific ID fetching)
     const [resourceMap, setResourceMap] = useState<Record<string, Resource>>({})
@@ -206,32 +308,33 @@ export default function ProductEditorPage() {
     const [supplierResourceMap, setSupplierResourceMap] = useState<Record<string, SupplierResource[]>>({}) // resource_id -> list of SRs
 
     const categories = data?.product_categories ?? []
+    const channels = data?.channels ?? []
 
     // Helper to fetch data for specific resources (resource info -> supplier options -> supplier info)
     const fetchResourcesData = useCallback(async (resourceIds: string[]) => {
         if (resourceIds.length === 0) return
 
-        // Filter out what we already have (optional optimization, but strict consistency is better)
-        // For simplicity, we just fetch what is asked to ensure latest prices.
-
         try {
             // 1. Fetch Resources
-            const rRes = await apiRequest<{ items: Resource[] }>(`/api/resources?ids=${resourceIds.join(',')}&page_size=1000`)
+            const rParams = new URLSearchParams()
+            resourceIds.forEach(id => rParams.append('ids', id))
+            rParams.append('page_size', '1000')
+
+            const rRes = await apiRequest<{ items: Resource[] }>(`/api/resources?${rParams.toString()}`)
             const newResMap = { ...resourceMap }
             rRes.items.forEach(r => newResMap[r.id] = r)
             setResourceMap(prev => ({ ...prev, ...newResMap }))
 
             // 2. Fetch Helper: Available Suppliers for these resources
-            // We use the new resource_ids filter
-            const srRes = await apiRequest<{ items: SupplierResource[] }>(`/api/supplier-resources?resource_ids=${resourceIds.join(',')}&page_size=1000`)
+            const srParams = new URLSearchParams()
+            resourceIds.forEach(id => srParams.append('resource_ids', id))
+            srParams.append('page_size', '1000')
 
-            // Group SRs by resource_id
+            const srRes = await apiRequest<{ items: SupplierResource[] }>(`/api/supplier-resources?${srParams.toString()}`)
+
             const newSRMap = { ...supplierResourceMap }
-            // Initialize empty arrays for requested IDs to ensure we clear old data if re-fetching? 
-            // Better to append or replace. For now, let's group.
             const sIdsToFetch = new Set<string>()
 
-            // Reset mapping for these resources
             resourceIds.forEach(rid => newSRMap[rid] = [])
 
             srRes.items.forEach(sr => {
@@ -244,7 +347,11 @@ export default function ProductEditorPage() {
 
             // 3. Fetch Suppliers details
             if (sIdsToFetch.size > 0) {
-                const sRes = await apiRequest<{ items: Supplier[] }>(`/api/suppliers?ids=${Array.from(sIdsToFetch).join(',')}&page_size=1000`)
+                const sParams = new URLSearchParams()
+                Array.from(sIdsToFetch).forEach(id => sParams.append('ids', id))
+                sParams.append('page_size', '1000')
+
+                const sRes = await apiRequest<{ items: Supplier[] }>(`/api/suppliers?${sParams.toString()}`)
                 const newSupMap = { ...supplierMap }
                 sRes.items.forEach(s => newSupMap[s.id] = s)
                 setSupplierMap(prev => ({ ...prev, ...newSupMap }))
@@ -254,7 +361,7 @@ export default function ProductEditorPage() {
             console.error('Fetch resources data error', err)
             message.error('加载资源详情失败')
         }
-    }, []) // Dependencies intentionally empty or minimal
+    }, [])
 
     // Initialize data if editing
     useEffect(() => {
@@ -271,7 +378,9 @@ export default function ProductEditorPage() {
                     status: p.status,
                     category_id: p.category_id,
                     suggested_price: p.suggested_price,
+                    allowed_channels: p.allowed_channels,
                 })
+                setSuggestedPrice(p.suggested_price ? Number(p.suggested_price) : 0)
 
                 // 2. Fetch Product Resources
                 const prRes = await apiRequest<{ items: any[] }>(`/api/product-resources?product_id=${productId}`)
@@ -279,7 +388,7 @@ export default function ProductEditorPage() {
 
                 // 3. Prepare items state
                 const newItems = links.map((l, idx) => ({
-                    key: `${l.resource_id}_${idx}`,
+                    key: `${l.resource_id}_${idx} `,
                     resource_id: String(l.resource_id),
                     supplier_id: l.supplier_id ? String(l.supplier_id) : undefined,
                     quantity: l.quantity,
@@ -304,7 +413,7 @@ export default function ProductEditorPage() {
     // When adding new resources
     const handleAddResources = async (ids: string[]) => {
         const newItems = ids.map(id => ({
-            key: `${id}_${Date.now()}_${Math.random()}`,
+            key: `${id}_${Date.now()}_${Math.random()} `,
             resource_id: id,
             quantity: 1,
             required_flag: true,
@@ -316,6 +425,67 @@ export default function ProductEditorPage() {
         // Fetch data for new items
         await fetchResourcesData(ids)
     }
+
+    // Effect: Preview Inventory when items change
+    useEffect(() => {
+        const fetchPreview = async () => {
+            // Only preview if we have items and all have supplier_id
+            const validItems = items.filter(i => i.resource_id && i.supplier_id)
+            if (validItems.length === 0) {
+                setEstimatedDailyStock(null)
+                setPreviewData({})
+                return
+            }
+
+            setPreviewLoading(true)
+            try {
+                // Determine overlaps for the next 2 years (backend default)
+                // We don't send dates, so backend will find all overlaps from today onwards
+                const payload = {
+                    resources: validItems.map(i => ({
+                        resource_id: Number(i.resource_id),
+                        supplier_id: Number(i.supplier_id),
+                        quantity: i.quantity
+                    }))
+                }
+
+                const res = await apiRequest<{ items: { date: string, available_qty: number }[] }>('/api/products/inventory/preview', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                })
+
+                // Create Map
+                const newData: Record<string, number> = {}
+                const stocks: number[] = []
+
+                res.items.forEach(i => {
+                    newData[i.date] = i.available_qty
+                    // Only consider non-zero stocks for the "base capacity" calculation as requested
+                    // "inventory not 0 time period"
+                    if (i.available_qty > 0 && i.available_qty < 99999999) {
+                        stocks.push(i.available_qty)
+                    }
+                })
+                setPreviewData(newData)
+
+                // Calculate Minimum Daily Stock (over non-zero days)
+                if (stocks.length > 0) {
+                    const minStock = Math.min(...stocks)
+                    setEstimatedDailyStock(minStock)
+                } else {
+                    setEstimatedDailyStock(0)
+                }
+            } catch (err) {
+                console.error("Inventory preview failed", err)
+            } finally {
+                setPreviewLoading(false)
+            }
+        }
+
+        // Simple debounce
+        const timer = setTimeout(fetchPreview, 1000)
+        return () => clearTimeout(timer)
+    }, [items])
 
     // Cost Calculation
     const totalCost = useMemo(() => {
@@ -340,7 +510,8 @@ export default function ProductEditorPage() {
 
         const payload = {
             ...values,
-            structure_hash: `HASH_${Date.now()}`, // Simple mock hash
+            base_cost: totalCost, // Pass calculated cost to backend
+            structure_hash: `HASH_${Date.now()} `, // Simple mock hash
             resources: items.map(i => ({
                 resource_id: i.resource_id,
                 supplier_id: i.supplier_id,
@@ -398,6 +569,7 @@ export default function ProductEditorPage() {
                             newItems[index].supplier_id = val
                             setItems(newItems)
                         }}
+                        disabled={isReadOnly}
                     >
                         {availSR.map(sr => {
                             const s = supplierMap[String(sr.supplier_id)]
@@ -419,7 +591,7 @@ export default function ProductEditorPage() {
             width: 120,
             dataIndex: 'quantity',
             render: (qty: number, _: any, idx: number) => (
-                <InputNumber min={1} value={qty} onChange={v => {
+                <InputNumber min={1} value={qty} disabled={isReadOnly} onChange={v => {
                     const newItems = [...items]
                     newItems[idx].quantity = v || 1
                     setItems(newItems)
@@ -431,7 +603,7 @@ export default function ProductEditorPage() {
             width: 80,
             dataIndex: 'required_flag',
             render: (flag: boolean, _: any, idx: number) => (
-                <Switch size="small" checked={flag} onChange={v => {
+                <Switch size="small" checked={flag} disabled={isReadOnly} onChange={v => {
                     const newItems = [...items]
                     newItems[idx].required_flag = v
                     setItems(newItems)
@@ -446,7 +618,7 @@ export default function ProductEditorPage() {
                     const newItems = [...items]
                     newItems.splice(idx, 1)
                     setItems(newItems)
-                }} />
+                }} disabled={isReadOnly} />
             )
         }
     ]
@@ -465,7 +637,11 @@ export default function ProductEditorPage() {
             <Row gutter={24}>
                 <Col span={16}>
                     <div className="glass-card" style={{ padding: '24px', marginBottom: 24 }}>
-                        <Form layout="vertical" form={form} onFinish={handleSave}>
+                        <Form layout="vertical" form={form} disabled={isReadOnly} onFinish={handleSave} onValuesChange={(changed) => {
+                            if (changed.suggested_price !== undefined) {
+                                setSuggestedPrice(changed.suggested_price)
+                            }
+                        }}>
                             <Row gutter={16}>
                                 <Col span={12}>
                                     <Form.Item label="产品名称" name="product_name" rules={[{ required: true }]}>
@@ -504,6 +680,91 @@ export default function ProductEditorPage() {
                                 </Col>
                             </Row>
 
+                            <Divider>渠道库存配额</Divider>
+                            <p style={{ color: '#666', marginBottom: 16 }}>
+                                为每个渠道分配库存占比。占比为0表示不分配，留空表示不限制该渠道。占比总和不需要等于100%。
+                            </p>
+
+                            <Form.Item name="allowed_channels" noStyle>
+                                <Table
+                                    size="small"
+                                    pagination={false}
+                                    dataSource={channels.map(c => {
+                                        const allocation = watchedAllocations.find(
+                                            (a: any) => a?.channel_id === Number(c.id)
+                                        )
+                                        return {
+                                            key: c.id,
+                                            channel_id: Number(c.id),
+                                            channel_name: c.channel_name,
+                                            stock_ratio: allocation?.stock_ratio ?? 0
+                                        }
+                                    })}
+                                    columns={[
+                                        {
+                                            title: '渠道名称',
+                                            dataIndex: 'channel_name',
+                                            width: '40%'
+                                        },
+                                        {
+                                            title: '库存占比 (%)',
+                                            dataIndex: 'stock_ratio',
+                                            width: '40%',
+                                            render: (_: any, record: any) => (
+                                                <StockRatioInput
+                                                    value={record.stock_ratio}
+                                                    disabled={isReadOnly}
+                                                    onChange={(val) => {
+                                                        const currentAllocations = form.getFieldValue('allowed_channels') || []
+                                                        const existingIdx = currentAllocations.findIndex(
+                                                            (a: any) => a?.channel_id === record.channel_id
+                                                        )
+                                                        let newAllocations
+                                                        if (existingIdx >= 0) {
+                                                            newAllocations = [...currentAllocations]
+                                                            newAllocations[existingIdx] = {
+                                                                channel_id: record.channel_id,
+                                                                stock_ratio: val ?? 0
+                                                            }
+                                                        } else {
+                                                            newAllocations = [
+                                                                ...currentAllocations,
+                                                                { channel_id: record.channel_id, stock_ratio: val ?? 0 }
+                                                            ]
+                                                        }
+                                                        form.setFieldsValue({ allowed_channels: newAllocations })
+                                                        form.setFieldsValue({ allowed_channels: newAllocations })
+                                                        // Force update to recalculate estimates
+                                                        forceUpdate({})
+                                                    }}
+                                                />
+                                            )
+                                        },
+                                        {
+                                            title: '预计库存',
+                                            width: '20%',
+                                            render: (_: any, record: any) => {
+                                                const ratio = record.stock_ratio || 0
+                                                const estimated = estimatedDailyStock !== null
+                                                    ? Math.floor(estimatedDailyStock * (ratio / 100))
+                                                    : null
+
+                                                if (ratio <= 0) return <span style={{ color: '#999' }}>未分配</span>
+
+                                                return (
+                                                    <Space>
+                                                        <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
+                                                            {estimated !== null ? estimated : '-'}
+                                                        </span>
+                                                        <span style={{ color: '#999', fontSize: 12 }}>(预估)</span>
+                                                    </Space>
+                                                )
+                                            }
+                                        }
+                                    ]}
+                                />
+                            </Form.Item>
+
                             <Divider>资源组合</Divider>
 
                             <Table
@@ -511,29 +772,54 @@ export default function ProductEditorPage() {
                                 columns={itemColumns}
                                 dataSource={items}
                                 pagination={false}
-                                footer={() => (
+                                footer={() => !isReadOnly ? (
                                     <Button type="dashed" block icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
                                         添加资源
                                     </Button>
-                                )}
+                                ) : null}
                             />
 
                             <div style={{ marginTop: 24, padding: 16, background: '#f6f6f6', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
-                                    <Statistic title="预估总成本" value={totalCost} precision={2} prefix="¥" valueStyle={{ color: '#cf1322' }} />
-                                    <div style={{ fontSize: 12, color: '#999' }}>* 根据所选供应商结算价计算</div>
+                                    <Space size="large">
+                                        <Statistic title="预估总成本" value={totalCost} precision={2} prefix="¥" valueStyle={{ color: '#cf1322' }} />
+                                        <Statistic
+                                            title="理论利润"
+                                            value={(suggestedPrice || 0) - totalCost}
+                                            precision={2}
+                                            prefix="¥"
+                                            valueStyle={{ color: (suggestedPrice || 0) - totalCost >= 0 ? '#3f8600' : '#cf1322' }}
+                                        />
+                                        <div style={{ width: 1, height: 40, background: '#f0f0f0' }} />
+                                        <Statistic
+                                            title="周期内最小库存 (非0日)"
+                                            value={estimatedDailyStock ?? '-'}
+                                            valueStyle={{ color: '#1890ff' }}
+                                            suffix={previewLoading ? <Spin size="small" /> : null}
+                                        />
+                                    </Space>
+                                    <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>* 理论利润 = 建议零售价 - 预估总成本</div>
+
+                                    <div style={{ marginTop: 24 }}>
+                                        <div style={{ marginBottom: 8, fontWeight: 'bold' }}>库存日历预览 (有效供应期)</div>
+                                        <div style={{ width: '100%', maxWidth: 800 }}>
+                                            <ProductStockPreviewCalendar stockData={previewData} />
+                                        </div>
+                                    </div>
                                 </div>
                                 <Space>
-                                    <Button size="large" onClick={() => navigate('/products/list')}>取消</Button>
-                                    <Button type="primary" size="large" htmlType="submit" loading={loading}>
-                                        {productId ? '保存修改' : '立即创建'}
-                                    </Button>
+                                    <Button size="large" onClick={() => navigate('/products/list')}>{isReadOnly ? '返回' : '取消'}</Button>
+                                    {!isReadOnly && (
+                                        <Button type="primary" size="large" htmlType="submit" loading={loading}>
+                                            {productId ? '保存修改' : '立即创建'}
+                                        </Button>
+                                    )}
                                 </Space>
                             </div>
                         </Form>
                     </div>
 
-                    <CategoryManager />
+                    {!isReadOnly && <CategoryManager />}
                 </Col>
 
                 <Col span={8}>

@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
 import { Button, Table, Tag, Space, Modal, Form, Input, Select, message, Card, Row, Col, Popconfirm } from 'antd'
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, EyeOutlined, CalendarOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
 import type { Product } from '@/types'
 import { useNavigate } from 'react-router-dom'
+import ProductStockPreviewCalendar from '@/components/ProductStockPreviewCalendar'
 
 interface FilterState {
     keyword: string
@@ -21,7 +22,12 @@ export default function ProductListPage() {
 
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 20 })
     const [batchUpdateForm] = Form.useForm()
+    const [inventoryModalVisible, setInventoryModalVisible] = useState(false)
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+    const [productInventory, setProductInventory] = useState<{ date: string, available_qty: number }[]>([])
+    const [loadingInventory, setLoadingInventory] = useState(false)
 
     // 筛选器状态
     const [filters, setFilters] = useState<FilterState & { poi_id: string | null }>({
@@ -153,6 +159,8 @@ export default function ProductListPage() {
             title: '主POI',
             dataIndex: 'poi_id',
             render: (v: string) => poiList.find(c => String(c.id) === String(v))?.poi_name || '-',
+            filters: poiList.map(p => ({ text: p.poi_name, value: p.id })),
+            onFilter: (value: string, record: Product) => String(record.poi_id) === String(value),
         },
         {
             title: '建议零售价',
@@ -188,6 +196,37 @@ export default function ProductListPage() {
                     <Button
                         type="link"
                         size="small"
+                        icon={<EyeOutlined />}
+                        onClick={() => navigate(`/products/editor?id=${record.id}&readonly=true`)}
+                    >
+                        查看
+                    </Button>
+                    <Button
+                        type="link"
+                        size="small"
+                        icon={<CalendarOutlined />}
+                        onClick={async () => {
+                            setSelectedProduct(record)
+                            setInventoryModalVisible(true)
+                            setLoadingInventory(true)
+                            try {
+                                const res = await apiRequest<{ items: { date: string, available_qty: number }[] }>(
+                                    `/api/products/${record.id}/inventory`
+                                )
+                                setProductInventory(res.items || [])
+                            } catch (err) {
+                                message.error('加载库存失败')
+                                setProductInventory([])
+                            } finally {
+                                setLoadingInventory(false)
+                            }
+                        }}
+                    >
+                        库存
+                    </Button>
+                    <Button
+                        type="link"
+                        size="small"
                         icon={<EditOutlined />}
                         onClick={() => navigate(`/products/editor?id=${record.id}`)}
                     >
@@ -203,7 +242,7 @@ export default function ProductListPage() {
                     >
                         <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
                     </Popconfirm>
-                </Space>
+                </Space >
             ),
         },
     ]
@@ -310,7 +349,16 @@ export default function ProductListPage() {
                         selectedRowKeys,
                         onChange: setSelectedRowKeys,
                     }}
-                    pagination={{ pageSize: 20 }}
+                    pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: filteredProducts.length,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条记录`,
+                        onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+                        onShowSizeChange: (current, size) => setPagination({ current, pageSize: size })
+                    }}
+                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 20 })}
                 />
             </div>
 
@@ -342,6 +390,35 @@ export default function ProductListPage() {
                         </Button>
                     </Space>
                 </Form>
+            </Modal>
+
+            {/* 产品库存 Modal */}
+            <Modal
+                title={`产品库存 - ${selectedProduct?.product_name}`}
+                open={inventoryModalVisible}
+                onCancel={() => {
+                    setInventoryModalVisible(false)
+                    setSelectedProduct(null)
+                    setProductInventory([])
+                }}
+                footer={null}
+                width={800}
+            >
+                {loadingInventory ? (
+                    <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
+                ) : (
+                    <div>
+                        <p style={{ color: '#666', marginBottom: 16 }}>
+                            产品库存由资源库存自动计算得出（产品库存 = MIN(资源库存 / 资源用量)）
+                        </p>
+                        <ProductStockPreviewCalendar
+                            stockData={productInventory.reduce((acc, curr) => {
+                                acc[curr.date] = curr.available_qty
+                                return acc
+                            }, {} as Record<string, number>)}
+                        />
+                    </div>
+                )}
             </Modal>
         </div>
     )

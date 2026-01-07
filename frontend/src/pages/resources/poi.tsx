@@ -25,6 +25,7 @@ export default function ResourcePage() {
     const [detailAutoOpened, setDetailAutoOpened] = useState(false)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
 
     // 筛选器状态
     const [filters, setFilters] = useState<FilterState>({
@@ -351,10 +352,15 @@ export default function ResourcePage() {
                             onChange: setSelectedRowKeys,
                         }}
                         pagination={{
-                            pageSize: 10,
+                            current: pagination.current,
+                            pageSize: pagination.pageSize,
+                            total: filteredPoiList.length,
                             showSizeChanger: true,
-                            showTotal: (total) => `共 ${total} 条记录`
+                            showTotal: (total) => `共 ${total} 条记录`,
+                            onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+                            onShowSizeChange: (current, size) => setPagination({ current, pageSize: size })
                         }}
+                        onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
                     />
                 </div>
 

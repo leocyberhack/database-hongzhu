@@ -70,6 +70,12 @@ export interface ProductCategory {
     created_at?: string
 }
 
+// Channel allocation with stock ratio
+export interface ChannelAllocation {
+    channel_id: number
+    stock_ratio: number  // Percentage (0-100), default 0
+}
+
 export interface Product {
     id: string
     product_name: string
@@ -78,7 +84,9 @@ export interface Product {
     status: 'draft' | 'active' | 'archived'
     category_id?: string
     suggested_price?: number
+    base_cost?: number
     poi_id?: string
+    allowed_channels?: ChannelAllocation[]  // Changed to array of allocations
     created_at?: string
     updated_at?: string
 }
@@ -114,8 +122,9 @@ export interface SKU {
 
 export interface Channel {
     id: string
-    name: string
+    channel_name: string
     channel_type: string
+    commission_rate?: number
     status: 'active' | 'inactive'
     created_at?: string
     updated_at?: string

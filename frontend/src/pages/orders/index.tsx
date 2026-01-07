@@ -38,7 +38,7 @@ export default function OrdersPage() {
         {
             title: '渠道',
             dataIndex: 'channel_id',
-            render: (v: string) => channels.find((c) => c.id === v)?.name || '-',
+            render: (v: string) => channels.find((c) => c.id === v)?.channel_name || '-',
         },
         {
             title: 'SKU',
@@ -102,7 +102,7 @@ export default function OrdersPage() {
                             placeholder="选择渠道"
                             showSearch
                             optionFilterProp="label"
-                            options={channels.map((c) => ({ value: c.id, label: c.name }))}
+                            options={channels.map((c) => ({ value: c.id, label: c.channel_name }))}
                         />
                     </Form.Item>
                     <Form.Item name="sku_id" label="SKU" rules={[{ required: true, message: '请选择SKU' }]}>

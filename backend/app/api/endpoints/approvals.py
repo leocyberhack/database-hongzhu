@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -18,7 +18,7 @@ async def list_approvals(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
+    page_size: int = Query(default=50, ge=1, le=1000),
     status: Optional[str] = Query(default=None),
     object_type: Optional[str] = Query(default=None),
     approver: Optional[str] = Query(default=None),
@@ -48,9 +48,9 @@ async def decide_approval(
 ):
     approval = await db.get(Approval, approval_id)
     if not approval:
-        raise HTTPException(status_code=404, detail="审批不存在")
+        raise HTTPException(status_code=404, detail="瀹℃壒涓嶅瓨鍦?)
     if approval.status != "pending":
-        raise HTTPException(status_code=400, detail="审批已处理")
+        raise HTTPException(status_code=400, detail="瀹℃壒宸插鐞?)
 
     approval.status = "approved" if payload.approve else "rejected"
     approval.decided_at = datetime.utcnow()
@@ -67,8 +67,7 @@ async def decide_approval(
     )
     db.add_all([approval, audit])
 
-    # 对 Price 的审批已经由 /prices/{id}/decision 执行生效逻辑；这里仅更新其他类型的审批状态。
-    if approval.object_type != "price":
+    # 瀵?Price 鐨勫鎵瑰凡缁忕敱 /prices/{id}/decision 鎵ц鐢熸晥閫昏緫锛涜繖閲屼粎鏇存柊鍏朵粬绫诲瀷鐨勫鎵圭姸鎬併€?    if approval.object_type != "price":
         await db.execute(
             update(Approval)
             .where(Approval.id == approval.id)

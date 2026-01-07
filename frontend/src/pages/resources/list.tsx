@@ -1,9 +1,11 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tag, Drawer, Descriptions, Card, Checkbox, Row, Col, Popconfirm } from 'antd'
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
+import { CalendarOutlined, PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
 import type { Resource } from '@/types'
+import SKUCalendarEditor from '@/components/SKUCalendarEditor'
+import type { SKUCalendarEditorRef } from '@/components/SKUCalendarEditor'
 
 const RESOURCE_TYPES = ['酒店', '门票', '餐饮', '交通', '组合', '其他']
 
@@ -22,12 +24,17 @@ export default function ResourceListPage() {
     const supplierResources = data?.supplier_resources ?? []
     const [createModalVisible, setCreateModalVisible] = useState(false)
     const [selectedResource, setSelectedResource] = useState<Resource | null>(null)
+    const [viewDrawerVisible, setViewDrawerVisible] = useState(false)
     const [editModalVisible, setEditModalVisible] = useState(false)
+    const [inventoryModalVisible, setInventoryModalVisible] = useState(false)
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 20 })
     const [form] = Form.useForm()
     const [editForm] = Form.useForm()
     const [batchUpdateForm] = Form.useForm()
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
+    const [selectedSupplierId, setSelectedSupplierId] = useState<number | undefined>(undefined)
+    const calendarRef = useRef<SKUCalendarEditorRef>(null)
 
     // 筛选器状态
     const [filters, setFilters] = useState<FilterState>({
@@ -174,13 +181,34 @@ export default function ResourceListPage() {
         }
     }
 
+    const handleSaveInventory = async () => {
+        if (!selectedResource || !selectedSupplierId) {
+            message.warning("请选择供应商")
+            return
+        }
+        // Find supplier resource id
+        const sr = supplierResources.find(
+            s => (s.resource_id as unknown as number) === Number(selectedResource.id) && (s.supplier_id as unknown as number) === selectedSupplierId
+        )
+        if (!sr) {
+            message.error("未找到供应商绑定信息")
+            return
+        }
+
+        if (calendarRef.current) {
+            await calendarRef.current.saveToBackend(Number(sr.id))
+            setInventoryModalVisible(false)
+            message.success('库存保存成功')
+        }
+    }
+
     // 获取资源关联的供应商列表
-    const getResourceSuppliers = (resourceId: string) => {
+    const getResourceSuppliers = (resourceId: string | number) => {
         return supplierResources
-            .filter((sr) => sr.resource_id === resourceId)
+            .filter((sr) => (sr.resource_id as unknown as number) === Number(resourceId))
             .map((sr) => ({
                 ...sr,
-                supplier: suppliers.find((s) => s.id === sr.supplier_id),
+                supplier: suppliers.find((s) => (s.id as unknown as number) === Number(sr.supplier_id)),
             }))
     }
 
@@ -260,6 +288,24 @@ export default function ResourceListPage() {
             width: 200,
         },
         {
+            title: '结算价',
+            render: (_: any, record: Resource) => {
+                const bindings = getResourceSuppliers(record.id)
+                if (bindings.length === 0) return '-'
+                return (
+                    <Space direction="vertical" size={0}>
+                        {bindings.map((b) => (
+                            <div key={b.id} style={{ fontSize: 12 }}>
+                                <span style={{ color: '#999', marginRight: 4 }}>{b.supplier?.supplier_name}:</span>
+                                <span>{b.settlement_price ? `¥${b.settlement_price}` : '-'}</span>
+                            </div>
+                        ))}
+                    </Space>
+                )
+            },
+            width: 150,
+        },
+        {
             title: '状态',
             dataIndex: 'status',
             render: (v: string) => {
@@ -277,8 +323,29 @@ export default function ResourceListPage() {
             width: 200,
             render: (_: any, record: Resource) => (
                 <Space>
-                    <Button type="link" size="small" onClick={() => setSelectedResource(record)}>
+                    <Button type="link" size="small" onClick={() => {
+                        setSelectedResource(record)
+                        setViewDrawerVisible(true)
+                    }}>
                         查看
+                    </Button>
+                    <Button
+                        type="link"
+                        size="small"
+                        icon={<CalendarOutlined />}
+                        onClick={() => {
+                            setSelectedResource(record)
+                            // Note: We don't set selectedResource for Drawer here, distinct flow
+                            const srs = getResourceSuppliers(record.id)
+                            if (srs.length > 0) {
+                                setSelectedSupplierId(Number(srs[0].supplier_id))
+                            } else {
+                                setSelectedSupplierId(undefined)
+                            }
+                            setInventoryModalVisible(true)
+                        }}
+                    >
+                        库存/价格
                     </Button>
                     <Button
                         type="link"
@@ -408,10 +475,15 @@ export default function ResourceListPage() {
                         onChange: setSelectedRowKeys,
                     }}
                     pagination={{
-                        pageSize: 20,
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: filteredResources.length,
                         showSizeChanger: true,
-                        showTotal: (total) => `共 ${total} 条记录`
+                        showTotal: (total) => `共 ${total} 条记录`,
+                        onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+                        onShowSizeChange: (current, size) => setPagination({ current, pageSize: size })
                     }}
+                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 20 })}
                 />
             </div>
 
@@ -578,11 +650,68 @@ export default function ResourceListPage() {
                 </Form>
             </Modal>
 
+            {/* 库存日历 Modal */}
+            <Modal
+                title={`库存管理 - ${selectedResource?.resource_name}`}
+                open={inventoryModalVisible}
+                onCancel={() => setInventoryModalVisible(false)}
+                width={1000}
+                onOk={handleSaveInventory}
+                okText="保存全部更改"
+                cancelText="取消"
+                destroyOnClose
+            >
+                {selectedResource && (
+                    <div style={{ marginBottom: 16 }}>
+                        <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center' }}>
+                            <span style={{ marginRight: 8, fontWeight: 'bold' }}>当前供应商:</span>
+                            <Select
+                                style={{ width: 300 }}
+                                value={selectedSupplierId}
+                                onChange={setSelectedSupplierId}
+                                placeholder="请选择供应商"
+                                options={getResourceSuppliers(selectedResource.id).map(sr => ({
+                                    value: sr.supplier?.id,
+                                    label: sr.supplier?.supplier_name
+                                }))}
+                            />
+                            {!selectedSupplierId && <span style={{ color: 'red', marginLeft: 8 }}>请先选择一个供应商来管理库存</span>}
+                        </div>
+                        <p style={{ color: '#666', marginBottom: 8 }}>
+                            请在日历上设置每天的库存数量。库存数据是基于“供应商+资源”的组合。
+                        </p>
+
+                        {(() => {
+                            // Find current supplier resource ID
+                            const currentSR = supplierResources.find(
+                                s => (s.resource_id as unknown as number) === Number(selectedResource.id) && (s.supplier_id as unknown as number) === selectedSupplierId
+                            );
+
+                            // Only render calendar if we have a valid supplier resource ID
+                            if (!currentSR) return null;
+
+                            return (
+                                <SKUCalendarEditor
+                                    ref={calendarRef}
+                                    supplierResourceId={Number(currentSR.id)}
+                                    mode="resource"
+                                    defaultPrice={currentSR.settlement_price}
+                                />
+                            );
+                        })()}
+                    </div>
+                )}
+            </Modal>
+
+
             {/* 资源详情Drawer */}
             <Drawer
                 title={selectedResource?.resource_name}
-                open={!!selectedResource && !editModalVisible}
-                onClose={() => setSelectedResource(null)}
+                open={viewDrawerVisible}
+                onClose={() => {
+                    setViewDrawerVisible(false)
+                    setSelectedResource(null)
+                }}
                 width={600}
             >
                 {selectedResource && (

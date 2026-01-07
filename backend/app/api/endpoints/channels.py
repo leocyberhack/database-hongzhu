@@ -1,4 +1,4 @@
-from typing import Optional
+﻿from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -36,9 +36,9 @@ async def list_channels(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    parent_id: Optional[int] = Query(default=None, description="Filter by parent channel ID"),
-    keyword: Optional[str] = Query(default=None, description="Search by channel name"),
+    page_size: int = Query(default=20, ge=1, le=1000),
+    parent_id: Optional[int] = Query(default=None, description="Search keyword"),
+    keyword: Optional[str] = Query(default=None, description="Search keyword"),
     status: Optional[str] = Query(default=None, description="Filter by status")
 ):
     stmt = select(Channel)
@@ -58,7 +58,7 @@ async def list_channels(
 
     # Paging
     rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
-
+    
     return ChannelListResponse(
         items=[row for row in rows],
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
@@ -120,3 +120,4 @@ async def delete_channel(
     await db.delete(channel)
     await db.commit()
     return None
+# Hot reload test marker: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')

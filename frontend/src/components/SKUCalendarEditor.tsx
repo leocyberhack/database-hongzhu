@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { Card, Button, InputNumber, Row, Col, message, Spin, Space, DatePicker, Select } from 'antd';
+import { Card, Button, InputNumber, Row, Col, message, Spin, Space, DatePicker, Select, Checkbox } from 'antd';
 import { LeftOutlined, RightOutlined, DoubleLeftOutlined, DoubleRightOutlined, SaveOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
@@ -73,7 +73,7 @@ const styles = {
         fontWeight: 500,
     },
     dataContent: {
-        fontSize: '12px',
+        fontSize: '14px',
         textAlign: 'right' as const,
     },
     priceTag: {
@@ -84,6 +84,14 @@ const styles = {
     stockTag: {
         color: '#52c41a',
         display: 'block',
+        fontWeight: 500,
+    },
+    limitTag: {
+        color: '#1890ff',
+        fontSize: '12px',
+        display: 'block',
+        marginTop: 2,
+        fontWeight: 500,
     }
 };
 
@@ -92,11 +100,18 @@ const styles = {
 // Types & Props
 // ----------------------------------------------------------------------
 export interface SKUCalendarEditorRef {
-    saveToBackend: (skuId: number, channelId: number) => Promise<void>;
+    saveToBackend: (id: number, channelId?: number) => Promise<void>;
 }
 
 interface Props {
     skuId?: number; // Check if editing existing SKU
+    channelId?: number; // For SKU channel inventory calculation
+    resourceId?: number; // For resource inventory mode (Now Deprecated in favor of supplierResourceId if available)
+    supplierResourceId?: number; // New param for supplier-level inventory
+    mode?: 'sku' | 'resource'; // 'sku' = price+stock, 'resource' = stock only
+    readonlyStock?: boolean; // If true, stock cannot be edited (for SKU display mode)
+    defaultPrice?: number; // Default price to display if specific date price is not set (Resource mode)
+    stockLimitData?: Record<string, number>; // Map of YYYY-MM-DD -> max allowed stock
 }
 
 interface DayData {
@@ -108,8 +123,13 @@ interface DayData {
 // Main Component
 // ----------------------------------------------------------------------
 const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) => {
+    const mode = props.mode || 'sku';
+    const isResourceMode = mode === 'resource';
+    const readonlyStock = props.readonlyStock || false;
+
     const [currentDate, setCurrentDate] = useState<Dayjs>(dayjs());
     const [selection, setSelection] = useState<{ start: Dayjs | null; end: Dayjs | null }>({ start: null, end: null });
+    const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]); // 0=Sun, 1=Mon...
     const [localData, setLocalData] = useState<Record<string, DayData>>({});
     const [loading, setLoading] = useState(false);
 
@@ -119,12 +139,21 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
 
     // Initial load
     useEffect(() => {
-        if (props.skuId) {
+        if (isResourceMode) {
+            if (props.supplierResourceId) {
+                fetchResourceData(props.supplierResourceId);
+            } else if (props.resourceId) {
+                // Fallback or legacy, but api now expects supplierResourceId.
+                // If resourceId is passed but no supplierResourceId, we might error or need to fetch default supplier.
+                // For now, assume parent passes supplierResourceId.
+                console.warn("Missing supplierResourceId for resource mode.");
+            }
+        } else if (props.skuId) {
             fetchData(props.skuId);
         } else {
             setLocalData({});
         }
-    }, [props.skuId]);
+    }, [props.skuId, props.channelId, props.resourceId, props.supplierResourceId, isResourceMode]);
 
     // When selection changes via click, update inputs if a single day or range is selected and has data
     useEffect(() => {
@@ -146,19 +175,9 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
     const fetchData = async (skuId: number) => {
         setLoading(true);
         try {
-            const invStep = await apiRequest(`/api/inventory?sku_id=${skuId}&page_size=365`) as any;
             const priceStep = await apiRequest(`/api/prices?sku_id=${skuId}&page_size=100`) as any;
 
             const newData: Record<string, DayData> = {};
-
-            // Map Inventory
-            (invStep.items || []).forEach((item: any) => {
-                if (item.inventory_date) {
-                    const d = dayjs(item.inventory_date).format('YYYY-MM-DD');
-                    if (!newData[d]) newData[d] = {};
-                    newData[d].stock = item.total_qty;
-                }
-            });
 
             // Map Prices
             (priceStep.items || []).forEach((item: any) => {
@@ -173,6 +192,29 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                 }
             });
 
+            // If channelId is provided, fetch calculated inventory from SKU channel inventory API
+            if (props.channelId) {
+                const startDate = dayjs().startOf('year').format('YYYY-MM-DD');
+                const endDate = dayjs().endOf('year').add(1, 'year').format('YYYY-MM-DD');
+
+                try {
+                    const invData = await apiRequest(
+                        `/api/sku/${skuId}/channel/${props.channelId}/inventory?start_date=${startDate}&end_date=${endDate}`
+                    ) as any;
+
+                    (invData.items || []).forEach((item: any) => {
+                        if (item.date) {
+                            const d = item.date;
+                            if (!newData[d]) newData[d] = {};
+                            newData[d].stock = item.available_qty;
+                        }
+                    });
+                } catch (invErr) {
+                    console.warn("Failed to fetch SKU channel inventory:", invErr);
+                    // Inventory will just not be shown
+                }
+            }
+
             setLocalData(newData);
 
         } catch (err) {
@@ -183,12 +225,93 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
         }
     };
 
+    // Fetch resource inventory data
+    const fetchResourceData = async (supplierResourceId: number) => {
+        setLoading(true);
+        try {
+            // Get current year range for fetching
+            const startDate = dayjs().startOf('year').format('YYYY-MM-DD');
+            const endDate = dayjs().endOf('year').add(1, 'year').format('YYYY-MM-DD');
+
+            const invData = await apiRequest(`/api/supplier-resources/${supplierResourceId}/inventory?start_date=${startDate}&end_date=${endDate}&_t=${Date.now()}`) as any[];
+
+            const newData: Record<string, DayData> = {};
+            (invData || []).forEach((item: any) => {
+                if (item.inventory_date) {
+                    const d = dayjs(item.inventory_date).format('YYYY-MM-DD');
+                    newData[d] = { stock: item.total_qty, price: item.settlement_price };
+                }
+            });
+
+            setLocalData(newData);
+        } catch (err) {
+            console.error(err);
+            message.error("加载资源库存数据失败");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useImperativeHandle(ref, () => ({
-        saveToBackend: async (skuId: number, channelId: number) => {
-            if (!skuId || !channelId) {
+        saveToBackend: async (id: number, channelId?: number) => {
+            // Resource mode: save to supplier resource inventory endpoint
+            // id here is interpreted as supplierResourceId in resource mode
+            if (isResourceMode) {
+                const dates = Object.keys(localData).sort();
+                if (dates.length === 0) return;
+
+                // Group segments by both stock and price
+                const segments: { start: string, end: string, stock: number, price?: number }[] = [];
+                let currentSeg: { start: string, end: string, stock: number, price?: number } | null = null;
+
+                for (const date of dates) {
+                    const data = localData[date];
+                    // If stock is undefined (e.g. new date and user only set price), default to 0
+                    const stock = data.stock ?? 0;
+                    // Note: price might be undefined if not set
+
+                    if (!currentSeg) {
+                        currentSeg = { start: date, end: date, stock: stock, price: data.price };
+                    } else {
+                        const nextDate = dayjs(currentSeg.end).add(1, 'day').format('YYYY-MM-DD');
+                        const isContiguous = date === nextDate;
+                        const isSameStock = stock === currentSeg.stock;
+                        const isSamePrice = data.price === currentSeg.price; // handling undefined === undefined
+
+                        if (isContiguous && isSameStock && isSamePrice) {
+                            currentSeg.end = date;
+                        } else {
+                            segments.push(currentSeg);
+                            currentSeg = { start: date, end: date, stock: stock, price: data.price };
+                        }
+                    }
+                }
+                if (currentSeg) segments.push(currentSeg);
+
+                // Save to supplier resource inventory endpoint
+                for (const seg of segments) {
+                    await apiRequest('/api/supplier-resources/inventory/batch', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            supplier_resource_id: id,
+                            start_date: seg.start,
+                            end_date: seg.end,
+                            total_qty: seg.stock,
+                            settlement_price: seg.price
+                        })
+                    });
+                }
+                // Refresh data
+                await fetchResourceData(id);
+                return;
+            }
+
+            // SKU mode: original logic
+            if (!id || !channelId) {
                 console.error("Missing SKU ID or Channel ID");
                 return;
             }
+            const skuId = id;
 
             const dates = Object.keys(localData).sort();
             if (dates.length === 0) return;
@@ -328,15 +451,32 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
         const newData = { ...localData };
         const diff = selection.end.diff(selection.start, 'day');
         for (let i = 0; i <= diff; i++) {
-            const dStr = selection.start.add(i, 'day').format('YYYY-MM-DD');
+            const dateObj: Dayjs = selection.start.add(i, 'day');
+
+            // Weekday filter check
+            if (!selectedWeekdays.includes(dateObj.day())) {
+                continue;
+            }
+
+            const dStr = dateObj.format('YYYY-MM-DD');
             if (!newData[dStr]) newData[dStr] = {};
 
             if (inputPrice !== null) newData[dStr].price = inputPrice;
-            if (inputStock !== null) newData[dStr].stock = inputStock;
+
+            if (inputStock !== null) {
+                // Check against limit
+                let finalStock = inputStock;
+                const limit = props.stockLimitData?.[dStr];
+
+                if (limit !== undefined && finalStock > limit) {
+                    finalStock = limit;
+                }
+                newData[dStr].stock = finalStock;
+            }
         }
 
         setLocalData(newData);
-        message.success("设置已应用到选定日期");
+        message.success("设置已应用到选定日期 (已自动按最大库存截断)");
     };
 
     const handleMonthChange = (val: number) => {
@@ -387,8 +527,25 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                     <div style={styles.dateNum}>{day.date()}</div>
                     {data && (
                         <div style={styles.dataContent}>
-                            {data.price !== undefined && <span style={styles.priceTag}>¥{data.price}</span>}
+                            {(() => {
+                                const price = (data.price !== undefined && data.price !== null)
+                                    ? data.price
+                                    : (isResourceMode ? props.defaultPrice : undefined);
+
+                                if (price !== undefined && price !== null) {
+                                    return <span style={styles.priceTag}>¥{price}</span>;
+                                }
+                                return null;
+                            })()}
                             {data.stock !== undefined && <span style={styles.stockTag}>余 {data.stock}</span>}
+                            {props.stockLimitData?.[str] !== undefined && (
+                                <span style={styles.limitTag}>限 {props.stockLimitData[str]}</span>
+                            )}
+                        </div>
+                    )}
+                    {(!data && props.stockLimitData?.[str] !== undefined) && (
+                        <div style={styles.dataContent}>
+                            <span style={styles.limitTag}>限 {props.stockLimitData[str]}</span>
                         </div>
                     )}
                 </div>
@@ -400,13 +557,13 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
 
 
     return (
-        <Space direction="vertical" style={{ width: '100%' }} size="large">
+        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: 24 }}>
             {loading && <Spin fullscreen />}
 
             {/* Control Panel */}
-            <Card size="small" title="价格库存设置" styles={{ body: { padding: '16px' } }}>
+            <Card size="small" title={isResourceMode ? "库存设置" : "价格库存设置"} styles={{ body: { padding: '16px' } }}>
                 <Row gutter={16} align="middle">
-                    <Col span={8}>
+                    <Col span={isResourceMode ? 10 : 8}>
                         <div>选中时段:</div>
                         <RangePicker
                             value={selection.start && selection.end ? [selection.start, selection.end] : null}
@@ -416,7 +573,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                         />
                     </Col>
                     <Col span={5}>
-                        <div>销售价格 (¥)</div>
+                        <div>{isResourceMode ? '结算价格 (¥)' : '销售价格 (¥)'}</div>
                         <InputNumber
                             style={{ width: '100%' }}
                             min={0}
@@ -425,7 +582,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                             placeholder="不修改"
                         />
                     </Col>
-                    <Col span={5}>
+                    <Col span={isResourceMode ? 8 : 5}>
                         <div>库存数量</div>
                         <InputNumber
                             style={{ width: '100%' }}
@@ -433,6 +590,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                             value={inputStock}
                             onChange={v => setInputStock(v)}
                             placeholder="不修改"
+                            disabled={readonlyStock}
                         />
                     </Col>
                     <Col span={6} style={{ textAlign: 'right', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', height: '100%' }}>
@@ -442,11 +600,28 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                             icon={<SaveOutlined />}
                             onClick={handleApplyData}
                             style={{ marginTop: 20 }}
+                            disabled={readonlyStock && isResourceMode}
                         >
                             应用设置到日历
                         </Button>
                     </Col>
                 </Row>
+                <div style={{ marginTop: 12 }}>
+                    <div>应用周期:</div>
+                    <Checkbox.Group
+                        options={[
+                            { label: '周日', value: 0 },
+                            { label: '周一', value: 1 },
+                            { label: '周二', value: 2 },
+                            { label: '周三', value: 3 },
+                            { label: '周四', value: 4 },
+                            { label: '周五', value: 5 },
+                            { label: '周六', value: 6 },
+                        ]}
+                        value={selectedWeekdays}
+                        onChange={(vals) => setSelectedWeekdays(vals as number[])}
+                    />
+                </div>
                 <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
                     提示：可通过上方日期选择器或直接点击日历来选择范围。选择后设置价格/库存并点击“应用”，最后点击底部“保存”。
                 </div>
@@ -494,7 +669,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                 </div>
             </div>
 
-        </Space>
+        </div>
     );
 });
 

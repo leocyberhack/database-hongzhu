@@ -120,11 +120,13 @@ class Product(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'draft'"))
     suggested_price: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    base_cost: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
     structure_hash: Mapped[str] = mapped_column(String, nullable=False)
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     poi_id: Mapped[int | None] = mapped_column(ForeignKey("poi.id", ondelete="SET NULL"), nullable=True)
+    allowed_channels: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (UniqueConstraint("structure_hash", name="uq_product_structure_hash"),)
 
@@ -163,6 +165,7 @@ class Channel(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     channel_name: Mapped[str] = mapped_column(String, nullable=False)
     channel_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    commission_rate: Mapped[Numeric | None] = mapped_column(Numeric(5, 4), nullable=True) # Percentage (e.g., 0.05 for 5%)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("channel.id", ondelete="SET NULL"), nullable=True)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'active'"))
@@ -256,6 +259,8 @@ class Inventory(Base):
         CheckConstraint("sold_qty + frozen_qty <= total_qty", name="ck_inventory_not_over_sold"),
     )
 
+
+from app.models.resource_inventory import ResourceInventory
 
 class InventoryLog(Base):
     __tablename__ = "inventory_log"

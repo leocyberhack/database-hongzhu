@@ -19,7 +19,7 @@ export default function InventoryAdjustPage() {
                         <Select placeholder="选择SKU" options={skus.map((s) => ({ value: s.id, label: s.sku_name }))} />
                     </Form.Item>
                     <Form.Item label="渠道" name="channel_id" rules={[{ required: true }]}>
-                        <Select placeholder="选择渠道" options={channels.map((c) => ({ value: c.id, label: c.name }))} />
+                        <Select placeholder="选择渠道" options={channels.map((c) => ({ value: c.id, label: c.channel_name }))} />
                     </Form.Item>
                     <Form.Item label="日期" name="date" rules={[{ required: true }]}>
                         <DatePicker style={{ width: '100%' }} />

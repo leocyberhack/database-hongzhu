@@ -68,8 +68,7 @@ export default function AppLayout() {
                     label: '定价中心',
                     type: 'group',
                     children: [
-                        { key: '/pricing/center', label: 'SKU 价格中心' },
-                        { key: '/pricing/history', label: '价格历史' },
+                        { key: '/pricing/center', label: 'SKU 价格/库存中心' },
                     ]
                 },
                 {
@@ -77,8 +76,7 @@ export default function AppLayout() {
                     label: '库存管理',
                     type: 'group',
                     children: [
-                        { key: '/inventory/calendar', label: '库存日历' },
-                        { key: '/inventory/adjust', label: '库存调整' },
+                        { key: '/inventory/calendar', label: '库存数据' },
                     ]
                 }
             ]

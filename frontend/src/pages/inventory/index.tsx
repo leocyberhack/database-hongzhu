@@ -17,7 +17,7 @@ export default function InventoryPage() {
         {
             title: '渠道',
             dataIndex: 'channel_id',
-            render: (v: string) => channels.find((c) => c.id === v)?.name || '-',
+            render: (v: string) => channels.find((c) => c.id === v)?.channel_name || '-',
         },
         { title: '日期', dataIndex: 'date' },
         { title: '总量', dataIndex: 'total_qty' },

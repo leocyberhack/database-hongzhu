@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -37,10 +37,10 @@ async def _freeze_inventory(db: DbSession, sku_id: int, travel_date, qty: int, o
         select(Inventory).where(Inventory.sku_id == sku_id, Inventory.inventory_date == travel_date).with_for_update()
     )
     if not inv:
-        raise HTTPException(status_code=400, detail="库存未初始化")
+        raise HTTPException(status_code=400, detail="搴撳瓨鏈垵濮嬪寲")
     available = inv.total_qty - inv.frozen_qty - inv.sold_qty
     if available < qty:
-        raise HTTPException(status_code=400, detail="库存不足，无法冻结")
+        raise HTTPException(status_code=400, detail="搴撳瓨涓嶈冻锛屾棤娉曞喕缁?)
     before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
     inv.frozen_qty += qty
     inv.updated_at = datetime.utcnow()
@@ -63,9 +63,9 @@ async def _consume_inventory(db: DbSession, sku_id: int, travel_date, qty: int, 
         select(Inventory).where(Inventory.sku_id == sku_id, Inventory.inventory_date == travel_date).with_for_update()
     )
     if not inv:
-        raise HTTPException(status_code=400, detail="库存未初始化")
+        raise HTTPException(status_code=400, detail="搴撳瓨鏈垵濮嬪寲")
     if inv.frozen_qty < qty:
-        raise HTTPException(status_code=400, detail="冻结库存不足")
+        raise HTTPException(status_code=400, detail="鍐荤粨搴撳瓨涓嶈冻")
     before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
     inv.frozen_qty -= qty
     if action == "verify":
@@ -90,7 +90,7 @@ async def list_orders(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
+    page_size: int = Query(default=50, ge=1, le=1000),
     status: Optional[str] = Query(default=None),
     sku_id: Optional[int] = Query(default=None),
     channel_id: Optional[int] = Query(default=None),
@@ -116,16 +116,71 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
         select(Order).where(Order.order_no == payload.order_no, Order.channel_id == payload.channel_id)
     )
     if dup:
-        raise HTTPException(status_code=400, detail="重复的订单号+渠道")
+        raise HTTPException(status_code=400, detail="閲嶅鐨勮鍗曞彿+娓犻亾")
 
     sku = await db.get(Sku, payload.sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU 不存在")
+        raise HTTPException(status_code=404, detail="SKU 涓嶅瓨鍦?)
+    
+    # Calculate Dynamic Cost based on Resource Settlement Price
+    # This replaces the static cost from Price table
+    from app.models import ProductResource, ResourceInventory, SupplierResource
+    
+    # Get product resources
+    pres = await db.scalars(select(ProductResource).where(ProductResource.product_id == payload.product_id))
+    pres = list(pres)
+    
+    calculated_cost = Decimal("0.00")
+    if pres:
+        r_ids = [p.resource_id for p in pres]
+        # Query inventory prices for these resources on the travel date
+        # If product_resource specifies supplier, filter by it.
+        # Otherwise, we might need a strategy. For MVP, we fetch all valid prices and pick relevant one.
+        
+        # We need to handle each resource line item
+        for line in pres:
+            qty_needed = line.quantity
+            if qty_needed <= 0:
+                continue
+                
+            # Query inventory and fallback price together
+            q = select(ResourceInventory, SupplierResource.settlement_price).join(SupplierResource).where(
+                SupplierResource.resource_id == line.resource_id,
+                ResourceInventory.inventory_date == payload.travel_date
+            )
+            if line.supplier_id:
+                q = q.where(SupplierResource.supplier_id == line.supplier_id)
+            
+            results = (await db.execute(q)).all()
+            
+            if not results:
+                # No inventory record found. Fallback to SupplierResource default price
+                sr_q = select(SupplierResource).where(SupplierResource.resource_id == line.resource_id)
+                if line.supplier_id:
+                    sr_q = sr_q.where(SupplierResource.supplier_id == line.supplier_id)
+                srs = (await db.scalars(sr_q)).all()
+                unit_cost = max([sr.settlement_price or 0 for sr in srs]) if srs else 0
+            else:
+                # Use the price from inventory record. If null, fallback to SR price
+                valid_prices = []
+                for inv, default_price in results:
+                    price = inv.settlement_price if inv.settlement_price is not None else default_price
+                    if price is not None:
+                        valid_prices.append(price)
+                
+                if valid_prices:
+                    unit_cost = max(valid_prices)
+                else:
+                    unit_cost = 0
+            
+            calculated_cost += Decimal(str(unit_cost)) * qty_needed
+
     active_price = await _active_price(db, payload.sku_id, payload.channel_id, payload.travel_date)
     sale_price = Decimal(str(payload.sale_price or (active_price.sale_price if active_price else 0)))
-    cost_price = Decimal(str(payload.cost_price)) if payload.cost_price is not None else (
-        Decimal(str(active_price.cost_price)) if active_price and active_price.cost_price is not None else None
-    )
+    
+    # Use calculated dynamic cost if payload doesn't provide it
+    cost_price = Decimal(str(payload.cost_price)) if payload.cost_price is not None else calculated_cost
+    
     sale_amount, cost_amount, profit_amount = _calc_amounts(sale_price, cost_price, payload.quantity)
 
     order = Order(
@@ -173,19 +228,19 @@ async def decide_order(
 ):
     order = await db.get(Order, order_id)
     if not order:
-        raise HTTPException(status_code=404, detail="订单不存在")
+        raise HTTPException(status_code=404, detail="璁㈠崟涓嶅瓨鍦?)
     if payload.action not in {"verify", "refund"}:
-        raise HTTPException(status_code=400, detail="action 必须是 verify 或 refund")
+        raise HTTPException(status_code=400, detail="action 蹇呴』鏄?verify 鎴?refund")
 
     if payload.action == "verify":
         if order.status != "paid":
-            raise HTTPException(status_code=400, detail="仅已支付订单可核销")
+            raise HTTPException(status_code=400, detail="浠呭凡鏀粯璁㈠崟鍙牳閿€")
         await _consume_inventory(db, order.sku_id, order.travel_date, order.quantity, user.username, order.id, "verify")
         order.status = "verified"
         order.verified_at = datetime.utcnow()
     else:
         if order.status != "paid":
-            raise HTTPException(status_code=400, detail="仅已支付订单可退款")
+            raise HTTPException(status_code=400, detail="浠呭凡鏀粯璁㈠崟鍙€€娆?)
         await _consume_inventory(db, order.sku_id, order.travel_date, order.quantity, user.username, order.id, "refund")
         order.status = "refunded"
         order.refunded_at = datetime.utcnow()

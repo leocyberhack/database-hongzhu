@@ -52,7 +52,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const fetchBackend = useCallback(async () => {
         setLoading(true)
         try {
-            const qs = '?page=1&page_size=200'
+            const qs = '?page=1&page_size=1000'
             const [
                 poiRes,
                 resRes,

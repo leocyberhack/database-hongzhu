@@ -25,6 +25,12 @@ class ProductResourceRead(ORMBase):
     remark: Optional[str] = None
 
 
+# Channel allocation with stock ratio
+class ChannelAllocation(BaseModel):
+    channel_id: int
+    stock_ratio: float = 0  # Percentage (0-100), default 0 means not allocated
+
+
 class ProductBase(BaseModel):
     product_name: str
     description: Optional[str] = None
@@ -33,7 +39,9 @@ class ProductBase(BaseModel):
     created_by: Optional[str] = None
     category_id: Optional[int] = None
     suggested_price: Optional[float] = None
+    base_cost: Optional[float] = None
     poi_id: Optional[int] = None
+    allowed_channels: Optional[list[ChannelAllocation]] = None  # Changed to list of allocations
 
 
 class ProductCreate(ProductBase):

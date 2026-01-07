@@ -1,4 +1,4 @@
-from typing import Optional
+﻿from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -11,6 +11,62 @@ from app.schemas.common import Pagination
 from app.schemas.sku import SkuCreate, SkuListResponse, SkuResponse, SkuUpdate
 
 router = APIRouter()
+
+
+@router.post("/batch-delete", status_code=204)
+async def batch_delete_skus(
+    ids: list[int],
+    db: DbSession,
+    _: User = Depends(get_current_user),
+):
+    if not ids:
+        return
+        
+    stmt = select(Sku).where(Sku.id.in_(ids))
+    skus = await db.scalars(stmt)
+    
+    for sku in skus:
+        await db.delete(sku)
+        
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Batch delete failed")
+
+
+@router.post("/batch-update", status_code=200)
+async def batch_update_skus(
+    payload: dict,
+    db: DbSession,
+    _: User = Depends(get_current_user),
+):
+    ids = payload.get("ids", [])
+    fields = payload.get("fields", {})
+    
+    if not ids or not fields:
+        raise HTTPException(status_code=400, detail="Missing IDs or fields")
+
+    # Validate fields
+    try:
+        update_data = SkuUpdate(**fields).model_dump(exclude_unset=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid update fields: {str(e)}")
+
+    stmt = select(Sku).where(Sku.id.in_(ids))
+    skus = await db.scalars(stmt)
+    
+    for sku in skus:
+        for k, v in update_data.items():
+            setattr(sku, k, v)
+            
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Batch update failed")
+        
+    return {"message": "Success"}
 
 
 @router.post("", response_model=SkuResponse, status_code=201)

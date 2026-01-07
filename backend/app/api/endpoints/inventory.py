@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+﻿from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -66,7 +66,7 @@ async def init_inventory(
 ):
     sku = await db.get(Sku, payload.sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU 不存在")
+        raise HTTPException(status_code=404, detail="SKU 涓嶅瓨鍦?)
 
     created = []
     logs = []
@@ -120,8 +120,7 @@ async def init_inventory(
     db.add_all(created)
     db.add_all(logs)
     await db.commit()
-    # 返回最新分页视图
-    return await list_inventory(db, user, page=1, page_size=50, sku_id=payload.sku_id)
+    # 杩斿洖鏈€鏂板垎椤佃鍥?    return await list_inventory(db, user, page=1, page_size=50, sku_id=payload.sku_id)
 
 
 @router.post("/inventory/adjust", response_model=InventoryRead)
@@ -136,7 +135,7 @@ async def adjust_inventory(
         .with_for_update()
     )
     if not inv:
-        raise HTTPException(status_code=404, detail="库存记录不存在")
+        raise HTTPException(status_code=404, detail="搴撳瓨璁板綍涓嶅瓨鍦?)
 
     before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
     inv.total_qty = payload.total_qty
@@ -156,7 +155,7 @@ async def adjust_inventory(
     approval = Approval(
         object_type="inventory",
         object_id=inv.id,
-        action_type="人工调整",
+        action_type="浜哄伐璋冩暣",
         before_data=before,
         after_data=after,
         status="pending",

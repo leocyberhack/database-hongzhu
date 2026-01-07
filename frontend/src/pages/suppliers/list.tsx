@@ -26,6 +26,7 @@ export default function SupplierPage() {
     const [editModalVisible, setEditModalVisible] = useState(false)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
 
     // 筛选器状态
     const [filters, setFilters] = useState<FilterState>({
@@ -85,7 +86,7 @@ export default function SupplierPage() {
                     contact_phone: values.contact_phone,
                 },
             }
-            await apiRequest(`/ api / suppliers / ${selected.id} `, {
+            await apiRequest(`/api/suppliers/${selected.id}`, {
                 method: 'PUT',
                 body: JSON.stringify(payload)
             })
@@ -100,7 +101,7 @@ export default function SupplierPage() {
 
     const deleteSupplier = async (id: string) => {
         try {
-            await apiRequest(`/ api / suppliers / ${id} `, { method: 'DELETE' })
+            await apiRequest(`/api/suppliers/${id}`, { method: 'DELETE' })
             message.success('供应商已删除')
             await refresh()
         } catch (err: any) {
@@ -356,10 +357,15 @@ export default function SupplierPage() {
                         onChange: setSelectedRowKeys,
                     }}
                     pagination={{
-                        pageSize: 10,
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: filteredSuppliers.length,
                         showSizeChanger: true,
-                        showTotal: (total) => `共 ${total} 条记录`
+                        showTotal: (total) => `共 ${total} 条记录`,
+                        onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+                        onShowSizeChange: (current, size) => setPagination({ current, pageSize: size })
                     }}
+                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
                 />
             </div>
 
