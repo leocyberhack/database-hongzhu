@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Button, Table, Tag, Space, Modal, Form, Input, Select, message, Card, Row, Col, Popconfirm } from 'antd'
+import { Button, Table, Tag, Space, Modal, Form, Input, Select, message, Card, Row, Col, Popconfirm, Tooltip } from 'antd'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, EyeOutlined, CalendarOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
@@ -18,6 +18,7 @@ export default function ProductListPage() {
     const products = data?.products ?? []
     const categories = data?.product_categories ?? []
     const poiList = data?.poi ?? []
+    const skus = data?.skus ?? []
     const navigate = useNavigate()
 
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
@@ -191,59 +192,68 @@ export default function ProductListPage() {
         {
             title: '操作',
             width: 150,
-            render: (_: any, record: Product) => (
-                <Space>
-                    <Button
-                        type="link"
-                        size="small"
-                        icon={<EyeOutlined />}
-                        onClick={() => navigate(`/products/editor?id=${record.id}&readonly=true`)}
-                    >
-                        查看
-                    </Button>
-                    <Button
-                        type="link"
-                        size="small"
-                        icon={<CalendarOutlined />}
-                        onClick={async () => {
-                            setSelectedProduct(record)
-                            setInventoryModalVisible(true)
-                            setLoadingInventory(true)
-                            try {
-                                const res = await apiRequest<{ items: { date: string, available_qty: number }[] }>(
-                                    `/api/products/${record.id}/inventory`
-                                )
-                                setProductInventory(res.items || [])
-                            } catch (err) {
-                                message.error('加载库存失败')
-                                setProductInventory([])
-                            } finally {
-                                setLoadingInventory(false)
-                            }
-                        }}
-                    >
-                        库存
-                    </Button>
-                    <Button
-                        type="link"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => navigate(`/products/editor?id=${record.id}`)}
-                    >
-                        编辑
-                    </Button>
-                    <Popconfirm
-                        title="确定删除此产品吗？"
-                        description="删除产品不可恢复，且可能影响已有订单（如果有）"
-                        onConfirm={() => handleDelete(record.id)}
-                        okText="删除"
-                        cancelText="取消"
-                        okButtonProps={{ danger: true }}
-                    >
-                        <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
-                    </Popconfirm>
-                </Space >
-            ),
+            render: (_: any, record: Product) => {
+                const isLocked = skus.some(s => String(s.product_id) === String(record.id))
+                return (
+                    <Space>
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<EyeOutlined />}
+                            onClick={() => navigate(`/products/editor?id=${record.id}&readonly=true`)}
+                        >
+                            查看
+                        </Button>
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<CalendarOutlined />}
+                            onClick={async () => {
+                                setSelectedProduct(record)
+                                setInventoryModalVisible(true)
+                                setLoadingInventory(true)
+                                try {
+                                    const res = await apiRequest<{ items: { date: string, available_qty: number }[] }>(
+                                        `/api/products/${record.id}/inventory`
+                                    )
+                                    setProductInventory(res.items || [])
+                                } catch (err) {
+                                    message.error('加载库存失败')
+                                    setProductInventory([])
+                                } finally {
+                                    setLoadingInventory(false)
+                                }
+                            }}
+                        >
+                            库存
+                        </Button>
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => navigate(`/products/editor?id=${record.id}`)}
+                        >
+                            编辑
+                        </Button>
+                        {isLocked ? (
+                            <Tooltip title="该产品已关联SKU，不可删除">
+                                <Button type="link" danger disabled size="small" icon={<DeleteOutlined />}>删除</Button>
+                            </Tooltip>
+                        ) : (
+                            <Popconfirm
+                                title="确定删除此产品吗？"
+                                description="删除产品不可恢复，且可能影响已有订单（如果有）"
+                                onConfirm={() => handleDelete(record.id)}
+                                okText="删除"
+                                cancelText="取消"
+                                okButtonProps={{ danger: true }}
+                            >
+                                <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
+                            </Popconfirm>
+                        )}
+                    </Space >
+                )
+            },
         },
     ]
 

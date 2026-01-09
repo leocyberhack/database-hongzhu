@@ -24,6 +24,13 @@ engine: AsyncEngine = create_async_engine(
 
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+try:
+    # Register operation logging hooks (idempotent)
+    from app.core.oplog import register_oplog
+    register_oplog(SessionLocal)
+except Exception:
+    # Avoid hard crash during early migration; logging can be re-imported once models exist
+    pass
 
 @asynccontextmanager
 async def lifespan(app):

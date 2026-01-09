@@ -5,7 +5,7 @@ from app.api.auth import User, get_current_user, hash_user_password, verify_user
 from app.api.deps import DbSession
 from app.core.security import create_access_token
 from app.models import User as UserModel
-from app.schemas.auth import LoginRequest, TokenResponse, UserCreate, UserRead, RoleUpdate
+from app.schemas.auth import LoginRequest, TokenResponse, UserCreate, UserRead, RoleUpdate, PasswordReset
 
 router = APIRouter()
 
@@ -28,7 +28,7 @@ async def me(db: DbSession, current: User = Depends(get_current_user)):
 
 
 @router.post("/auth/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def register_user(payload: UserCreate, db: DbSession, _: User = Depends(require_roles(["admin"]))):
+async def register_user(payload: UserCreate, db: DbSession, _: User = Depends(require_roles(["super_admin"]))):
     exists = await db.scalar(select(UserModel).where(UserModel.username == payload.username))
     if exists:
         raise HTTPException(status_code=400, detail="用户名已存在")
@@ -44,7 +44,7 @@ async def register_user(payload: UserCreate, db: DbSession, _: User = Depends(re
 
 
 @router.get("/auth/users", response_model=list[UserRead])
-async def list_users(db: DbSession, _: User = Depends(require_roles(["admin"]))):
+async def list_users(db: DbSession, _: User = Depends(require_roles(["super_admin"]))):
     rows = await db.scalars(select(UserModel).order_by(UserModel.id))
     return [UserRead.model_validate(u) for u in rows]
 
@@ -54,7 +54,7 @@ async def update_user_role(
     user_id: int,
     payload: RoleUpdate,
     db: DbSession,
-    _: User = Depends(require_roles(["admin"])),
+    _: User = Depends(require_roles(["super_admin"])),
 ):
     user = await db.get(UserModel, user_id)
     if not user:
@@ -64,3 +64,21 @@ async def update_user_role(
     await db.commit()
     await db.refresh(user)
     return UserRead.model_validate(user)
+
+
+@router.put("/auth/users/{user_id}/password", response_model=UserRead)
+async def reset_user_password(
+    user_id: int,
+    payload: PasswordReset,
+    db: DbSession,
+    _: User = Depends(require_roles(["super_admin"])),
+):
+    user = await db.get(UserModel, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    user.password_hash = hash_user_password(payload.new_password)
+    await db.commit()
+    await db.refresh(user)
+    return UserRead.model_validate(user)
+

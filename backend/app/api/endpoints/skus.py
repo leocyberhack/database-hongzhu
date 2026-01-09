@@ -1,12 +1,14 @@
-﻿from typing import Optional
+﻿from datetime import datetime
+from app.utils.time import now_china
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
-from app.api.auth import User, get_current_user
+from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import Product, Sku
+from app.models import AuditLog, Product, Sku, Approval
 from app.schemas.common import Pagination
 from app.schemas.sku import SkuCreate, SkuListResponse, SkuResponse, SkuUpdate
 
@@ -79,6 +81,10 @@ async def create_sku(
     product = await db.get(Product, payload.product_id)
     if not product:
         raise HTTPException(status_code=404, detail=f"Product with id {payload.product_id} not found")
+        
+    # Logic Lock 3: Inactive products cannot be associated with SKUs
+    if product.status != "active":
+         raise HTTPException(status_code=400, detail="Cannot create SKU for inactive product")
 
     sku = Sku(**payload.model_dump())
     sku.created_by = current_user.username  # Record creator
@@ -86,6 +92,20 @@ async def create_sku(
 
     db.add(sku)
     try:
+        await db.flush()
+        
+        # Record audit log
+        audit = AuditLog(
+            table_name="sku",
+            record_id=sku.id,
+            operation="CREATE",
+            diff_data={"sku_name": sku.sku_name, "product_id": sku.product_id, "status": sku.status},
+            operator=current_user.username,
+            operated_at=now_china(),
+            source="web",
+        )
+        db.add(audit)
+        
         await db.commit()
         await db.refresh(sku)
     except IntegrityError:
@@ -100,7 +120,7 @@ async def list_skus(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=500),
+    page_size: int = Query(default=20, ge=1, le=1000),
     product_id: Optional[int] = Query(default=None, description="Filter by product ID"),
     keyword: Optional[str] = Query(default=None, description="Search by sku name"),
     status: Optional[str] = Query(default=None, description="Filter by status")
@@ -142,17 +162,65 @@ async def update_sku(
     sku_id: int,
     payload: SkuUpdate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "operator", "product"])),
 ):
     sku = await db.get(Sku, sku_id)
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
 
+    # Capture before state
+    before_data = {"sku_name": sku.sku_name, "status": sku.status, "product_id": sku.product_id}
     update_data = payload.model_dump(exclude_unset=True)
+
+    # Check for approval requirement
+    needs_approval = False
+    if user.role not in ["admin", "super_admin"]:
+        # Rule 1: Status change requires approval
+        if "status" in update_data and update_data["status"] != sku.status:
+            needs_approval = True
+        
+        # Rule 2: Info/Price change for ACTIVE/ONLINE SKU requires approval
+        # (Assuming 'active' is the status for online)
+        if sku.status == "active":
+             # If there are changes other than status
+             if any(k for k in update_data if k != "status"):
+                 needs_approval = True
+
+    if needs_approval:
+        # Create Approval request instead of updating
+        approval = Approval(
+            object_type="sku",
+            object_id=sku.id,
+            action_type="update",
+            before_data=before_data,
+            after_data=update_data,
+            status="pending",
+            applicant=user.username,
+            approver="admin",
+            applied_at=now_china(),
+        )
+        db.add(approval)
+        await db.commit()
+        await db.refresh(approval)
+        # Return current SKU state (modification pending)
+        return sku
+
     for k, v in update_data.items():
         setattr(sku, k, v)
 
     try:
+        # Record audit log
+        audit = AuditLog(
+            table_name="sku",
+            record_id=sku.id,
+            operation="UPDATE",
+            diff_data={"before": before_data, "after": update_data},
+            operator=user.username,
+            operated_at=now_china(),
+            source="web",
+        )
+        db.add(audit)
+        
         await db.commit()
         await db.refresh(sku)
     except IntegrityError:
@@ -166,7 +234,7 @@ async def update_sku(
 async def delete_sku(
     sku_id: int,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     sku = await db.get(Sku, sku_id)
     if not sku:
@@ -176,6 +244,18 @@ async def delete_sku(
     # For now, we rely on DB foreign key constraints (ON DELETE RESTRICT is common for sensitive data)
     
     try:
+        # Record audit log before deletion
+        audit = AuditLog(
+            table_name="sku",
+            record_id=sku.id,
+            operation="DELETE",
+            diff_data={"sku_name": sku.sku_name, "product_id": sku.product_id},
+            operator=user.username,
+            operated_at=now_china(),
+            source="web",
+        )
+        db.add(audit)
+        
         await db.delete(sku)
         await db.commit()
     except IntegrityError:

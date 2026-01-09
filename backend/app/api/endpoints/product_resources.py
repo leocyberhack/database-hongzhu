@@ -15,7 +15,7 @@ async def list_product_resources(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=200, ge=1, le=500),
+    page_size: int = Query(default=200, ge=1, le=1000),
     product_id: int | None = Query(default=None),
 ):
     stmt = select(ProductResource)
@@ -34,7 +34,7 @@ async def list_product_snapshots(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=200, ge=1, le=500),
+    page_size: int = Query(default=200, ge=1, le=1000),
     product_id: int | None = Query(default=None),
 ):
     stmt = select(ProductStructureSnapshot)

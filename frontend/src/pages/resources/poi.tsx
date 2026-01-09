@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Form, Input, Select, Table, Drawer, Modal, List, Space, Statistic, Tag, message, Card, Row, Col, Popconfirm } from 'antd'
+import { Button, Form, Input, Select, Table, Drawer, Modal, List, Space, Statistic, Tag, message, Card, Row, Col, Popconfirm, Tooltip } from 'antd'
 import { EditOutlined, SearchOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
 import { useSearchParams } from 'react-router-dom'
 import { useData } from '@/contexts/DataContext'
@@ -130,35 +130,54 @@ export default function ResourcePage() {
         {
             title: '操作',
             width: 150,
-            render: (_: any, record: POI) => (
-                <Space>
-                    <Button
-                        type="link"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => setSelectedPoi(record)}
-                    >
-                        编辑
-                    </Button>
-                    <Popconfirm
-                        title="确定删除该POI吗？"
-                        description="删除POI可能影响关联的资源，请谨慎操作"
-                        onConfirm={() => deletePoi(record.id)}
-                        okText="删除"
-                        cancelText="取消"
-                        okButtonProps={{ danger: true }}
-                    >
+            render: (_: any, record: POI) => {
+                const resourceCount = resources.filter(r => r.poi_id === record.id).length
+                const isLocked = resourceCount > 0
+
+                return (
+                    <Space>
                         <Button
                             type="link"
                             size="small"
-                            danger
-                            icon={<DeleteOutlined />}
+                            icon={<EditOutlined />}
+                            onClick={() => setSelectedPoi(record)}
                         >
-                            删除
+                            编辑
                         </Button>
-                    </Popconfirm>
-                </Space>
-            ),
+                        {isLocked ? (
+                            <Tooltip title="该POI下已有资源(数量不为0)，不可删除">
+                                <Button
+                                    type="link"
+                                    size="small"
+                                    danger
+                                    disabled
+                                    icon={<DeleteOutlined />}
+                                >
+                                    删除
+                                </Button>
+                            </Tooltip>
+                        ) : (
+                            <Popconfirm
+                                title="确定删除该POI吗？"
+                                description="删除POI可能影响关联的资源，请谨慎操作"
+                                onConfirm={() => deletePoi(record.id)}
+                                okText="删除"
+                                cancelText="取消"
+                                okButtonProps={{ danger: true }}
+                            >
+                                <Button
+                                    type="link"
+                                    size="small"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                >
+                                    删除
+                                </Button>
+                            </Popconfirm>
+                        )}
+                    </Space>
+                )
+            },
         },
     ]
 
@@ -176,6 +195,15 @@ export default function ResourcePage() {
     const savePoi = async (values: any) => {
         if (!selectedPoi) return
         try {
+            if (
+                selectedPoi.poi_name === values.poi_name &&
+                selectedPoi.city === values.city &&
+                selectedPoi.address === values.address
+            ) {
+                message.info('没有变更，无需保存')
+                setSelectedPoi(null)
+                return
+            }
             await apiRequest(`/api/poi/${selectedPoi.id}`, { method: 'PUT', body: JSON.stringify(values) })
             message.success('POI 已保存')
             setSelectedPoi(null)

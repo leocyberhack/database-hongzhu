@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react'
-import { Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tag, Drawer, Descriptions, Card, Checkbox, Row, Col, Popconfirm } from 'antd'
+import { Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tag, Drawer, Descriptions, Card, Checkbox, Row, Col, Popconfirm, Tooltip } from 'antd'
 import { CalendarOutlined, PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
@@ -22,6 +22,7 @@ export default function ResourceListPage() {
     const poiList = data?.poi ?? []
     const suppliers = data?.suppliers ?? []
     const supplierResources = data?.supplier_resources ?? []
+    const productResources = data?.product_resources ?? []
     const [createModalVisible, setCreateModalVisible] = useState(false)
     const [selectedResource, setSelectedResource] = useState<Resource | null>(null)
     const [viewDrawerVisible, setViewDrawerVisible] = useState(false)
@@ -113,10 +114,72 @@ export default function ResourceListPage() {
     const handleUpdateResource = async (values: any) => {
         if (!selectedResource) return
         try {
-            await apiRequest(`/api/resources/${selectedResource.id}`, {
-                method: 'PUT',
-                body: JSON.stringify(values)
-            })
+            // 1. 更新资源基本信息
+            const resourcePayload = {
+                poi_id: values.poi_id,
+                resource_name: values.resource_name,
+                resource_type: values.resource_type,
+                status: values.status,
+            }
+            if (
+                selectedResource.poi_id !== resourcePayload.poi_id ||
+                selectedResource.resource_name !== resourcePayload.resource_name ||
+                selectedResource.resource_type !== resourcePayload.resource_type ||
+                selectedResource.status !== resourcePayload.status
+            ) {
+                await apiRequest(`/api/resources/${selectedResource.id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(resourcePayload)
+                })
+            }
+
+            // 2. 处理供应商绑定
+            // 获取现有绑定
+            const existingBindings = getResourceSuppliers(selectedResource.id)
+            const newBindings = values.supplier_bindings || []
+
+            // 找出需要删除的绑定（在现有列表中但不在新列表中）
+            for (const existing of existingBindings) {
+                const stillExists = newBindings.some((nb: any) =>
+                    Number(nb.supplier_id) === Number(existing.supplier_id)
+                )
+                if (!stillExists) {
+                    // 这里需要一个删除供应商-资源绑定的API，暂时跳过
+                    // TODO: 实现删除绑定的API调用
+                }
+            }
+
+            // 处理新增或更新的绑定
+            for (const binding of newBindings) {
+                const existingBinding = existingBindings.find((eb: any) =>
+                    Number(eb.supplier_id) === Number(binding.supplier_id)
+                )
+
+                if (existingBinding) {
+                    // 更新结算价
+                    if (existingBinding.settlement_price !== binding.settlement_price) {
+                        await apiRequest(`/api/supplier-resources/${existingBinding.id}/adjust-price`, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                settlement_price: binding.settlement_price,
+                                reason: '资源编辑时修改结算价'
+                            })
+                        })
+                    }
+                } else {
+                    // 创建新绑定
+                    await apiRequest('/api/supplier-resources', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            supplier_id: binding.supplier_id,
+                            resource_id: selectedResource.id,
+                            settlement_price: binding.settlement_price,
+                            supply_status: 'active',
+                        })
+                    })
+                }
+            }
+
             message.success('资源已更新')
             setEditModalVisible(false)
             setSelectedResource(null)
@@ -321,58 +384,78 @@ export default function ResourceListPage() {
         {
             title: '操作',
             width: 200,
-            render: (_: any, record: Resource) => (
-                <Space>
-                    <Button type="link" size="small" onClick={() => {
-                        setSelectedResource(record)
-                        setViewDrawerVisible(true)
-                    }}>
-                        查看
-                    </Button>
-                    <Button
-                        type="link"
-                        size="small"
-                        icon={<CalendarOutlined />}
-                        onClick={() => {
+            render: (_: any, record: Resource) => {
+                const isLocked = productResources.some(pr => String(pr.resource_id) === String(record.id))
+
+                return (
+                    <Space>
+                        <Button type="link" size="small" onClick={() => {
                             setSelectedResource(record)
-                            // Note: We don't set selectedResource for Drawer here, distinct flow
-                            const srs = getResourceSuppliers(record.id)
-                            if (srs.length > 0) {
-                                setSelectedSupplierId(Number(srs[0].supplier_id))
-                            } else {
-                                setSelectedSupplierId(undefined)
-                            }
-                            setInventoryModalVisible(true)
-                        }}
-                    >
-                        库存/价格
-                    </Button>
-                    <Button
-                        type="link"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => {
-                            setSelectedResource(record)
-                            editForm.setFieldsValue(record)
-                            setEditModalVisible(true)
-                        }}
-                    >
-                        编辑
-                    </Button>
-                    <Popconfirm
-                        title="确定删除该资源吗？"
-                        description="删除资源会同时删除所有关联的供应商绑定信息"
-                        onConfirm={() => deleteResource(record.id)}
-                        okText="删除"
-                        cancelText="取消"
-                        okButtonProps={{ danger: true }}
-                    >
-                        <Button type="link" danger size="small" icon={<DeleteOutlined />}>
-                            删除
+                            setViewDrawerVisible(true)
+                        }}>
+                            查看
                         </Button>
-                    </Popconfirm>
-                </Space>
-            ),
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<CalendarOutlined />}
+                            onClick={() => {
+                                setSelectedResource(record)
+                                // Note: We don't set selectedResource for Drawer here, distinct flow
+                                const srs = getResourceSuppliers(record.id)
+                                if (srs.length > 0) {
+                                    setSelectedSupplierId(Number(srs[0].supplier_id))
+                                } else {
+                                    setSelectedSupplierId(undefined)
+                                }
+                                setInventoryModalVisible(true)
+                            }}
+                        >
+                            库存/价格
+                        </Button>
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => {
+                                setSelectedResource(record)
+                                // 获取现有供应商绑定信息
+                                const existingBindings = getResourceSuppliers(record.id).map(sr => ({
+                                    supplier_id: sr.supplier_id,
+                                    settlement_price: sr.settlement_price
+                                }))
+                                editForm.setFieldsValue({
+                                    ...record,
+                                    supplier_bindings: existingBindings.length > 0 ? existingBindings : []
+                                })
+                                setEditModalVisible(true)
+                            }}
+                        >
+                            编辑
+                        </Button>
+                        {isLocked ? (
+                            <Tooltip title="该资源已被产品使用(属于已创建产品)，不可删除">
+                                <Button type="link" danger disabled size="small" icon={<DeleteOutlined />}>
+                                    删除
+                                </Button>
+                            </Tooltip>
+                        ) : (
+                            <Popconfirm
+                                title="确定删除该资源吗？"
+                                description="删除资源会同时删除所有关联的供应商绑定信息"
+                                onConfirm={() => deleteResource(record.id)}
+                                okText="删除"
+                                cancelText="取消"
+                                okButtonProps={{ danger: true }}
+                            >
+                                <Button type="link" danger size="small" icon={<DeleteOutlined />}>
+                                    删除
+                                </Button>
+                            </Popconfirm>
+                        )}
+                    </Space>
+                )
+            },
         },
     ]
 
@@ -601,23 +684,93 @@ export default function ResourceListPage() {
                 onCancel={() => {
                     setEditModalVisible(false)
                     setSelectedResource(null)
+                    editForm.resetFields()
                 }}
                 footer={null}
+                width={600}
             >
                 <Form form={editForm} layout="vertical" onFinish={handleUpdateResource}>
-                    <Form.Item name="resource_name" label="资源名称" rules={[{ required: true }]}>
-                        <Input />
+                    <Form.Item name="poi_id" label="所属POI" rules={[{ required: true, message: '请选择POI' }]}>
+                        <Select
+                            placeholder="选择POI"
+                            showSearch
+                            optionFilterProp="label"
+                            options={poiList.map((p) => ({ value: p.id, label: `${p.poi_name} (${p.city})` }))}
+                        />
                     </Form.Item>
-                    <Form.Item name="resource_type" label="资源类型" rules={[{ required: true }]}>
-                        <Select options={RESOURCE_TYPES.map((t) => ({ value: t, label: t }))} />
+                    <Form.Item name="resource_name" label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
+                        <Input placeholder="例如：标准双床房" />
+                    </Form.Item>
+                    <Form.Item name="resource_type" label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
+                        <Select
+                            placeholder="选择类型"
+                            options={RESOURCE_TYPES.map((t) => ({ value: t, label: t }))}
+                        />
                     </Form.Item>
                     <Form.Item name="status" label="状态" rules={[{ required: true }]}>
                         <Select options={[{ value: 'active', label: '启用' }, { value: 'inactive', label: '停用' }]} />
                     </Form.Item>
-                    <Space style={{ float: 'right', marginTop: 16 }}>
-                        <Button onClick={() => setEditModalVisible(false)}>取消</Button>
-                        <Button type="primary" htmlType="submit">保存</Button>
-                    </Space>
+
+                    <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
+                        <h4 style={{ marginBottom: 12 }}>供应商绑定</h4>
+                        <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
+                            管理资源的供应商和结算价。修改结算价会自动创建价格调整记录。
+                        </p>
+                        <Form.List name="supplier_bindings">
+                            {(fields, { add, remove }) => (
+                                <>
+                                    {fields.map(({ key, name, ...restField }) => (
+                                        <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                                            <Form.Item
+                                                {...restField}
+                                                name={[name, 'supplier_id']}
+                                                rules={[{ required: true, message: '请选择供应商' }]}
+                                                style={{ marginBottom: 0, width: 200 }}
+                                            >
+                                                <Select
+                                                    placeholder="选择供应商"
+                                                    showSearch
+                                                    optionFilterProp="label"
+                                                    options={suppliers.map((s) => ({ value: s.id, label: s.supplier_name }))}
+                                                />
+                                            </Form.Item>
+                                            <Form.Item
+                                                {...restField}
+                                                name={[name, 'settlement_price']}
+                                                rules={[{ required: true, message: '请输入结算价' }]}
+                                                style={{ marginBottom: 0, width: 120 }}
+                                            >
+                                                <InputNumber placeholder="结算价" min={0} style={{ width: '100%' }} prefix="¥" />
+                                            </Form.Item>
+                                            <Button type="link" danger onClick={() => remove(name)}>
+                                                删除
+                                            </Button>
+                                        </Space>
+                                    ))}
+                                    <Form.Item style={{ marginBottom: 0 }}>
+                                        <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                                            添加供应商
+                                        </Button>
+                                    </Form.Item>
+                                </>
+                            )}
+                        </Form.List>
+                    </div>
+
+                    <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
+                        <Space style={{ float: 'right' }}>
+                            <Button onClick={() => {
+                                setEditModalVisible(false)
+                                setSelectedResource(null)
+                                editForm.resetFields()
+                            }}>
+                                取消
+                            </Button>
+                            <Button type="primary" htmlType="submit">
+                                保存修改
+                            </Button>
+                        </Space>
+                    </Form.Item>
                 </Form>
             </Modal>
 

@@ -29,9 +29,23 @@ class InventoryRead(ORMBase):
     total_qty: int
     frozen_qty: int
     sold_qty: int
+    # Derived fields
+    available_qty: Optional[int] = None
     status: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class InventoryDayRead(ORMBase):
+    id: int
+    sku_id: int
+    channel_id: Optional[int] = None
+    inventory_date: date
+    total_qty: int
+    frozen_qty: int
+    sold_qty: int
+    available_qty: int
+    status: str
 
 
 class InventoryLogRead(ORMBase):
@@ -75,4 +89,3 @@ class ResourceInventoryBatchUpdate(BaseModel):
     total_qty: int = Field(..., ge=0)
     settlement_price: Optional[float] = None
     weekdays: Optional[List[int]] = None
-

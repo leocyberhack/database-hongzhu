@@ -53,6 +53,10 @@ async def get_current_user(
 
 def require_roles(roles: list[str]):
     async def checker(user: User = Depends(get_current_user)) -> User:
+        # Super admin has all permissions
+        if user.role == "super_admin":
+            return user
+            
         if user.role not in roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
         return user

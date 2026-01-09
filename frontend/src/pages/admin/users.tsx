@@ -11,13 +11,15 @@ interface UserRow {
 }
 
 const ROLE_OPTIONS = [
-    { label: '总管', value: 'admin' },
+    { label: '超级管理员', value: 'super_admin' },
+    { label: '管理员', value: 'admin' },
     { label: '产品经理', value: 'product' },
     { label: '运营', value: 'operator' },
     { label: '客服', value: 'csr' },
 ]
 
 const ROLE_COLORS: Record<string, string> = {
+    super_admin: '#722ed1',
     admin: '#ff4d4f',
     product: '#1890ff',
     operator: '#52c41a',
@@ -33,6 +35,9 @@ export default function UserAdminPage() {
     const [editingUser, setEditingUser] = useState<UserRow | null>(null)
     const [createForm] = Form.useForm()
     const [editForm] = Form.useForm()
+    const [resetPasswordVisible, setResetPasswordVisible] = useState(false)
+    const [resetPasswordUser, setResetPasswordUser] = useState<UserRow | null>(null)
+    const [resetPasswordForm] = Form.useForm()
 
     const fetchUsers = async () => {
         setLoading(true)
@@ -81,13 +86,34 @@ export default function UserAdminPage() {
         }
     }
 
+    const onResetPassword = async (values: { new_password: string }) => {
+        if (!resetPasswordUser) return
+        try {
+            await apiRequest(`/api/auth/users/${resetPasswordUser.id}/password`, {
+                method: 'PUT',
+                body: JSON.stringify(values),
+            })
+            message.success('密码重置成功')
+            setResetPasswordVisible(false)
+            setResetPasswordUser(null)
+            resetPasswordForm.resetFields()
+        } catch (err: any) {
+            message.error(err?.message || '重置失败')
+        }
+    }
+
     const openEditModal = (record: UserRow) => {
         setEditingUser(record)
         editForm.setFieldsValue({ role: record.role })
         setEditModalVisible(true)
     }
 
-    if (user?.role !== 'admin') {
+    const openResetPasswordModal = (record: UserRow) => {
+        setResetPasswordUser(record)
+        setResetPasswordVisible(true)
+    }
+
+    if (user?.role !== 'super_admin') {
         return (
             <div className="page-container">
                 <div className="glass-card" style={{ padding: '40px', textAlign: 'center' }}>
@@ -121,7 +147,12 @@ export default function UserAdminPage() {
                     >
                         修改角色
                     </Button>
-                    <Button type="link" size="small" icon={<KeyOutlined />} disabled>
+                    <Button
+                        type="link"
+                        size="small"
+                        icon={<KeyOutlined />}
+                        onClick={() => openResetPasswordModal(record)}
+                    >
                         重置密码
                     </Button>
                 </Space>
@@ -225,6 +256,46 @@ export default function UserAdminPage() {
                     </Form.Item>
                 </Form>
             </Modal>
-        </div>
+
+            {/* 重置密码模态框 */}
+            <Modal
+                title={`重置密码 - ${resetPasswordUser?.username}`}
+                open={resetPasswordVisible}
+                onCancel={() => {
+                    setResetPasswordVisible(false)
+                    setResetPasswordUser(null)
+                    resetPasswordForm.resetFields()
+                }}
+                footer={null}
+                width={400}
+            >
+                <Form layout="vertical" form={resetPasswordForm} onFinish={onResetPassword}>
+                    <Form.Item
+                        name="new_password"
+                        label="新密码"
+                        rules={[
+                            { required: true, message: '请输入新密码' },
+                            { min: 6, message: '密码至少6个字符' }
+                        ]}
+                    >
+                        <Input.Password placeholder="请输入新密码" />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
+                        <Space style={{ float: 'right' }}>
+                            <Button onClick={() => {
+                                setResetPasswordVisible(false)
+                                setResetPasswordUser(null)
+                                resetPasswordForm.resetFields()
+                            }}>
+                                取消
+                            </Button>
+                            <Button type="primary" htmlType="submit">
+                                确认重置
+                            </Button>
+                        </Space>
+                    </Form.Item>
+                </Form>
+            </Modal>
+        </div >
     )
 }

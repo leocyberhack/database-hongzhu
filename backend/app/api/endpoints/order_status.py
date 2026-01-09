@@ -16,7 +16,7 @@ async def list_order_status_history(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=200, ge=1, le=500),
+    page_size: int = Query(default=200, ge=1, le=1000),
     order_id: Optional[int] = Query(default=None),
 ):
     stmt = select(OrderStatusHistory)

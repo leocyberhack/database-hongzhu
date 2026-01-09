@@ -18,6 +18,15 @@ from app.schemas.sku_channel import (
 
 router = APIRouter()
 
+async def _has_same_name_on_channel(db: DbSession, channel_id: int, sku_name: str, exclude_sku_id: int | None = None):
+    stmt = select(Sku).join(SkuChannel).where(
+        SkuChannel.channel_id == channel_id,
+        Sku.sku_name == sku_name,
+    )
+    if exclude_sku_id:
+        stmt = stmt.where(Sku.id != exclude_sku_id)
+    return await db.scalar(stmt)
+
 
 @router.post("", response_model=SkuChannelResponse, status_code=201)
 async def create_sku_channel(
@@ -33,6 +42,11 @@ async def create_sku_channel(
     channel = await db.get(Channel, payload.channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
+
+    # Prevent same sku_name binding to same channel
+    conflict = await _has_same_name_on_channel(db, payload.channel_id, sku.sku_name, exclude_sku_id=sku.id)
+    if conflict:
+        raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
 
     sc = SkuChannel(**payload.model_dump())
     db.add(sc)
@@ -54,7 +68,7 @@ async def list_sku_channels(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=200, ge=1, le=500),
+    page_size: int = Query(default=200, ge=1, le=1000),
     sku_id: Optional[int] = Query(default=None),
     channel_id: Optional[int] = Query(default=None),
 ):
@@ -120,6 +134,14 @@ async def update_sku_channel(
     sc = await db.get(SkuChannel, id)
     if not sc:
         raise HTTPException(status_code=404, detail="Binding not found")
+
+    # If channel changes, ensure no duplicate sku_name on that channel
+    target_channel = payload.channel_id if payload.channel_id is not None else sc.channel_id
+    if target_channel:
+        sku = await db.get(Sku, sc.sku_id)
+        conflict = await _has_same_name_on_channel(db, target_channel, sku.sku_name, exclude_sku_id=sku.id)
+        if conflict:
+            raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
 
     update_data = payload.model_dump(exclude_unset=True)
     for k, v in update_data.items():

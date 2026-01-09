@@ -1,112 +1,64 @@
-# 红猪数据库 (Red Pig Database) 项目文档
+# 红猪数据库 (Red Pig Database)
 
-## 1. 系统概述
-红猪数据库是一个面向旅游行业的全链路产品资源管理系统 (ERP)。旨在解决从基础资源（POI、酒店、门票）采购，到供应商管理，再到上层产品封装、定价、库存以及最终订单履约的全流程数字化管理问题。
+面向 OTA/旅游业务的全链路资源、商品、定价与订单管理系统，涵盖 POI/资源、供应商、产品、SKU/渠道、价格、库存、订单、审批与审计等模块，配套 React 管理后台。
 
-目前系统已完成核心的基础数据层建设（M1-M3），实现了资源与供应商的解耦绑定，以及灵活的产品定义能力。
+## 技术栈
+- 后端：FastAPI (Python 3.10+)、SQLAlchemy Async、Pydantic v2、Alembic、python-jose、passlib
+- 数据库：PostgreSQL（异步连接池，Alembic 迁移）
+- 前端：React 19 + TypeScript + Vite + Ant Design 6 + React Router 7 + dayjs + Recharts
+- 鉴权与审计：JWT + RBAC（角色/审批拦截）+ 审计日志；支持基于请求头的操作人透传
 
-## 2. 技术架构
+## 目录速览
+- `backend/`：FastAPI 应用  
+  - `app/api/endpoints/`：业务接口（auth、resources/poi、suppliers、products、skus、channels、pricing、inventory、orders、approvals、audit、reports 等）  
+  - `app/core/`：配置、数据库、鉴权、操作人上下文  
+  - `app/models/`：SQLAlchemy 模型（资源/产品/价格/库存/订单/审批/审计等表）  
+  - `app/schemas/`：Pydantic 输入/输出模型  
+  - `alembic/`：数据库迁移
+- `frontend/`：React 管理端  
+  - `src/pages/`：功能页（资源中心、供应商、产品、SKU/渠道、定价中心、库存、订单、审批、报表、用户等）  
+  - `src/components/`：通用组件（SKU 日历编辑器、库存预览等）  
+  - `src/contexts/`：鉴权与数据上下文  
+  - `src/lib/api.ts`：API 客户端与鉴权存储
+- 其他：`permission_system.md`（角色/审批规则）、`产品文档.md`（产品方案与数据模型）
 
-本项目采用典型的前后端分离架构，追求高性能与类型安全。
+## 核心能力（后端 API 与前端页面）
+- 身份/权限/审批：账号登录、用户/角色管理（仅超管）、JWT 鉴权；非管理员的敏感操作会生成 `Approval` 待审；全量审计日志 `AuditLog`；操作人从 `Authorization` 或 `X-User/X-Role` 头注入。
+- POI / 资源 / 供应商：POI、资源 CRUD（含唯一性校验与审计）；供应商 CRUD；供应商-资源绑定，结算价调价写入历史与审批；供应商资源日历库存批量设置（含工作日筛选、日结算价）。
+- 产品与分类：产品分类 CRUD；产品创建/编辑（资源行、可售渠道 `allowed_channels`、结构哈希去重、防重复资源）；产品结构快照；按资源库存计算产品可售量与预览。
+- SKU 与渠道：SKU CRUD（含售卖/出行日期窗，继承产品 POI），非管理员编辑/上下架触发审批；渠道 CRUD（树形、佣金率、状态）及非管理员审批流；SKU-渠道绑定唯一校验；渠道分库存占比用于库存/价格日历上限。
+- 定价：价格日历段创建支持自动处理重叠（切尾、拆段、覆盖），非管理员默认为 `pending` 待审；价格审批/决策接口；价格历史；定价总览 `pricing/summary` 汇总 SKU×渠道的当前价区间。
+- 库存：SKU 库存批量初始化与单日手动调节，记录 `InventoryLog`；按日查看 SKU 库存；资源侧 `ResourceInventory` 支持批量设置（含结算价）；SKU/渠道库存计算基于产品库存×渠道占比。
+- 订单：手工创建订单时按出行日动态取资源结算价计算成本；下单冻结库存，核销/退款时消费或释放库存并记录状态历史。
+- 报表：`/reports/summary` 提供 GMV/利润/订单量趋势以及渠道、SKU、产品 TOP 列表。
 
-### 前端 (Frontend)
-- **核心框架**: React 18 + TypeScript + Vite
-- **UI 组件库**: Ant Design 5.x (使用 ConfigProvider 进行全局主题配置)
-- **状态管理**: React Context API (主要用于全局配置与用户会话) + 局部 State
-- **数据获取**: 自封装 Fetch API，集成 JWT 认证拦截器
-- **路由**: React Router v6
+## 快速开始
+### 前置
+- Python 3.10+、Node.js 18+、PostgreSQL
+- 复制 `backend/.env.example` 为 `.env` 并补充 `JWT_SECRET`、数据库连接等配置，API 前缀默认为 `/api`
 
-### 后端 (Backend)
-- **核心框架**: FastAPI (Python 3.10+) - 高性能异步 Web 框架
-- **ORM**: SQLAlchemy (AsyncIOSession) - 现代异步数据库操作
-- **数据校验**: Pydantic v2 - 强大的数据模型定义与验证
-- **数据库迁移**: Alembic
-- **数据库**: PostgreSQL
-
-### 安全性
-- **认证**: OAuth2 + JWT (Access Token)
-- **跨域**: 严格的 CORS 配置
-- **密码学**: bcrypt 密码哈希
-
-## 3. 功能模块与现状
-
-根据当前代码库状态，系统模块实现进度如下：
-
-### ✅ M1: 供应商管理 (Supplier Management) - [已上线]
-此模块负责管理所有上游供应链资源方。
-- **供应商生命周期**: 支持供应商的创建、编辑、删除及状态管理（合作中、待审核、已停用）。
-- **资源绑定视图**: 可直接查看该供应商关联了多少个资源，以及具体的结算价格。
-- **联系人管理**: 维护供应商对接人及联系方式。
-
-### ✅ M2: 资源中心 (Resource Center) - [已上线]
-资源是产品的最小原子单位，分为两层结构：
-1.  **POI (兴趣点)**: 地理位置维度的基础数据（如：某个具体的酒店实体、景区实体）。
-2.  **Resource (具体资源)**: 依附于 POI 的可售卖单元（如：标准双床房、成人票）。
-3.  **供应关系 (Supply Chain)**: 实现了 **"一资源多供应商"** 的模型。
-    - 一个资源（如：迪士尼门票）可以绑定多个供应商。
-    - 每个绑定关系拥有独立的 **结算价 (Settlement Price)** 和 **供应状态**。
-
-### ✅ M3: 产品管理 (Product Management) - [已上线]
-产品是面向消费者的销售单元。
-- **产品定义**: 支持创建不同类型的产品（门票、酒店、线路等）。
-- **资源组合**: 产品可以关联一个或多个基础资源。
-- **状态管理**: 实现了完整的产品生命周期（Draft 草稿 -> Active 上架 -> Archived 下架）。
-- **快照系统**: (底层已支持) 产品结构变更时支持生成快照，保证历史订单数据的完整性。
-
-### ✅ M4: SKU & 渠道管理 (SKU & Channel) - [已上线]
-定义具体的售卖规格和销售渠道。
-- **SKU 管理**: 支持 SKU 的创建、编辑与删除，实现了 SKU 与销售渠道的强绑定。
-- **列表优化**: 提供关键词、关联产品、SKU 状态等多维度筛选器。
-- **渠道管理**: 完整的销售渠道层级与元数据管理。
-
-### ✅ M5 & M6: 定价与库存中心 (Pricing & Inventory) - [已上线]
-核心的日历化管理模块，支持精细化的价格与库存控制。
-- **可视化日历编辑器 (Visual Calendar Editor)**:
-    - **交互升级**: 支持拖拽/点击选择日期范围，亦可通过顶部日期选择器精确录入。
-    - **批量设置**: 选定时间段后，可一键批量设置价格与库存。
-    - **导航优化**: 提供年份/月份快捷跳转下拉框，以及以年/月为单位的快速翻页。
-    - **全中文界面**: 彻底的本地化支持，符合国内用户习惯。
-- **批量处理**: 后端支持大范围日期的批量库存初始化与价格发布。
-
-### 🚧 规划中模块 (M7 - M9)
-以下模块在代码中已有初步规划或路由占位，但尚未完整实现：
-- **M7 订单中心**: B端/C端订单的录入与处理。
-- **M8 审批与审计**: 敏感操作的审批流与系统操作日志。
-- **M9 报表中心**: 销售与财务报表。
-
-## 4. 快速开始 (Getting Started)
-
-### 环境要求
-- Node.js >= 16
-- Python >= 3.10
-- PostgreSQL
-
-### 后端启动
+### 启动后端
 ```bash
 cd backend
-# 创建并激活虚拟环境
 python -m venv .venv
-# (.venv\Scripts\activate on Windows)
-
-# 安装依赖
+# Windows: .\.venv\Scripts\activate   macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-
-# 运行数据库迁移
-alembic upgrade head
-
-# 启动服务
-python -m uvicorn app.main:app --reload
+alembic upgrade head   # 迁移数据库
+python -m uvicorn app.main:app --reload --port 8000
 ```
+- 应用启动时会在用户表存在的情况下自动种子账号 `admin / dongyu1220`
+- Swagger 文档：`http://127.0.0.1:8000/docs`
 
-### 前端启动
+### 启动前端
 ```bash
 cd frontend
-# 安装依赖
 npm install
-
-# 启动开发服务器
-npm run dev
+# 可在 .env.local 设置 VITE_API_BASE=http://127.0.0.1:8000
+npm run dev  # 默认端口 5173
 ```
+- 以管理员登录可访问全部菜单，侧边导航会按角色动态收敛
 
-### 默认账户
-请查阅数据库初始化脚本或使用注册功能创建管理员账户。
+### 迁移与开发提示
+- 新表/字段：`alembic revision --autogenerate -m "desc"` 后执行 `alembic upgrade head`
+- 前端校验：`npm run lint`
+- API 基址 `/api`，CORS 已允许本地 5173~5176 端口

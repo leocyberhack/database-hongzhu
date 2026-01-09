@@ -1,4 +1,5 @@
 ﻿from datetime import datetime
+from app.utils.time import now_china
 from decimal import Decimal
 from typing import Optional
 
@@ -37,13 +38,13 @@ async def _freeze_inventory(db: DbSession, sku_id: int, travel_date, qty: int, o
         select(Inventory).where(Inventory.sku_id == sku_id, Inventory.inventory_date == travel_date).with_for_update()
     )
     if not inv:
-        raise HTTPException(status_code=400, detail="搴撳瓨鏈垵濮嬪寲")
+        raise HTTPException(status_code=400, detail="Inventory not initialized")
     available = inv.total_qty - inv.frozen_qty - inv.sold_qty
     if available < qty:
-        raise HTTPException(status_code=400, detail="搴撳瓨涓嶈冻锛屾棤娉曞喕缁?)
+        raise HTTPException(status_code=400, detail="Insufficient inventory to freeze")
     before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
     inv.frozen_qty += qty
-    inv.updated_at = datetime.utcnow()
+    inv.updated_at = now_china()
     after = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
     log = InventoryLog(
         sku_id=sku_id,
@@ -53,7 +54,7 @@ async def _freeze_inventory(db: DbSession, sku_id: int, travel_date, qty: int, o
         after_qty=after,
         related_order_id=order_id,
         operator=operator,
-        operated_at=datetime.utcnow(),
+        operated_at=now_china(),
     )
     db.add_all([inv, log])
 
@@ -63,14 +64,14 @@ async def _consume_inventory(db: DbSession, sku_id: int, travel_date, qty: int, 
         select(Inventory).where(Inventory.sku_id == sku_id, Inventory.inventory_date == travel_date).with_for_update()
     )
     if not inv:
-        raise HTTPException(status_code=400, detail="搴撳瓨鏈垵濮嬪寲")
+        raise HTTPException(status_code=400, detail="Inventory not initialized")
     if inv.frozen_qty < qty:
-        raise HTTPException(status_code=400, detail="鍐荤粨搴撳瓨涓嶈冻")
+        raise HTTPException(status_code=400, detail="Not enough frozen inventory to consume")
     before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
     inv.frozen_qty -= qty
     if action == "verify":
         inv.sold_qty += qty
-    inv.updated_at = datetime.utcnow()
+    inv.updated_at = now_china()
     after = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
     log = InventoryLog(
         sku_id=sku_id,
@@ -80,7 +81,7 @@ async def _consume_inventory(db: DbSession, sku_id: int, travel_date, qty: int, 
         after_qty=after,
         related_order_id=order_id,
         operator=operator,
-        operated_at=datetime.utcnow(),
+        operated_at=now_china(),
     )
     db.add_all([inv, log])
 
@@ -111,16 +112,16 @@ async def list_orders(
 
 
 @router.post("/orders", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
-async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends(get_current_user)):
+async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends(require_roles(["admin", "operator", "csr"]))):
     dup = await db.scalar(
         select(Order).where(Order.order_no == payload.order_no, Order.channel_id == payload.channel_id)
     )
     if dup:
-        raise HTTPException(status_code=400, detail="閲嶅鐨勮鍗曞彿+娓犻亾")
+        raise HTTPException(status_code=400, detail="Duplicate order_no + channel")
 
     sku = await db.get(Sku, payload.sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU 涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="SKU not found")
     
     # Calculate Dynamic Cost based on Resource Settlement Price
     # This replaces the static cost from Price table
@@ -197,7 +198,7 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
         profit_amount=profit_amount,
         status="paid",
         created_by=user.username,
-        created_at=datetime.utcnow(),
+        created_at=now_china(),
         remark=payload.remark,
     )
     db.add(order)
@@ -211,7 +212,7 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
         before_status=None,
         after_status="paid",
         operator=user.username,
-        operated_at=datetime.utcnow(),
+        operated_at=now_china(),
     )
     db.add(hist)
     await db.commit()
@@ -224,33 +225,33 @@ async def decide_order(
     payload: OrderDecision,
     db: DbSession,
     order_id: int = Path(..., ge=1),
-    user: User = Depends(require_roles(["manager", "operator", "csr"])),
+    user: User = Depends(require_roles(["admin", "operator", "csr"])),
 ):
     order = await db.get(Order, order_id)
     if not order:
-        raise HTTPException(status_code=404, detail="璁㈠崟涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Order not found")
     if payload.action not in {"verify", "refund"}:
-        raise HTTPException(status_code=400, detail="action 蹇呴』鏄?verify 鎴?refund")
+        raise HTTPException(status_code=400, detail="action must be one of verify or refund")
 
     if payload.action == "verify":
         if order.status != "paid":
-            raise HTTPException(status_code=400, detail="浠呭凡鏀粯璁㈠崟鍙牳閿€")
+            raise HTTPException(status_code=400, detail="Only paid orders can be verified")
         await _consume_inventory(db, order.sku_id, order.travel_date, order.quantity, user.username, order.id, "verify")
         order.status = "verified"
-        order.verified_at = datetime.utcnow()
+        order.verified_at = now_china()
     else:
         if order.status != "paid":
-            raise HTTPException(status_code=400, detail="浠呭凡鏀粯璁㈠崟鍙€€娆?)
+            raise HTTPException(status_code=400, detail="Only paid orders can be refunded")
         await _consume_inventory(db, order.sku_id, order.travel_date, order.quantity, user.username, order.id, "refund")
         order.status = "refunded"
-        order.refunded_at = datetime.utcnow()
+        order.refunded_at = now_china()
 
     hist = OrderStatusHistory(
         order_id=order.id,
         before_status="paid",
         after_status=order.status,
         operator=user.username,
-        operated_at=datetime.utcnow(),
+        operated_at=now_china(),
         reason=payload.comment,
     )
     audit = AuditLog(
@@ -259,7 +260,7 @@ async def decide_order(
         operation="STATUS_CHANGE",
         diff_data={"status": order.status},
         operator=user.username,
-        operated_at=datetime.utcnow(),
+        operated_at=now_china(),
         source=payload.action,
     )
     db.add_all([order, hist, audit])

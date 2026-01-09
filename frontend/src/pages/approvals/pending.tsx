@@ -1,18 +1,71 @@
-import { Table, Tag, Button, Space } from 'antd'
+import { useState } from 'react'
+import { Table, Tag, Button, Space, Modal, Input, message, Popconfirm } from 'antd'
+import { DeleteOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
+import { apiRequest } from '@/lib/api'
+import { useAuth } from '@/contexts/AuthContext'
 import type { Approval } from '@/types'
 
 export default function ApprovalsPendingPage() {
-    const { data } = useData()
+    const { data, refresh } = useData()
+    const { user } = useAuth()
     const approvals = data?.approvals ?? []
-    const pendingApprovals = approvals.filter((a) => a.status === 'pending')
+    // Show all records for super_admin to allow cleanup; otherwise only pending
+    const displayApprovals = user?.role === 'super_admin' ? approvals : approvals.filter((a) => a.status === 'pending')
+
+    const [rejectId, setRejectId] = useState<number | null>(null)
+    const [rejectReason, setRejectReason] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+
+    const handleDecision = async (id: number, approve: boolean, comment?: string) => {
+        setLoading(true)
+        try {
+            await apiRequest(`/api/approvals/${id}/decision`, {
+                method: 'POST',
+                body: JSON.stringify({ approve, comment }),
+            })
+            message.success(approve ? '已批准' : '已驳回')
+            setRejectId(null)
+            setRejectReason('')
+            await refresh()
+        } catch (err: any) {
+            message.error(err.message || '操作失败')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleBatchDelete = async () => {
+        if (selectedRowKeys.length === 0) return
+        setLoading(true)
+        try {
+            await apiRequest('/api/approvals/batch-delete', {
+                method: 'POST',
+                body: JSON.stringify({ ids: selectedRowKeys }),
+            })
+            message.success('批量删除成功')
+            setSelectedRowKeys([])
+            await refresh()
+        } catch (err: any) {
+            message.error(err.message || '删除失败')
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const columns = [
+        { title: 'ID', dataIndex: 'id', width: 60 },
         { title: '对象类型', dataIndex: 'object_type' },
         { title: '对象ID', dataIndex: 'object_id' },
         { title: '操作类型', dataIndex: 'action_type' },
-        { title: '提交人', dataIndex: 'submitted_by' },
-        { title: '提交时间', dataIndex: 'created_at' },
+        {
+            title: '变更内容',
+            dataIndex: 'after_data',
+            render: (v: any) => v ? JSON.stringify(v).slice(0, 50) + '...' : '-'
+        },
+        { title: '提交人', dataIndex: 'applicant' },
+        { title: '提交时间', dataIndex: 'applied_at' },
         {
             title: '状态',
             dataIndex: 'status',
@@ -22,25 +75,89 @@ export default function ApprovalsPendingPage() {
         },
         {
             title: '操作',
-            render: () => (
-                <Space>
-                    <Button type="primary" size="small">批准</Button>
-                    <Button danger size="small">驳回</Button>
-                </Space>
-            ),
+            render: (_: any, record: Approval) => {
+                if (record.status !== 'pending') return <span style={{ color: '#ccc' }}>已处理</span>
+
+                return (
+                    <Space>
+                        <Button
+                            type="primary"
+                            size="small"
+                            onClick={() => handleDecision(record.id, true)}
+                            disabled={loading}
+                        >
+                            批准
+                        </Button>
+                        <Button
+                            danger
+                            size="small"
+                            onClick={() => setRejectId(record.id)}
+                            disabled={loading}
+                        >
+                            驳回
+                        </Button>
+                    </Space>
+                )
+            },
         },
     ]
 
     return (
         <div className="page-container">
-            <div className="page-header">
-                <h1 className="page-title">待审批列表 (M8)</h1>
-                <p className="page-subtitle">待处理的审批请求</p>
+            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div>
+                    <h1 className="page-title">审批中心 (M8)</h1>
+                    <p className="page-subtitle">管理待审批请求及历史记录</p>
+                </div>
+                {user?.role === 'super_admin' && selectedRowKeys.length > 0 && (
+                    <Popconfirm
+                        title={`确定删除选中的 ${selectedRowKeys.length} 条记录吗？`}
+                        onConfirm={handleBatchDelete}
+                        description="删除审批记录不会撤销已执行的操作，但会移除历史痕迹。"
+                    >
+                        <Button danger icon={<DeleteOutlined />} loading={loading}>
+                            批量删除 ({selectedRowKeys.length})
+                        </Button>
+                    </Popconfirm>
+                )}
             </div>
 
             <div className="glass-card" style={{ padding: '24px' }}>
-                <Table<Approval> rowKey="id" columns={columns} dataSource={pendingApprovals} pagination={{ pageSize: 10 }} />
+                <Table<Approval>
+                    rowKey="id"
+                    columns={columns}
+                    dataSource={displayApprovals}
+                    pagination={{ pageSize: 10 }}
+                    rowSelection={user?.role === 'super_admin' ? {
+                        selectedRowKeys,
+                        onChange: setSelectedRowKeys
+                    } : undefined}
+                />
             </div>
+
+            <Modal
+                title="驳回审批"
+                open={!!rejectId}
+                onCancel={() => {
+                    setRejectId(null)
+                    setRejectReason('')
+                }}
+                onOk={() => {
+                    if (!rejectReason.trim()) {
+                        message.error('请输入驳回原因')
+                        return
+                    }
+                    if (rejectId) handleDecision(rejectId, false, rejectReason)
+                }}
+                confirmLoading={loading}
+            >
+                <Input.TextArea
+                    rows={4}
+                    placeholder="请输入驳回原因（必填）"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                />
+            </Modal>
         </div>
     )
 }

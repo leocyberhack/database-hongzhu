@@ -1,4 +1,5 @@
 ﻿from datetime import datetime
+from app.utils.time import now_china
 from decimal import Decimal
 from typing import Optional
 
@@ -8,6 +9,7 @@ from sqlalchemy import func, select
 from app.api.auth import User, get_current_user
 from app.api.deps import DbSession
 from app.models import (
+    AuditLog,
     Approval,
     Supplier,
     SupplierResource,
@@ -71,6 +73,20 @@ async def create_supplier(
         raise HTTPException(status_code=400, detail="Supplier already exists")
     obj = Supplier(**payload.model_dump())
     db.add(obj)
+    await db.flush()
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="supplier",
+        record_id=obj.id,
+        operation="CREATE",
+        diff_data={"supplier_name": obj.supplier_name, "status": obj.status, "contact_info": obj.contact_info},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.commit()
     await db.refresh(obj)
     return SupplierRead.model_validate(obj)
@@ -109,7 +125,7 @@ async def list_supplier_resources(
 async def bind_supplier_resource(
     payload: SupplierResourceCreate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     dup = await db.scalar(
         select(SupplierResource).where(
@@ -121,6 +137,20 @@ async def bind_supplier_resource(
         raise HTTPException(status_code=400, detail="Binding already exists")
     obj = SupplierResource(**payload.model_dump())
     db.add(obj)
+    await db.flush()
+    
+    # Record audit log for binding
+    audit = AuditLog(
+        table_name="supplier_resource",
+        record_id=obj.id,
+        operation="CREATE",
+        diff_data={"supplier_id": obj.supplier_id, "resource_id": obj.resource_id, "settlement_price": str(obj.settlement_price) if obj.settlement_price else None},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.commit()
     await db.refresh(obj)
     return SupplierResourceRead.model_validate(obj)
@@ -143,7 +173,7 @@ async def adjust_supplier_price(
 
     before_price = sr.settlement_price
     sr.settlement_price = Decimal(str(payload.settlement_price))
-    sr.updated_at = datetime.utcnow()
+    sr.updated_at = now_china()
 
     history = SupplierResourcePriceHistory(
         supplier_resource_id=sr.id,
@@ -151,7 +181,7 @@ async def adjust_supplier_price(
         after_price=sr.settlement_price,
         reason=payload.reason,
         operator=user.username,
-        operated_at=datetime.utcnow(),
+        operated_at=now_china(),
     )
     approval = Approval(
         object_type="supplier",
@@ -162,12 +192,25 @@ async def adjust_supplier_price(
         status="pending",
         applicant=user.username,
         approver="manager",  # Placeholder
-        applied_at=datetime.utcnow(),
+        applied_at=now_china(),
     )
 
     db.add(sr)
     db.add(history)
     db.add(approval)
+    
+    # Record audit log for price adjustment
+    audit = AuditLog(
+        table_name="supplier_resource",
+        record_id=sr.id,
+        operation="UPDATE",
+        diff_data={"type": "settlement_price_change", "supplier_id": sr.supplier_id, "resource_id": sr.resource_id, "before_price": str(before_price) if before_price else None, "after_price": str(sr.settlement_price)},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.commit()
     await db.refresh(sr)
     return SupplierResourceRead.model_validate(sr)
@@ -178,15 +221,35 @@ async def update_supplier(
     supplier_id: int,
     payload: SupplierCreate,  # Using create schema for update as fields are same
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     supplier = await db.get(Supplier, supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     
+    if payload.supplier_name:
+        dup = await db.scalar(select(Supplier).where(Supplier.supplier_name == payload.supplier_name, Supplier.id != supplier_id))
+        if dup:
+            raise HTTPException(status_code=400, detail="Supplier name already exists")
+    
+    # Capture before state
+    before_data = {"supplier_name": supplier.supplier_name, "status": supplier.status, "contact_info": supplier.contact_info}
+
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(supplier, field, value)
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="supplier",
+        record_id=supplier.id,
+        operation="UPDATE",
+        diff_data={"before": before_data, "after": update_data},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
     
     await db.commit()
     await db.refresh(supplier)
@@ -197,11 +260,24 @@ async def update_supplier(
 async def delete_supplier(
     supplier_id: int,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     supplier = await db.get(Supplier, supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    # Record audit log before deletion
+    audit = AuditLog(
+        table_name="supplier",
+        record_id=supplier.id,
+        operation="DELETE",
+        diff_data={"supplier_name": supplier.supplier_name, "status": supplier.status},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.delete(supplier)
     await db.commit()
     return None
@@ -261,7 +337,6 @@ async def list_supplier_resource_inventory(
     _: User = Depends(get_current_user),
 ):
     """Get daily inventory for a supplier resource within a date range."""
-    from datetime import datetime
     
     # Convert string dates to date objects (or rely on pydantic if using query model)
     # But here we use query params which are strings by default unless typed
@@ -283,7 +358,7 @@ async def list_supplier_resource_inventory(
 async def batch_update_supplier_resource_inventory(
     payload: ResourceInventoryBatchUpdate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     print(f"Batch updating inventory: {payload}", flush=True)  # Debug log
     """Batch set inventory for a supplier resource over a date range."""
@@ -292,22 +367,36 @@ async def batch_update_supplier_resource_inventory(
     current_date = payload.start_date
     end_date = payload.end_date
     
+    # Batch fetch existing records
+    stmt = select(ResourceInventory).where(
+        ResourceInventory.supplier_resource_id == payload.supplier_resource_id,
+        ResourceInventory.inventory_date >= payload.start_date,
+        ResourceInventory.inventory_date <= payload.end_date
+    )
+    existing_records = await db.scalars(stmt)
+    existing_map = {r.inventory_date: r for r in existing_records}
+    
+    before_qty_sum = 0
+    after_qty_sum = 0
+    updated_count = 0
+    created_count = 0
+    
+    created = []
+
     while current_date <= end_date:
         # Check weekdays filter
         if payload.weekdays is None or current_date.weekday() in payload.weekdays:
             
-            # Check existing
-            stmt = select(ResourceInventory).where(
-                ResourceInventory.supplier_resource_id == payload.supplier_resource_id,
-                ResourceInventory.inventory_date == current_date
-            )
-            existing = await db.scalar(stmt)
+            # Check existing from map
+            existing = existing_map.get(current_date)
             
             if existing:
+                before_qty_sum += existing.total_qty
                 existing.total_qty = payload.total_qty
                 if payload.settlement_price is not None:
                     existing.settlement_price = Decimal(str(payload.settlement_price))
-                existing.updated_at = datetime.utcnow().isoformat()
+                existing.updated_at = now_china().isoformat()
+                updated_count += 1
             else:
                 new_inv = ResourceInventory(
                     supplier_resource_id=payload.supplier_resource_id,
@@ -316,9 +405,37 @@ async def batch_update_supplier_resource_inventory(
                     settlement_price=Decimal(str(payload.settlement_price)) if payload.settlement_price is not None else None,
                     status='active'
                 )
-                db.add(new_inv)
+                db.add(new_inv) # created list for add_all is better but db.add works too
+                created_count += 1
+            
+            after_qty_sum += payload.total_qty
         
         current_date += timedelta(days=1)
     
+    # Record audit log for batch inventory update
+    audit = AuditLog(
+        table_name="resource_inventory",
+        record_id=payload.supplier_resource_id,
+        operation="BATCH_UPDATE",
+        diff_data={
+            "supplier_resource_id": payload.supplier_resource_id,
+            "date_range": f"{payload.start_date} ~ {payload.end_date}",
+            "set_total_qty": payload.total_qty,
+            "set_price": str(payload.settlement_price) if payload.settlement_price else None,
+            "stats": {
+                "records_updated": updated_count,
+                "records_created": created_count,
+                "before_sum_qty": before_qty_sum,
+                "after_sum_qty": after_qty_sum, 
+                "change_qty": after_qty_sum - before_qty_sum
+            }
+        },
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.commit()
     return {"message": "Inventory updated successfully"}
+

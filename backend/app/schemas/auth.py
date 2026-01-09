@@ -21,6 +21,10 @@ class RoleUpdate(BaseModel):
     role: str
 
 
+class PasswordReset(BaseModel):
+    new_password: str = Field(min_length=6)
+
+
 class UserRead(ORMBase):
     id: int
     username: str

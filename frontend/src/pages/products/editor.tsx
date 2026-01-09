@@ -4,15 +4,15 @@ import {
     Form, Input, Button, Select, Card, Space, InputNumber, Switch, Table,
     Modal, Tag, Divider, Row, Col, Statistic, message, List, Popconfirm, Spin
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, SearchOutlined, EditOutlined, CalculatorOutlined, CalendarOutlined, DownOutlined, CheckOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, SearchOutlined, EditOutlined, CheckOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
 import type { Resource, Product, Supplier, SupplierResource } from '@/types'
 import ProductStockPreviewCalendar from '@/components/ProductStockPreviewCalendar'
 
-const { Option } = Select
-const { TextArea } = Input
+// const { Option } = Select
+// const { TextArea } = Input
 
 // -- Sub-components --
 
@@ -156,116 +156,7 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
 }
 
 // -- Category Manager Component --
-function CategoryManager() {
-    const { data, refresh } = useData()
-    const categories = data?.product_categories ?? []
-    const [form] = Form.useForm()
-    const [editForm] = Form.useForm()
-    const [loading, setLoading] = useState(false)
-    const [editingCat, setEditingCat] = useState<any>(null)
-
-    const handleAdd = async (values: any) => {
-        setLoading(true)
-        try {
-            await apiRequest('/api/product-categories', { method: 'POST', body: JSON.stringify(values) })
-            message.success('分类已添加')
-            form.resetFields()
-            await refresh()
-        } catch (err: any) {
-            message.error(err.message || '添加失败')
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    const handleDelete = async (id: string) => {
-        try {
-            await apiRequest(`/api/product-categories/${id}`, { method: 'DELETE' })
-            message.success('分类已删除')
-            await refresh()
-        } catch (err: any) {
-            message.error(err.message || '删除失败')
-        }
-    }
-
-    const handleUpdate = async (values: any) => {
-        if (!editingCat) return
-        try {
-            await apiRequest(`/api/product-categories/${editingCat.id}`, { method: 'PUT', body: JSON.stringify(values) })
-            message.success('分类已更新')
-            setEditingCat(null)
-            await refresh()
-        } catch (err: any) {
-            message.error(err.message || '更新失败')
-        }
-    }
-
-    useEffect(() => {
-        if (editingCat) {
-            editForm.setFieldsValue(editingCat)
-        }
-    }, [editingCat, editForm])
-
-    return (
-        <Card title="产品分类管理" size="small" style={{ marginTop: 24 }}>
-            <List
-                size="small"
-                dataSource={categories}
-                renderItem={(item) => (
-                    <List.Item
-                        actions={[
-                            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => setEditingCat(item)}>编辑</Button>,
-                            <Popconfirm title="确定删除?" onConfirm={() => handleDelete(item.id)} key="del">
-                                <Button type="link" danger size="small">删除</Button>
-                            </Popconfirm>
-                        ]}
-                    >
-                        <List.Item.Meta
-                            title={item.name}
-                            description={item.description}
-                        />
-                        <Tag color={item.status === 'active' ? 'green' : 'red'}>{item.status}</Tag>
-                    </List.Item>
-                )}
-            />
-            <Divider>添加新分类</Divider>
-            <Form layout="inline" form={form} onFinish={handleAdd}>
-                <Form.Item name="name" rules={[{ required: true, message: '名称' }]}>
-                    <Input placeholder="分类名称" />
-                </Form.Item>
-                <Form.Item name="description">
-                    <Input placeholder="描述" />
-                </Form.Item>
-                <Form.Item>
-                    <Button type="primary" htmlType="submit" loading={loading} icon={<PlusOutlined />}>添加</Button>
-                </Form.Item>
-            </Form>
-
-            <Modal
-                title="编辑分类"
-                open={!!editingCat}
-                onCancel={() => setEditingCat(null)}
-                footer={null}
-            >
-                <Form layout="vertical" form={editForm} onFinish={handleUpdate}>
-                    <Form.Item name="name" label="名称" rules={[{ required: true }]}>
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="description" label="描述">
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="status" label="状态" initialValue="active">
-                        <Select options={[{ value: 'active', label: '正常' }, { value: 'archived', label: '归档' }]} />
-                    </Form.Item>
-                    <div style={{ textAlign: 'right' }}>
-                        <Button onClick={() => setEditingCat(null)} style={{ marginRight: 8 }}>取消</Button>
-                        <Button type="primary" htmlType="submit">保存</Button>
-                    </div>
-                </Form>
-            </Modal>
-        </Card>
-    )
-}
+// CategoryManager moved to separate page
 
 // -- Main Page --
 interface SelectedResourceItem {
@@ -819,12 +710,12 @@ export default function ProductEditorPage() {
                         </Form>
                     </div>
 
-                    {!isReadOnly && <CategoryManager />}
+                    {/* Category Manager moved to separate page */}
                 </Col>
 
                 <Col span={8}>
                     <Card title="帮助指南" size="small" className="glass-card" bordered={false}>
-                        <p>1. <b>分类管理</b>：请先在底部建立好产品分类。</p>
+                        <p>1. <b>分类管理</b>：请前往"产品管理 -&gt; 产品分类"建立分类。</p>
                         <p>2. <b>资源选择</b>：从资源库中选择门票、酒店等。</p>
                         <p>3. <b>供应商指定</b>：必须为每个资源指定供应商，以便系统计算成本和后续下单。</p>
                         <p>4. <b>成本计算</b>：成本 = Σ(资源数量 × 供应商结算价)。</p>

@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from app.api.routes import api_router
 from app.core.config import get_settings
 from app.core.database import lifespan
+from app.core.oplog import current_operator, extract_operator_from_headers
 
 # 允许的来源列表（开发环境）
 ALLOWED_ORIGINS = [
@@ -34,6 +35,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def set_operator_context(request: Request, call_next):
+        username = extract_operator_from_headers(request.headers)
+        current_operator.set(username)
+        response = await call_next(request)
+        return response
     
     app.include_router(api_router, prefix=settings.api_prefix)
     

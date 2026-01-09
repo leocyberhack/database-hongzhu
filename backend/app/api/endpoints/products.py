@@ -1,14 +1,15 @@
 ﻿from collections import Counter
 from datetime import datetime
+from app.utils.time import now_china
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import User, get_current_user
+from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import Product, ProductResource, ProductStructureSnapshot, Sku, ProductCategory, Resource
+from app.models import AuditLog, Product, ProductResource, ProductStructureSnapshot, Sku, ProductCategory, Resource
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.product import (
     ProductCreate,
@@ -38,7 +39,7 @@ async def list_product_categories(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=1000),
 ):
-    stmt = select(ProductCategory).where(ProductCategory.status == 'active')
+    stmt = select(ProductCategory)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.order_by(ProductCategory.id.desc()).offset((page - 1) * page_size).limit(page_size))
     return ListResponse(
@@ -51,14 +52,28 @@ async def list_product_categories(
 async def create_product_category(
     payload: ProductCategoryCreate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     dup = await db.scalar(select(ProductCategory).where(ProductCategory.name == payload.name))
     if dup:
-        raise HTTPException(status_code=400, detail="鍒嗙被鍚嶇О宸插瓨鍦?)
+        raise HTTPException(status_code=400, detail="Category name already exists")
     
     cat = ProductCategory(**payload.model_dump())
     db.add(cat)
+    await db.flush()
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="product_category",
+        record_id=cat.id,
+        operation="CREATE",
+        diff_data={"name": cat.name, "description": cat.description, "status": cat.status},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.commit()
     await db.refresh(cat)
     return ProductCategoryRead.model_validate(cat)
@@ -69,15 +84,30 @@ async def update_product_category(
     category_id: int,
     payload: ProductCategoryCreate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     cat = await db.get(ProductCategory, category_id)
     if not cat:
-        raise HTTPException(status_code=404, detail="鍒嗙被涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    # Capture before state
+    before_data = {"name": cat.name, "description": cat.description, "status": cat.status}
     
     cat.name = payload.name
     cat.description = payload.description
     cat.status = payload.status
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="product_category",
+        record_id=cat.id,
+        operation="UPDATE",
+        diff_data={"before": before_data, "after": {"name": payload.name, "description": payload.description, "status": payload.status}},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
     
     await db.commit()
     await db.refresh(cat)
@@ -88,11 +118,24 @@ async def update_product_category(
 async def delete_product_category(
     category_id: int,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     cat = await db.get(ProductCategory, category_id)
     if not cat:
-        raise HTTPException(status_code=404, detail="鍒嗙被涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    # Record audit log before deletion
+    audit = AuditLog(
+        table_name="product_category",
+        record_id=cat.id,
+        operation="DELETE",
+        diff_data={"name": cat.name, "description": cat.description, "status": cat.status},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.delete(cat)
     await db.commit()
     return None
@@ -133,23 +176,32 @@ async def list_products(
 async def create_product(
     payload: ProductCreate,
     db: DbSession,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
+    name_dup = await db.scalar(select(Product).where(Product.product_name == payload.product_name))
+    if name_dup:
+        raise HTTPException(status_code=400, detail="Product name already exists")
     # structure_hash unique
     dup = await db.scalar(select(Product).where(Product.structure_hash == payload.structure_hash))
     # if dup:
-    #     raise HTTPException(status_code=400, detail="structure_hash 宸插瓨鍦紝璇峰鐢ㄦ垨纭")
+    #     raise HTTPException(status_code=400, detail="structure_hash already exists, please reuse or confirm")
 
     # Validate resource uniqueness
     if payload.resources:
         resource_ids = [r.resource_id for r in payload.resources]
         if len(resource_ids) != len(set(resource_ids)):
-            raise HTTPException(status_code=400, detail="鍚屼竴涓骇鍝佷笉鑳介噸澶嶅寘鍚浉鍚岀殑璧勬簮")
+            raise HTTPException(status_code=400, detail="A product cannot contain duplicate resources")
     poi_id = None
     if payload.resources:
         resource_ids = [line.resource_id for line in payload.resources]
-        resources = await db.scalars(select(Resource).where(Resource.id.in_(resource_ids)))
-        poi_counts = Counter([r.poi_id for r in resources])
+        resources_list = list(await db.scalars(select(Resource).where(Resource.id.in_(resource_ids))))
+        
+        # Logic Lock 1: Inactive resources cannot be used in products
+        for r in resources_list:
+            if r.status != "active":
+                 raise HTTPException(status_code=400, detail=f"Resource {r.resource_name} is not active and cannot be used")
+
+        poi_counts = Counter([r.poi_id for r in resources_list])
         if poi_counts:
             poi_id = poi_counts.most_common(1)[0][0]
 
@@ -181,6 +233,18 @@ async def create_product(
             )
         )
     db.add_all(lines)
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="product",
+        record_id=product.id,
+        operation="CREATE",
+        diff_data={"product_name": product.product_name, "status": product.status, "structure_hash": product.structure_hash},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
 
     await db.commit()
     await db.refresh(product)
@@ -192,30 +256,62 @@ async def update_product(
     product_id: int,
     payload: ProductCreate,
     db: DbSession,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="浜у搧涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Product not found")
 
-    # Validate resource uniqueness
+    # Validations...
+    name_dup = await db.scalar(select(Product).where(Product.product_name == payload.product_name, Product.id != product_id))
+    if name_dup:
+        raise HTTPException(status_code=400, detail="Product name already exists")
     if payload.resources:
         resource_ids = [r.resource_id for r in payload.resources]
         if len(resource_ids) != len(set(resource_ids)):
-            raise HTTPException(status_code=400, detail="鍚屼竴涓骇鍝佷笉鑳介噸澶嶅寘鍚浉鍚岀殑璧勬簮")
+            raise HTTPException(status_code=400, detail="A product cannot contain duplicate resources")
+
+    # Capture before data for audit log
+    existing_resources = await db.scalars(select(ProductResource).where(ProductResource.product_id == product_id))
+    existing_resource_list = [
+        {"resource_id": r.resource_id, "supplier_id": r.supplier_id, "quantity": r.quantity} 
+        for r in existing_resources
+    ]
+    
+    before_data = {
+        "product_name": product.product_name,
+        "status": product.status,
+        "category_id": product.category_id,
+        "suggested_price": str(product.suggested_price) if product.suggested_price else None,
+        "allowed_channels": product.allowed_channels,
+        "resources": existing_resource_list
+    }
 
     # Calculate POI from new resources
     poi_id = None
     if payload.resources:
         resource_ids = [line.resource_id for line in payload.resources]
-        resources = await db.scalars(select(Resource).where(Resource.id.in_(resource_ids)))
-        poi_counts = Counter([r.poi_id for r in resources])
+        resources_list = list(await db.scalars(select(Resource).where(Resource.id.in_(resource_ids))))
+        
+        # Logic Lock 1: Inactive resources cannot be used in products
+        for r in resources_list:
+            if r.status != "active":
+                 raise HTTPException(status_code=400, detail=f"Resource {r.resource_name} is not active and cannot be used")
+
+        poi_counts = Counter([r.poi_id for r in resources_list])
         if poi_counts:
             poi_id = poi_counts.most_common(1)[0][0]
 
     # Update fields
     product.product_name = payload.product_name
     product.description = payload.description
+    
+    # Logic Lock 3: Products with associated SKUs cannot be deactivated (taken off shelves)
+    if product.status == "active" and payload.status != "active":
+        sku_count = await db.scalar(select(func.count()).where(Sku.product_id == product_id))
+        if sku_count and sku_count > 0:
+             raise HTTPException(status_code=400, detail="Cannot deactivate product with associated SKUs")
+    
     product.status = payload.status
     product.structure_hash = payload.structure_hash
     product.category_id = payload.category_id
@@ -226,9 +322,6 @@ async def update_product(
     product.updated_at = func.now()
     
     # Update resources: delete all and recreate
-    # First, delete existing resources
-    await db.execute(select(ProductResource).where(ProductResource.product_id == product_id).execution_options(synchronize_session=False))
-    # Using delete statement directly
     from sqlalchemy import delete
     await db.execute(delete(ProductResource).where(ProductResource.product_id == product_id))
     
@@ -247,6 +340,31 @@ async def update_product(
         )
     db.add_all(lines)
     
+    # Record audit log
+    after_resource_list = [
+        {"resource_id": line.resource_id, "supplier_id": line.supplier_id, "quantity": line.quantity} 
+        for line in payload.resources
+    ]
+    after_data = {
+        "product_name": product.product_name,
+        "status": product.status,
+        "category_id": product.category_id,
+        "suggested_price": str(product.suggested_price) if product.suggested_price else None,
+        "allowed_channels": product.allowed_channels,
+        "resources": after_resource_list
+    }
+    
+    audit = AuditLog(
+        table_name="product",
+        record_id=product.id,
+        operation="UPDATE",
+        diff_data={"before": before_data, "after": after_data},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.commit()
     await db.refresh(product)
     return ProductRead.model_validate(product)
@@ -256,11 +374,23 @@ async def update_product(
 async def delete_product(
     product_id: int,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="浜у搧涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    # Record audit log before deletion
+    audit = AuditLog(
+        table_name="product",
+        record_id=product.id,
+        operation="DELETE",
+        diff_data={"product_name": product.product_name, "status": product.status},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
     
     # First delete related SKUs to avoid foreign key constraint violation
     from sqlalchemy import delete
@@ -311,7 +441,7 @@ async def batch_update_products(
 async def get_product(db: DbSession, product_id: int = Path(..., ge=1), _: User = Depends(get_current_user)):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="浜у搧涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Product not found")
     return ProductRead.model_validate(product)
 
 
@@ -323,7 +453,7 @@ async def snapshot_product(
 ):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="浜у搧涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Product not found")
     resources = await db.scalars(select(ProductResource).where(ProductResource.product_id == product_id))
     snapshot_data = [
         {
@@ -335,7 +465,7 @@ async def snapshot_product(
         }
         for r in resources
     ]
-    snap = ProductStructureSnapshot(product_id=product_id, snapshot_data=snapshot_data, created_at=datetime.utcnow())
+    snap = ProductStructureSnapshot(product_id=product_id, snapshot_data=snapshot_data, created_at=now_china())
     db.add(snap)
     await db.commit()
     await db.refresh(snap)
@@ -362,25 +492,25 @@ async def get_product_inventory(
     
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="浜у搧涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Product not found")
     
     # Get all product resources (with quantities)
     resources_stmt = select(ProductResource).where(ProductResource.product_id == product_id)
     product_resources = list(await db.scalars(resources_stmt))
     
     if not product_resources:
-        return {"items": [], "message": "浜у搧娌℃湁鍏宠仈璧勬簮"}
+        return {"items": [], "message": "Product has no linked resources"}
     
     # Parse date range or default
     if start_date:
         start = datetime.strptime(start_date, "%Y-%m-%d").date()
     else:
-        start = datetime.utcnow().date()
+        start = now_china().date()
         
     if end_date:
         end = datetime.strptime(end_date, "%Y-%m-%d").date()
     else:
-        end = (datetime.utcnow() + timedelta(days=365*2)).date()
+        end = (now_china() + timedelta(days=365*2)).date()
     
     # Get all resource IDs needed
     resource_ids = [pr.resource_id for pr in product_resources]
@@ -476,7 +606,7 @@ async def preview_product_inventory(
         try:
             start = datetime.strptime(payload.start_date, "%Y-%m-%d").date()
         except ValueError:
-            raise HTTPException(status_code=400, detail="寮€濮嬫棩鏈熸牸寮忛敊璇紝搴斾负 YYYY-MM-DD")
+            raise HTTPException(status_code=400, detail="Invalid start_date format, expected YYYY-MM-DD")
     else:
         start = today
 
@@ -484,13 +614,13 @@ async def preview_product_inventory(
         try:
             end = datetime.strptime(payload.end_date, "%Y-%m-%d").date()
         except ValueError:
-            raise HTTPException(status_code=400, detail="缁撴潫鏃ユ湡鏍煎紡閿欒锛屽簲涓?YYYY-MM-DD")
+            raise HTTPException(status_code=400, detail="Invalid end_date format, expected YYYY-MM-DD")
     else:
         # Default to 2 years future to catch most inventory
         end = today + timedelta(days=730)
     
     if start > end:
-        raise HTTPException(status_code=400, detail="寮€濮嬫棩鏈熶笉鑳芥櫄浜庣粨鏉熸棩鏈?)
+        raise HTTPException(status_code=400, detail="start_date cannot be later than end_date")
 
     # Get all resource IDs needed
     resource_ids = [r.resource_id for r in payload.resources]

@@ -7,6 +7,7 @@ import ResourcePOIPage from '@/pages/resources/poi'
 import ResourceListPage from '@/pages/resources/list'
 import SupplierListPage from '@/pages/suppliers/list'
 import ProductListPage from '@/pages/products/list'
+import ProductCategoryPage from '@/pages/products/categories'
 import ProductEditorPage from '@/pages/products/editor'
 import SKUListPage from '@/pages/skus/list'
 import ChannelsPage from '@/pages/skus/channels'
@@ -15,7 +16,7 @@ import InventoryCalendarPage from '@/pages/inventory/calendar'
 import OrdersListPage from '@/pages/orders/list'
 import OrdersImportPage from '@/pages/orders/import'
 import ApprovalsPendingPage from '@/pages/approvals/pending'
-import AuditLogPage from '@/pages/approvals/audit'
+import OperationLogPage from '@/pages/logs/operations'
 import SalesReportPage from '@/pages/reports/sales'
 import ProfitReportPage from '@/pages/reports/profit'
 import UserAdminPage from '@/pages/admin/users'
@@ -60,6 +61,7 @@ export default function AppRoutes() {
 
                 {/* Products M3 */}
                 <Route path="products/list" element={<ProductListPage />} />
+                <Route path="products/categories" element={<ProductCategoryPage />} />
                 <Route path="products/editor" element={<ProductEditorPage />} />
 
                 {/* SKUs & Channels M4 */}
@@ -80,7 +82,7 @@ export default function AppRoutes() {
 
                 {/* Approvals & Audit M8 */}
                 <Route path="approvals/pending" element={<ApprovalsPendingPage />} />
-                <Route path="approvals/audit" element={<AuditLogPage />} />
+                <Route path="logs/operations" element={<OperationLogPage />} />
 
                 {/* Reports M9 */}
                 <Route path="reports/sales" element={<SalesReportPage />} />

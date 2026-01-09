@@ -125,7 +125,7 @@ export interface Channel {
     channel_name: string
     channel_type: string
     commission_rate?: number
-    status: 'active' | 'inactive'
+    status: 'active' | 'inactive' | 'pending_approval'
     created_at?: string
     updated_at?: string
 }
@@ -163,11 +163,12 @@ export interface PriceHistory {
 export interface Inventory {
     id: string
     sku_id: string
-    channel_id: string
-    date: string
+    channel_id?: string
+    inventory_date: string
     total_qty: number
     frozen_qty: number
-    available_qty: number
+    sold_qty?: number
+    available_qty?: number
     created_at?: string
     updated_at?: string
 }
@@ -210,16 +211,18 @@ export interface OrderStatusHistory {
 }
 
 export interface Approval {
-    id: string
+    id: number
     object_type: string
-    object_id: string
+    object_id: number
     action_type: string
     status: 'pending' | 'approved' | 'rejected'
-    submitted_by: string
-    reviewed_by?: string
-    diff_json?: string
-    created_at?: string
-    updated_at?: string
+    applicant: string
+    approver?: string
+    before_data?: Record<string, any>
+    after_data?: Record<string, any>
+    applied_at: string
+    decided_at?: string
+    comment?: string
 }
 
 export interface AuditLog {

@@ -1,16 +1,21 @@
 import { useState } from 'react'
-import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm, InputNumber } from 'antd'
+import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm, InputNumber, Tooltip } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
+import { useAuth } from '@/contexts/AuthContext'
 import type { Channel } from '@/types'
 
 export default function ChannelsPage() {
     const { data, refresh } = useData()
     const channels = data?.channels ?? []
+    const skus = data?.skus ?? []
+    const skuChannels = data?.sku_channels ?? []
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
     const [modalVisible, setModalVisible] = useState(false)
     const [editingChannel, setEditingChannel] = useState<Channel | null>(null)
     const [form] = Form.useForm()
+    const { user } = useAuth()
 
     const handleSaveChannel = async (values: any) => {
         try {
@@ -88,16 +93,68 @@ export default function ChannelsPage() {
         },
         {
             title: '操作',
-            render: (_: any, record: Channel) => (
-                <Space>
-                    <Button type="link" size="small" onClick={() => openEdit(record)}>编辑</Button>
-                    <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)}>
-                        <Button type="link" size="small" danger>删除</Button>
-                    </Popconfirm>
-                </Space>
-            ),
+            render: (_: any, record: Channel) => {
+                const isLocked = skus.some((s: any) => String(s.channel_id) === String(record.id)) ||
+                    skuChannels.some(sc => String(sc.channel_id) === String(record.id))
+
+                // Check if this channel has pending approval (update/delete)
+                // Or if it IS a pending creation (id=0 or from approval)
+                const isPendingCreation = record.status === 'pending_approval'
+                const hasPendingUpdate = data?.approvals?.some(a =>
+                    a.object_type === 'channel' &&
+                    String(a.object_id) === String(record.id) &&
+                    a.status === 'pending'
+                )
+
+                if (isPendingCreation || hasPendingUpdate) {
+                    return (
+                        <Button
+                            type="primary"
+                            size="small"
+                            ghost
+                            onClick={() => message.info('已通知管理员尽快审批')}
+                        >
+                            催一催
+                        </Button>
+                    )
+                }
+
+                // CSR can view but not operate
+                if (user?.role === 'csr') {
+                    return <span style={{ color: '#ccc' }}>无权限</span>
+                }
+
+                return (
+                    <Space>
+                        <Button type="link" size="small" onClick={() => openEdit(record)}>编辑</Button>
+                        {isLocked ? (
+                            <Tooltip title="该渠道已有关联SKU(已创建)，不可删除">
+                                <Button type="link" size="small" danger disabled>删除</Button>
+                            </Tooltip>
+                        ) : (
+                            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)}>
+                                <Button type="link" size="small" danger>删除</Button>
+                            </Popconfirm>
+                        )}
+                    </Space>
+                )
+            },
         },
     ]
+
+    // Mix in pending creations from approvals
+    const pendingChannels: Channel[] = (data?.approvals || [])
+        .filter(a => a.object_type === 'channel' && a.action_type === 'create' && a.status === 'pending')
+        .map((a, idx) => ({
+            id: `pending_${a.id}`, // Virtual ID
+            channel_name: a.after_data?.channel_name || '待审批渠道',
+            channel_type: a.after_data?.channel_type || '-',
+            commission_rate: a.after_data?.commission_rate,
+            status: 'pending_approval',
+            created_at: a.applied_at
+        } as Channel))
+
+    const displayChannels = [...pendingChannels, ...channels]
 
     return (
         <div className="page-container">
@@ -116,7 +173,19 @@ export default function ChannelsPage() {
             </div>
 
             <div className="glass-card" style={{ padding: '24px' }}>
-                <Table<Channel> rowKey="id" columns={columns} dataSource={channels} pagination={{ pageSize: 10 }} />
+                <Table<Channel>
+                    rowKey="id"
+                    columns={columns}
+                    dataSource={displayChannels.slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)}
+                    pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: displayChannels.length,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条记录`,
+                    }}
+                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
+                />
             </div>
 
             <Modal

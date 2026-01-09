@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
-import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Card, Row, Col } from 'antd'
+import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Card, Row, Col, Popconfirm, Tooltip } from 'antd'
 import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
@@ -35,6 +35,7 @@ export default function SKUListPage() {
     const [viewMode, setViewMode] = useState(false)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
 
     // Global Filter State
     const [filters, setFilters] = useState({
@@ -81,15 +82,24 @@ export default function SKUListPage() {
                 status: values.status,
             }
 
+
             let savedSkuId: number;
             const selectedChannelId = values.channel_id;
 
             if (editingSku) {
                 // Update existing
-                await apiRequest(`/api/skus/${editingSku.id}`, {
-                    method: 'PATCH',
-                    body: JSON.stringify(payload),
-                })
+                // Optimization: Update existing only if changed
+                const isChanged =
+                    editingSku.sku_name !== payload.sku_name ||
+                    String(editingSku.product_id) !== String(payload.product_id) ||
+                    editingSku.status !== payload.status;
+
+                if (isChanged) {
+                    await apiRequest(`/api/skus/${editingSku.id}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify(payload),
+                    })
+                }
                 savedSkuId = Number(editingSku.id);
             } else {
                 // Create new
@@ -98,6 +108,24 @@ export default function SKUListPage() {
                     body: JSON.stringify(payload),
                 }) as { id: number }
                 savedSkuId = res.id;
+            }
+
+            // Ensure SKU-Channel 绑定存在（单渠道模式，使用/sku_channels维护绑定）
+            if (selectedChannelId) {
+                const existingBinding = (data?.sku_channels || []).find((sc: any) => String(sc.sku_id) === String(savedSkuId));
+                if (existingBinding) {
+                    if (String(existingBinding.channel_id) !== String(selectedChannelId)) {
+                        await apiRequest(`/api/sku_channels/${existingBinding.id}`, {
+                            method: 'PATCH',
+                            body: JSON.stringify({ channel_id: Number(selectedChannelId) })
+                        });
+                    }
+                } else {
+                    await apiRequest('/api/sku_channels', {
+                        method: 'POST',
+                        body: JSON.stringify({ sku_id: savedSkuId, channel_id: Number(selectedChannelId), status: 'active' })
+                    });
+                }
             }
 
             // Save inventory/prices if any
@@ -261,13 +289,16 @@ export default function SKUListPage() {
 
         if (record) {
             setSelectedProductId(String(record.product_id))
-            setSelectedChannelId(String(record.channel_id))
+            // 通过 sku_channels 绑定获取渠道（SKU 表本身没有 channel_id）
+            const binding = (data?.sku_channels || []).find((sc: any) => String(sc.sku_id) === String(record.id))
+            const channelId = binding ? binding.channel_id : undefined
+            setSelectedChannelId(channelId ? String(channelId) : undefined)
 
             form.setFieldsValue({
                 name: record.sku_name,
                 product_id: record.product_id,
                 status: record.status,
-                channel_id: record.channel_id,
+                channel_id: channelId,
             })
         } else {
             setSelectedProductId(undefined)
@@ -348,13 +379,43 @@ export default function SKUListPage() {
         },
         {
             title: '操作',
-            render: (_: any, record: SKU) => (
-                <Space>
-                    <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openModal(record, 'view')}>查看</Button>
-                    <Button type="link" size="small" icon={<SettingOutlined />} onClick={() => openModal(record, 'edit')}>编辑</Button>
-                    <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(Number(record.id))}>删除</Button>
-                </Space>
-            ),
+            render: (_: any, record: SKU) => {
+                const isLocked = record.status === 'active'
+
+                // Check pending approvals
+                const hasPending = data?.approvals?.some(a =>
+                    a.object_type === 'sku' &&
+                    String(a.object_id) === String(record.id) &&
+                    a.status === 'pending'
+                )
+
+                return (
+                    <Space>
+                        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openModal(record, 'view')}>查看</Button>
+                        <Button type="link" size="small" icon={<SettingOutlined />} onClick={() => openModal(record, 'edit')}>编辑</Button>
+                        {hasPending ? (
+                            <Button
+                                type="primary"
+                                size="small"
+                                ghost
+                                onClick={() => message.info('已通知管理员尽快审批')}
+                            >
+                                催一催
+                            </Button>
+                        ) : (
+                            isLocked ? (
+                                <Tooltip title="SKU处于上架状态，不可删除">
+                                    <Button type="link" size="small" danger disabled icon={<DeleteOutlined />}>删除</Button>
+                                </Tooltip>
+                            ) : (
+                                <Popconfirm title="确定删除此SKU吗？" onConfirm={() => handleDelete(Number(record.id))}>
+                                    <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                                </Popconfirm>
+                            )
+                        )}
+                    </Space>
+                )
+            },
         },
     ]
 
@@ -476,8 +537,15 @@ export default function SKUListPage() {
                 <Table<SKU>
                     rowKey="id"
                     columns={columns}
-                    dataSource={filteredSkus}
-                    pagination={{ pageSize: 10 }}
+                    dataSource={filteredSkus.slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)}
+                    pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: filteredSkus.length,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条记录`,
+                    }}
+                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
                     rowSelection={{
                         selectedRowKeys,
                         onChange: setSelectedRowKeys,

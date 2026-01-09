@@ -51,7 +51,6 @@ class Supplier(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     supplier_name: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'pending'"))
     contact_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     settlement_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     qualification_files: Mapped[list | None] = mapped_column(JSONB, nullable=True)
@@ -105,7 +104,6 @@ class ProductCategory(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'active'"))
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
 
@@ -168,7 +166,6 @@ class Channel(Base):
     commission_rate: Mapped[Numeric | None] = mapped_column(Numeric(5, 4), nullable=True) # Percentage (e.g., 0.05 for 5%)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("channel.id", ondelete="SET NULL"), nullable=True)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'active'"))
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
 

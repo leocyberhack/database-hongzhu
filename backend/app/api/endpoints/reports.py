@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, case, select
 
-from app.api.auth import User, get_current_user
+from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
 from app.models import Order
 from app.schemas.report import ReportPoint, ReportResponse, TopItem
@@ -21,7 +21,7 @@ def _grain_field(grain: str):
 @router.get("/reports/summary", response_model=ReportResponse)
 async def report_summary(
     db: DbSession,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles(["admin", "super_admin", "operator"])),
     grain: str = Query(default="day", description="day|week|month"),
     start_date: Optional[date] = Query(default=None),
     end_date: Optional[date] = Query(default=None),

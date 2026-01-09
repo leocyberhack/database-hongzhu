@@ -1,12 +1,14 @@
-﻿from typing import Optional
+﻿from datetime import datetime
+from app.utils.time import now_china
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import User, get_current_user
+from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import Poi, Resource
+from app.models import AuditLog, Poi, Resource
 from app.schemas.common import (
     ListResponse,
     Pagination,
@@ -44,16 +46,28 @@ async def list_poi(
 async def create_poi(
     payload: PoiCreate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
-    # Unique check (poi_name + city)
-    exists = await db.scalar(
-        select(Poi).where(Poi.poi_name == payload.poi_name, Poi.city == payload.city)
-    )
+    # Unique check by name（全局不重复，编辑未改名允许）
+    exists = await db.scalar(select(Poi).where(Poi.poi_name == payload.poi_name))
     if exists:
-        raise HTTPException(status_code=400, detail="POI already exists for this city")
+        raise HTTPException(status_code=400, detail="POI name already exists")
     obj = Poi(**payload.model_dump())
     db.add(obj)
+    await db.flush()
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="poi",
+        record_id=obj.id,
+        operation="CREATE",
+        diff_data={"poi_name": obj.poi_name, "city": obj.city},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.commit()
     await db.refresh(obj)
     return PoiRead.model_validate(obj)
@@ -64,16 +78,52 @@ async def update_poi(
     poi_id: int,
     payload: PoiUpdate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
     poi = await db.get(Poi, poi_id)
     if not poi:
         raise HTTPException(status_code=404, detail="POI not found")
+
+    # Name uniqueness：同名其他记录不允许
+    if payload.poi_name:
+        dup = await db.scalar(select(Poi).where(Poi.poi_name == payload.poi_name, Poi.id != poi_id))
+        if dup:
+            raise HTTPException(status_code=400, detail="POI name already exists")
+    
+    # Capture before state (only serializable fields)
+    before_data = {
+        "poi_name": poi.poi_name, 
+        "city": poi.city, 
+        "status": poi.status
+    }
+    if poi.address:
+        before_data["address"] = poi.address
     
     # Update only provided fields
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(poi, field, value)
+    
+    # Capture after state (only serializable fields)
+    after_data = {
+        "poi_name": poi.poi_name,
+        "city": poi.city,
+        "status": poi.status
+    }
+    if poi.address:
+        after_data["address"] = poi.address
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="poi",
+        record_id=poi.id,
+        operation="UPDATE",
+        diff_data={"before": before_data, "after": after_data},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
     
     await db.commit()
     await db.refresh(poi)
@@ -84,11 +134,24 @@ async def update_poi(
 async def delete_poi(
     poi_id: int,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
     poi = await db.get(Poi, poi_id)
     if not poi:
         raise HTTPException(status_code=404, detail="POI not found")
+    
+    # Record audit log before deletion
+    audit = AuditLog(
+        table_name="poi",
+        record_id=poi.id,
+        operation="DELETE",
+        diff_data={"poi_name": poi.poi_name, "city": poi.city},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.delete(poi)
     await db.commit()
     return None
@@ -169,21 +232,29 @@ async def list_resources(
 async def create_resource(
     payload: ResourceCreate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
-    # Optional duplicate warning (poi_id + name + type)
-    dup = await db.scalar(
-        select(Resource).where(
-            Resource.poi_id == payload.poi_id,
-            Resource.resource_name == payload.resource_name,
-            Resource.resource_type == payload.resource_type,
-        )
-    )
+    # 资源名称全局唯一（编辑未改名允许）
+    dup = await db.scalar(select(Resource).where(Resource.resource_name == payload.resource_name))
     if dup:
-        raise HTTPException(status_code=400, detail="Resource may duplicate under the same POI")
+        raise HTTPException(status_code=400, detail="Resource name already exists")
 
     obj = Resource(**payload.model_dump())
     db.add(obj)
+    await db.flush()
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="resource",
+        record_id=obj.id,
+        operation="CREATE",
+        diff_data={"resource_name": obj.resource_name, "resource_type": obj.resource_type, "poi_id": obj.poi_id},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+    
     await db.commit()
     await db.refresh(obj)
     return ResourceRead.model_validate(obj)
@@ -194,16 +265,46 @@ async def update_resource(
     resource_id: int,
     payload: ResourceUpdate,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
     resource = await db.get(Resource, resource_id)
     if not resource:
         raise HTTPException(status_code=404, detail="Resource not found")
+
+    if payload.resource_name:
+        dup = await db.scalar(select(Resource).where(Resource.resource_name == payload.resource_name, Resource.id != resource_id))
+        if dup:
+            raise HTTPException(status_code=400, detail="Resource name already exists")
     
-    # Update only provided fields
+    # Capture before state
+    before_data = {"resource_name": resource.resource_name, "resource_type": resource.resource_type, "status": resource.status}
+    
+    # Validations
     update_data = payload.model_dump(exclude_unset=True)
+    
+    # Logic Lock 1: Active resources used by products cannot be deactivated
+    if "status" in update_data and update_data["status"] != resource.status:
+        if resource.status == "active" and update_data["status"] != "active": # Assuming target is inactive/draft
+             # Check usage
+             from app.models import ProductResource
+             usage_count = await db.scalar(select(func.count()).where(ProductResource.resource_id == resource_id))
+             if usage_count and usage_count > 0:
+                 raise HTTPException(status_code=400, detail="Cannot deactivate resource used by products")
+
     for field, value in update_data.items():
         setattr(resource, field, value)
+    
+    # Record audit log
+    audit = AuditLog(
+        table_name="resource",
+        record_id=resource.id,
+        operation="UPDATE",
+        diff_data={"before": before_data, "after": update_data},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
     
     await db.commit()
     await db.refresh(resource)
@@ -214,7 +315,7 @@ async def update_resource(
 async def delete_resource(
     resource_id: int,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
     from app.models import ProductResource, SupplierResource
     
@@ -228,6 +329,18 @@ async def delete_resource(
     )
     if product_resource_count and product_resource_count > 0:
         raise HTTPException(status_code=400, detail=f"鏃犳硶鍒犻櫎锛氳璧勬簮琚?{product_resource_count} 涓骇鍝佸紩鐢紝璇峰厛鍒犻櫎鐩稿叧浜у搧璧勬簮鍏宠仈")
+    
+    # Record audit log before deletion
+    audit = AuditLog(
+        table_name="resource",
+        record_id=resource.id,
+        operation="DELETE",
+        diff_data={"resource_name": resource.resource_name, "resource_type": resource.resource_type},
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
     
     # Delete related SupplierResource records first (supplier-resource associations)
     # Note: ResourceInventory records are automatically cascade-deleted via SupplierResource FK

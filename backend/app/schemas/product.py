@@ -56,7 +56,6 @@ class ProductRead(ProductBase, ORMBase):
 
 class ProductCategoryCreate(BaseModel):
     name: str
-    status: str = "active"
     description: Optional[str] = None
 
 

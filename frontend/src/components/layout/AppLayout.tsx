@@ -7,7 +7,7 @@ import {
     LogoutOutlined,
     UserOutlined,
     BellOutlined,
-    SearchOutlined,
+
     CheckCircleOutlined,
     BarChartOutlined
 } from '@ant-design/icons'
@@ -24,13 +24,27 @@ export default function AppLayout() {
     const [collapsed, setCollapsed] = useState(false)
 
 
-    const menuItems = [
-        {
-            key: '/dashboard',
-            icon: <DashboardOutlined />,
-            label: '经营看板',
-        },
-        {
+    const role = user?.role || 'guest'
+
+    // Helper to check permissions
+    const canSeeResources = ['super_admin', 'admin', 'product'].includes(role)
+    const canSeeProducts = ['super_admin', 'admin', 'product'].includes(role)
+    const canSeeGoods = ['super_admin', 'admin', 'product', 'operator', 'csr'].includes(role) // SKU, Pricing, Inv, Channel
+    const canSeeOrders = ['super_admin', 'admin', 'csr', 'operator'].includes(role)
+    const canSeeApprovals = ['super_admin', 'admin', 'product'].includes(role)
+    const canSeeOpData = ['super_admin', 'admin', 'operator'].includes(role)
+    const canSeeLogs = ['super_admin', 'admin'].includes(role)
+    const canSeeReports = ['super_admin', 'admin'].includes(role)
+    const canSeeUsers = role === 'super_admin'
+
+    // Goods Center Sub-items Filtering
+    const showSkuList = ['super_admin', 'admin', 'product', 'operator'].includes(role)
+    const showChannelList = ['super_admin', 'admin', 'product', 'operator', 'csr'].includes(role)
+    const showPricing = ['super_admin', 'admin', 'product', 'csr', 'operator'].includes(role) // CSR can enter Pricing/Inv
+    const showInventory = ['super_admin', 'admin', 'product', 'csr', 'operator'].includes(role)
+
+    const allMenuItems = [
+        ...(canSeeResources ? [{
             key: 'resource-center',
             icon: <DatabaseOutlined />,
             label: '资源中心',
@@ -39,49 +53,50 @@ export default function AppLayout() {
                 { key: '/resources/list', label: '资源管理' },
                 { key: '/suppliers/list', label: '供应商管理' },
             ]
-        },
-        {
+        }] : []),
+        ...(canSeeProducts ? [{
             key: 'products',
             icon: <ShoppingOutlined />,
             label: '产品管理',
             children: [
                 { key: '/products/list', label: '产品列表' },
+                { key: '/products/categories', label: '产品分类' },
                 { key: '/products/editor', label: '产品编辑' },
             ]
-        },
-        {
+        }] : []),
+        ...(canSeeGoods ? [{
             key: 'product-center',
             icon: <AppstoreOutlined />,
-            label: '商品中心', // Goods Center
+            label: '商品中心',
             children: [
                 {
                     key: 'skus',
                     label: 'SKU & 渠道',
-                    type: 'group',
+                    type: 'group' as const,
                     children: [
-                        { key: '/skus/list', label: 'SKU 管理' },
-                        { key: '/skus/channels', label: '渠道管理' },
+                        ...(showSkuList ? [{ key: '/skus/list', label: 'SKU 管理' }] : []),
+                        ...(showChannelList ? [{ key: '/skus/channels', label: '渠道管理' }] : []),
                     ]
                 },
-                {
+                ...(showPricing ? [{
                     key: 'pricing',
                     label: '定价中心',
-                    type: 'group',
+                    type: 'group' as const,
                     children: [
                         { key: '/pricing/center', label: 'SKU 价格/库存中心' },
                     ]
-                },
-                {
+                }] : []),
+                ...(showInventory ? [{
                     key: 'inventory',
                     label: '库存管理',
-                    type: 'group',
+                    type: 'group' as const,
                     children: [
                         { key: '/inventory/calendar', label: '库存数据' },
                     ]
-                }
+                }] : [])
             ]
-        },
-        {
+        }] : []),
+        ...(canSeeOrders ? [{
             key: 'orders',
             icon: <ShoppingOutlined />,
             label: '订单中心',
@@ -89,17 +104,29 @@ export default function AppLayout() {
                 { key: '/orders/list', label: '订单列表' },
                 { key: '/orders/import', label: '批量导入' },
             ]
-        },
-        {
+        }] : []),
+        ...(canSeeOpData ? [{
+            key: '/dashboard',
+            icon: <DashboardOutlined />,
+            label: '运营数据',
+        }] : []),
+        ...(canSeeApprovals ? [{
             key: 'approvals',
             icon: <CheckCircleOutlined />,
             label: '审批与审计',
             children: [
                 { key: '/approvals/pending', label: '待审批' },
-                { key: '/approvals/audit', label: '审计日志' },
             ]
-        },
-        {
+        }] : []),
+        ...(canSeeLogs ? [{
+            key: 'logs',
+            icon: <BarChartOutlined />,
+            label: '操作日志',
+            children: [
+                { key: '/logs/operations', label: '操作日志' },
+            ]
+        }] : []),
+        ...(canSeeReports ? [{
             key: 'reports',
             icon: <BarChartOutlined />,
             label: '报表中心',
@@ -107,14 +134,15 @@ export default function AppLayout() {
                 { key: '/reports/sales', label: '销售报表' },
                 { key: '/reports/profit', label: '利润分析' },
             ]
-        },
-        // 仅admin可见的用户管理菜单
-        ...(user?.role === 'admin' ? [{
+        }] : []),
+        ...(canSeeUsers ? [{
             key: '/admin/users',
             icon: <UserOutlined />,
             label: '用户管理',
         }] : []),
     ]
+
+    const menuItems = allMenuItems
 
     const userMenu = {
         items: [
@@ -219,7 +247,7 @@ export default function AppLayout() {
                     height: 64
                 }}>
                     <Space size="large">
-                        <Button type="text" shape="circle" icon={<SearchOutlined />} />
+
                         <Button type="text" shape="circle" icon={<BellOutlined />} />
                         <div style={{ width: 1, height: 24, background: '#e2e8f0' }} />
                         <Dropdown menu={userMenu} placement="bottomRight">

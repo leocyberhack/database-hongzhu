@@ -110,6 +110,7 @@ interface Props {
     supplierResourceId?: number; // New param for supplier-level inventory
     mode?: 'sku' | 'resource'; // 'sku' = price+stock, 'resource' = stock only
     readonlyStock?: boolean; // If true, stock cannot be edited (for SKU display mode)
+    readOnly?: boolean; // If true, completely disable editing
     defaultPrice?: number; // Default price to display if specific date price is not set (Resource mode)
     stockLimitData?: Record<string, number>; // Map of YYYY-MM-DD -> max allowed stock
 }
@@ -126,12 +127,16 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
     const mode = props.mode || 'sku';
     const isResourceMode = mode === 'resource';
     const readonlyStock = props.readonlyStock || false;
+    const readOnly = props.readOnly || false;
 
     const [currentDate, setCurrentDate] = useState<Dayjs>(dayjs());
     const [selection, setSelection] = useState<{ start: Dayjs | null; end: Dayjs | null }>({ start: null, end: null });
     const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]); // 0=Sun, 1=Mon...
     const [localData, setLocalData] = useState<Record<string, DayData>>({});
     const [loading, setLoading] = useState(false);
+
+    // Track modified dates to avoid re-saving unchanged data
+    const dirtyDates = React.useRef<Set<string>>(new Set());
 
     // Inputs
     const [inputPrice, setInputPrice] = useState<number | null>(null);
@@ -152,6 +157,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
             fetchData(props.skuId);
         } else {
             setLocalData({});
+            dirtyDates.current.clear();
         }
     }, [props.skuId, props.channelId, props.resourceId, props.supplierResourceId, isResourceMode]);
 
@@ -216,6 +222,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
             }
 
             setLocalData(newData);
+            dirtyDates.current.clear(); // Clear dirty tracking on fresh load
 
         } catch (err) {
             console.error(err);
@@ -244,6 +251,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
             });
 
             setLocalData(newData);
+            dirtyDates.current.clear(); // Clear dirty tracking on fresh load
         } catch (err) {
             console.error(err);
             message.error("加载资源库存数据失败");
@@ -254,10 +262,14 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
 
     useImperativeHandle(ref, () => ({
         saveToBackend: async (id: number, channelId?: number) => {
-            // Resource mode: save to supplier resource inventory endpoint
-            // id here is interpreted as supplierResourceId in resource mode
+            // Use only dirty dates for saving to avoid mass re-initialization
+            const dates = Array.from(dirtyDates.current).sort();
+
+            if (dates.length === 0) return; // Nothing changed
+
+
             if (isResourceMode) {
-                const dates = Object.keys(localData).sort();
+                // Use dirty dates for resource mode as well
                 if (dates.length === 0) return;
 
                 // Group segments by both stock and price
@@ -313,7 +325,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
             }
             const skuId = id;
 
-            const dates = Object.keys(localData).sort();
+            // dates is already defined and filtered above
             if (dates.length === 0) return;
 
             // 1. Group Price Segments
@@ -399,6 +411,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
     // ----------------------------------------------------------------------
 
     const handleDateClick = (date: Dayjs) => {
+        if (readOnly) return;
         const str = date.format('YYYY-MM-DD');
 
         let newStart = selection.start;
@@ -473,6 +486,9 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                 }
                 newData[dStr].stock = finalStock;
             }
+
+            // Mark as dirty
+            dirtyDates.current.add(dStr);
         }
 
         setLocalData(newData);
@@ -561,71 +577,73 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
             {loading && <Spin fullscreen />}
 
             {/* Control Panel */}
-            <Card size="small" title={isResourceMode ? "库存设置" : "价格库存设置"} styles={{ body: { padding: '16px' } }}>
-                <Row gutter={16} align="middle">
-                    <Col span={isResourceMode ? 10 : 8}>
-                        <div>选中时段:</div>
-                        <RangePicker
-                            value={selection.start && selection.end ? [selection.start, selection.end] : null}
-                            onChange={handleRangePickerChange}
-                            placeholder={['开始日期', '结束日期']}
-                            style={{ width: '100%' }}
+            {!readOnly && (
+                <Card size="small" title={isResourceMode ? "库存设置" : "价格库存设置"} styles={{ body: { padding: '16px' } }}>
+                    <Row gutter={16} align="middle">
+                        <Col span={isResourceMode ? 10 : 8}>
+                            <div>选中时段:</div>
+                            <RangePicker
+                                value={selection.start && selection.end ? [selection.start, selection.end] : null}
+                                onChange={handleRangePickerChange}
+                                placeholder={['开始日期', '结束日期']}
+                                style={{ width: '100%' }}
+                            />
+                        </Col>
+                        <Col span={5}>
+                            <div>{isResourceMode ? '结算价格 (¥)' : '销售价格 (¥)'}</div>
+                            <InputNumber
+                                style={{ width: '100%' }}
+                                min={0}
+                                value={inputPrice}
+                                onChange={v => setInputPrice(v)}
+                                placeholder="不修改"
+                            />
+                        </Col>
+                        <Col span={isResourceMode ? 8 : 5}>
+                            <div>库存数量</div>
+                            <InputNumber
+                                style={{ width: '100%' }}
+                                min={0}
+                                value={inputStock}
+                                onChange={v => setInputStock(v)}
+                                placeholder="不修改"
+                                disabled={readonlyStock}
+                            />
+                        </Col>
+                        <Col span={6} style={{ textAlign: 'right', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', height: '100%' }}>
+                            <Button
+                                type="primary"
+                                size="large"
+                                icon={<SaveOutlined />}
+                                onClick={handleApplyData}
+                                style={{ marginTop: 20 }}
+                                disabled={readonlyStock && isResourceMode}
+                            >
+                                应用设置到日历
+                            </Button>
+                        </Col>
+                    </Row>
+                    <div style={{ marginTop: 12 }}>
+                        <div>应用周期:</div>
+                        <Checkbox.Group
+                            options={[
+                                { label: '周日', value: 0 },
+                                { label: '周一', value: 1 },
+                                { label: '周二', value: 2 },
+                                { label: '周三', value: 3 },
+                                { label: '周四', value: 4 },
+                                { label: '周五', value: 5 },
+                                { label: '周六', value: 6 },
+                            ]}
+                            value={selectedWeekdays}
+                            onChange={(vals) => setSelectedWeekdays(vals as number[])}
                         />
-                    </Col>
-                    <Col span={5}>
-                        <div>{isResourceMode ? '结算价格 (¥)' : '销售价格 (¥)'}</div>
-                        <InputNumber
-                            style={{ width: '100%' }}
-                            min={0}
-                            value={inputPrice}
-                            onChange={v => setInputPrice(v)}
-                            placeholder="不修改"
-                        />
-                    </Col>
-                    <Col span={isResourceMode ? 8 : 5}>
-                        <div>库存数量</div>
-                        <InputNumber
-                            style={{ width: '100%' }}
-                            min={0}
-                            value={inputStock}
-                            onChange={v => setInputStock(v)}
-                            placeholder="不修改"
-                            disabled={readonlyStock}
-                        />
-                    </Col>
-                    <Col span={6} style={{ textAlign: 'right', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', height: '100%' }}>
-                        <Button
-                            type="primary"
-                            size="large"
-                            icon={<SaveOutlined />}
-                            onClick={handleApplyData}
-                            style={{ marginTop: 20 }}
-                            disabled={readonlyStock && isResourceMode}
-                        >
-                            应用设置到日历
-                        </Button>
-                    </Col>
-                </Row>
-                <div style={{ marginTop: 12 }}>
-                    <div>应用周期:</div>
-                    <Checkbox.Group
-                        options={[
-                            { label: '周日', value: 0 },
-                            { label: '周一', value: 1 },
-                            { label: '周二', value: 2 },
-                            { label: '周三', value: 3 },
-                            { label: '周四', value: 4 },
-                            { label: '周五', value: 5 },
-                            { label: '周六', value: 6 },
-                        ]}
-                        value={selectedWeekdays}
-                        onChange={(vals) => setSelectedWeekdays(vals as number[])}
-                    />
-                </div>
-                <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
-                    提示：可通过上方日期选择器或直接点击日历来选择范围。选择后设置价格/库存并点击“应用”，最后点击底部“保存”。
-                </div>
-            </Card>
+                    </div>
+                    <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+                        提示：可通过上方日期选择器或直接点击日历来选择范围。选择后设置价格/库存并点击“应用”，最后点击底部“保存”。
+                    </div>
+                </Card>
+            )}
 
             {/* Custom Calendar */}
             <div style={styles.container}>

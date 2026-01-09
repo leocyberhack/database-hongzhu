@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Descriptions, Drawer, Form, Input, Select, Space, Table, Tag, message, Card, Row, Col, Popconfirm, Modal } from 'antd'
+import { Button, Descriptions, Drawer, Form, Input, Select, Space, Table, Tag, message, Card, Row, Col, Popconfirm, Modal, Tooltip } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import { useData } from '@/contexts/DataContext'
 import type { Supplier } from '@/types'
@@ -8,7 +8,6 @@ import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutl
 
 interface FilterState {
     keyword: string
-    status: string | null
 }
 
 export default function SupplierPage() {
@@ -31,7 +30,6 @@ export default function SupplierPage() {
     // 筛选器状态
     const [filters, setFilters] = useState<FilterState>({
         keyword: '',
-        status: null,
     })
 
     // 过滤逻辑
@@ -47,10 +45,7 @@ export default function SupplierPage() {
                     return false
                 }
             }
-            // 状态筛选
-            if (filters.status && s.status !== filters.status) {
-                return false
-            }
+
             return true
         })
     }, [suppliers, filters])
@@ -85,6 +80,17 @@ export default function SupplierPage() {
                     contact_name: values.contact_name,
                     contact_phone: values.contact_phone,
                 },
+            }
+            if (
+                selected.supplier_name === payload.supplier_name &&
+                selected.status === payload.status &&
+                selected.contact_info?.contact_name === payload.contact_info.contact_name &&
+                selected.contact_info?.contact_phone === payload.contact_info.contact_phone
+            ) {
+                message.info('没有变更，无需保存')
+                setEditModalVisible(false)
+                setSelected(null)
+                return
             }
             await apiRequest(`/api/suppliers/${selected.id}`, {
                 method: 'PUT',
@@ -124,12 +130,12 @@ export default function SupplierPage() {
         }
     }
 
-    const handleBatchUpdate = async (values: any) => {
+    const handleBatchUpdate = async () => {
         if (selectedRowKeys.length === 0) return
         try {
             // Remove empty fields
             const fields: any = {}
-            if (values.status) fields.status = values.status
+
 
             if (Object.keys(fields).length === 0) {
                 message.warning('请至少输入一个要修改的字段')
@@ -207,59 +213,57 @@ export default function SupplierPage() {
                 return countA - countB
             }
         },
-        {
-            title: '状态',
-            dataIndex: 'status',
-            render: (v: string) => {
-                const map: any = { active: '合作中', pending: '待审核', inactive: '已停用' }
-                return <Tag color={v === 'active' ? 'green' : v === 'pending' ? 'orange' : 'gray'}>{map[v] || v}</Tag>
-            },
-            filters: [
-                { text: '合作中', value: 'active' },
-                { text: '待审核', value: 'pending' },
-                { text: '已停用', value: 'inactive' },
-            ],
-            onFilter: (value: string, record: Supplier) => record.status === value,
-        },
+
         {
             title: '操作',
             width: 200,
-            render: (_: any, record: Supplier) => (
-                <Space>
-                    <Button type="link" size="small" onClick={() => setSelected(record)}>
-                        查看详情
-                    </Button>
-                    <Button
-                        type="link"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => {
-                            setSelected(record)
-                            editForm.setFieldsValue({
-                                supplier_name: record.supplier_name,
-                                contact_name: record.contact_info?.contact_name,
-                                contact_phone: record.contact_info?.contact_phone,
-                                status: record.status,
-                            })
-                            setEditModalVisible(true)
-                        }}
-                    >
-                        编辑
-                    </Button>
-                    <Popconfirm
-                        title="确定删除该供应商吗？"
-                        description="删除供应商可能影响关联的资源供应，请谨慎操作"
-                        onConfirm={() => deleteSupplier(record.id)}
-                        okText="删除"
-                        cancelText="取消"
-                        okButtonProps={{ danger: true }}
-                    >
-                        <Button type="link" danger size="small" icon={<DeleteOutlined />}>
-                            删除
+            render: (_: any, record: Supplier) => {
+                const bindingCount = supplierResources.filter(sr => sr.supplier_id === record.id).length
+                const isLocked = bindingCount > 0
+
+                return (
+                    <Space>
+                        <Button type="link" size="small" onClick={() => setSelected(record)}>
+                            查看详情
                         </Button>
-                    </Popconfirm>
-                </Space>
-            ),
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => {
+                                setSelected(record)
+                                editForm.setFieldsValue({
+                                    supplier_name: record.supplier_name,
+                                    contact_phone: record.contact_info?.contact_phone,
+                                })
+                                setEditModalVisible(true)
+                            }}
+                        >
+                            编辑
+                        </Button>
+                        {isLocked ? (
+                            <Tooltip title="该供应商已绑定资源(数量不为0)，不可删除">
+                                <Button type="link" danger disabled size="small" icon={<DeleteOutlined />}>
+                                    删除
+                                </Button>
+                            </Tooltip>
+                        ) : (
+                            <Popconfirm
+                                title="确定删除该供应商吗？"
+                                description="删除供应商可能影响关联的资源供应，请谨慎操作"
+                                onConfirm={() => deleteSupplier(record.id)}
+                                okText="删除"
+                                cancelText="取消"
+                                okButtonProps={{ danger: true }}
+                            >
+                                <Button type="link" danger size="small" icon={<DeleteOutlined />}>
+                                    删除
+                                </Button>
+                            </Popconfirm>
+                        )}
+                    </Space>
+                )
+            },
         },
     ]
 
@@ -307,22 +311,7 @@ export default function SupplierPage() {
                                 />
                             </Form.Item>
                         </Col>
-                        <Col span={8}>
-                            <Form.Item label="状态" style={{ marginBottom: 0, width: '100%' }}>
-                                <Select
-                                    placeholder="全部状态"
-                                    allowClear
-                                    options={[
-                                        { value: 'active', label: '合作中' },
-                                        { value: 'pending', label: '待审核' },
-                                        { value: 'inactive', label: '已停用' }
-                                    ]}
-                                    value={filters.status}
-                                    onChange={v => setFilters({ ...filters, status: v })}
-                                    style={{ width: '100%' }}
-                                />
-                            </Form.Item>
-                        </Col>
+
                         <Col span={8} style={{ textAlign: 'right' }}>
                             {selectedRowKeys.length > 0 && (
                                 <Space>

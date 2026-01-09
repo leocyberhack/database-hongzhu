@@ -10,7 +10,6 @@ class ChannelBase(BaseModel):
     commission_rate: Optional[float] = None
     parent_id: Optional[int] = None
     attrs: Optional[dict] = None
-    status: str = "active"
 
 class ChannelCreate(ChannelBase):
     pass
@@ -21,7 +20,6 @@ class ChannelUpdate(BaseModel):
     commission_rate: Optional[float] = None
     parent_id: Optional[int] = None
     attrs: Optional[dict] = None
-    status: Optional[str] = None
 
 class ChannelResponse(ChannelBase):
     id: int

@@ -1,4 +1,5 @@
 ﻿from datetime import datetime, timedelta
+from app.utils.time import now_china
 from decimal import Decimal
 from typing import Optional
 
@@ -7,7 +8,7 @@ from sqlalchemy import and_, func, or_, select, update, desc, cast, Date
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import Approval, Channel, Price, PriceHistory, Sku, Product
+from app.models import AuditLog, Approval, Channel, Price, PriceHistory, Sku, Product
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.price import ChannelCreate, ChannelRead, PriceCreate, PriceDecision, PriceRead
 from pydantic import BaseModel
@@ -26,7 +27,7 @@ class PricingSummaryResponse(ListResponse):
 
 router = APIRouter()
 
-EXPIRED_STATUSES = {"expired", "宸插け鏁?}
+EXPIRED_STATUSES = {"expired", "rejected"}
 
 
 # Duplicate channel endpoints removed - use app/api/endpoints/channels.py instead
@@ -119,12 +120,24 @@ async def list_pricing_summary(
     for sku in all_skus:
         allowed = p_map.get(sku.product_id)
         
-        valid_channels = []
-        if allowed is None or len(allowed) == 0:
+        # Normalize allowed_channels to a set of channel IDs (supports list of int or list of dicts with channel_id)
+        allowed_ids = set()
+        if allowed:
+            for a in allowed:
+                if isinstance(a, dict):
+                    cid = a.get("channel_id")
+                    if cid is not None:
+                        allowed_ids.add(int(cid))
+                else:
+                    try:
+                        allowed_ids.add(int(a))
+                    except Exception:
+                        continue
+        
+        if not allowed_ids:
             valid_channels = all_channels
         else:
-            # allowed is list of ints
-            valid_channels = [c for c in all_channels if c.id in allowed]
+            valid_channels = [c for c in all_channels if c.id in allowed_ids]
             
         for ch in valid_channels:
             if channel_id and ch.id != channel_id:
@@ -188,7 +201,7 @@ async def list_price_history(
     db: DbSession,
     _: User = Depends(get_current_user),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=100, ge=1, le=500),
+    page_size: int = Query(default=100, ge=1, le=1000),
     price_id: Optional[int] = Query(default=None),
 ):
     stmt = select(PriceHistory)
@@ -206,7 +219,7 @@ async def list_price_history(
 async def create_price(
     payload: PriceCreate,
     db: DbSession,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles(["admin", "super_admin", "product", "operator", "csr"])),
     ):
     # Instead of blocking conflicts, we should handle them if they are 'active' prices.
     # Logic:
@@ -236,107 +249,173 @@ async def create_price(
     #    Let's relax the constraint: The Calendar Editor sends Day-by-Day or Segments.
     #    If the Calendar Editor sends "Jan 1: 100", and DB has "Jan 1-5: 50", we must update.
     
+    # Check for exact duplicate frame (including expired) to avoid Unique Constraint Violation
+    existing_exact = await db.scalar(
+        select(Price).where(
+            Price.sku_id == payload.sku_id,
+            Price.channel_id == payload.channel_id,
+            Price.start_at == payload.start_at,
+            Price.end_at == payload.end_at
+        )
+    )
+
     # Re-fetch conflicts
-    conflicts = await _find_conflicts(db, payload.sku_id, payload.channel_id, payload.start_at, payload.end_at)
+    conflicts = await _find_conflicts(
+        db, 
+        payload.sku_id, 
+        payload.channel_id, 
+        payload.start_at, 
+        payload.end_at, 
+        exclude_id=existing_exact.id if existing_exact else None
+    )
+
+    # Calculate before/after diff for audit log
+    before_prices_info = []
+    for p in conflicts:
+         before_prices_info.append({
+             "start_at": str(p.start_at),
+             "end_at": str(p.end_at),
+             "price": str(p.sale_price)
+         })
+    if existing_exact:
+        before_prices_info.append({
+             "start_at": str(existing_exact.start_at),
+             "end_at": str(existing_exact.end_at),
+             "price": str(existing_exact.sale_price)
+        })
     
     for c in conflicts:
         # If conflict is PENDING
         if c.status == 'pending':
-             # If user is admin or manager, allow overwrite by rejecting the old pending request
              if user.role in ['admin', 'manager']:
-                 c.status = 'rejected'
-                 # Also update the approval record if possible, but simplest is to mark Price as rejected/expired.
-                 # Actually, Pricing flow usually triggers Approval flow. 
-                 # If we kill the Price, the Approval is orphaned or should be updated.
-                 # Let's just set Price to 'expired' or 'rejected' so it doesn't block.
-                 db.add(c)
-                 
-                 # Optional: Find associated approval and mark rejected?
-                 # This is "nice to have" but for MVP, just clearing the blocking Price is enough.
-                 # The system filters ~Price.status.in_(EXPIRED_STATUSES) so 'rejected' might be safe if added to EXPIRED?
-                 # Let's check EXPIRED_STATUSES.
-                 # In pricing.py line 29: EXPIRED_STATUSES = {"expired", "宸插け鏁?}
-                 # 'rejected' is NOT in EXPIRED_STATUSES?
-                 # If 'rejected' is not in EXPIRED, it might still show up in _find_conflicts?
-                 # _find_conflicts filters: ~Price.status.in_(EXPIRED_STATUSES)
-                 # So if status is 'rejected', it IS returned as conflict?
-                 # Wait. If I set it to 'rejected', and 'rejected' is NOT in EXPIRED_STATUSES, it will STILL block next time?
-                 
-                 # Let's check _find_conflicts query.
-                 # stmt = select(Price).where(..., ~Price.status.in_(EXPIRED_STATUSES), ...)
-                 # So if status is 'pending', it is returned.
-                 # If I change it to 'rejected', will it be returned?
-                 # If 'rejected' is NOT in EXPIRED_STATUSES, it WILL be returned.
-                 # So I must either:
-                 # 1. Add 'rejected' to EXPIRED_STATUSES (global change)
-                 # 2. Set status to 'expired' (since we know that works)
-                 
                  c.status = 'expired'
                  db.add(c)
              else:
-                 raise HTTPException(status_code=400, detail="鏃堕棿鍖洪棿涓庡緟瀹℃牳鐨勪环鏍奸噸鍙狅紝璇峰厛澶勭悊瀹℃牳")
+                 raise HTTPException(status_code=400, detail="Pending price conflicts exist; only admin or manager can override")
         
-        # If conflict is ACTIVE, we auto-archive/adjust it
-        if c.status == 'active':
-            # Case 1: Exact match or Enclosed -> Expire
+        # If conflict is ACTIVE, we adjust it
+        elif c.status == 'active':
+            # Case 1: Exact match or Enclosed (Old inside New) -> Delete (Supersede)
             if c.start_at >= payload.start_at and c.end_at <= payload.end_at:
-                c.status = 'expired'
-                c.end_at = datetime.now().date() 
-                db.add(c)
-            # Case 2: New starts after Old starts, and overlaps tail -> Truncate Old
-            elif c.start_at < payload.start_at and c.end_at >= payload.start_at:
-                c.end_at = payload.start_at - timedelta(days=1)
-                db.add(c)
-            # Case 3: New ends before Old ends, and overlaps head -> Not handled perfectly in MVP
-            pass
-            
-    # Implicitly expire remaining conflicts (safety net)
-    if conflicts:
-         for c in conflicts:
-             # Double check status in case we modified it above in the loop? 
-             # The loop iterators might be stale objects if we modifying them? 
-             # SQLAlchemy identity map handles this usually.
-             if c.status == 'active':
-                 c.status = 'expired' 
-                 db.add(c)
-             # If pending and not admin, we raised exception above.
-             # If pending and admin, we set to expired above.
+                db.delete(c)
 
-    obj = Price(
-        sku_id=payload.sku_id,
-        channel_id=payload.channel_id,
-        sale_price=Decimal(str(payload.sale_price)),
-        cost_price=Decimal(str(payload.cost_price)) if payload.cost_price is not None else None,
-        start_at=payload.start_at,
-        end_at=payload.end_at,
-        status=payload.status or "pending",
-        created_by=payload.created_by or user.username,
-    )
-    db.add(obj)
+            # Case 2: Overlaps Tail (Starts before New, ends inside/after New) -> TRUNCATE END
+            elif c.start_at < payload.start_at:
+                new_end = payload.start_at - timedelta(days=1)
+                # Check if the truncated form collides with an existing record
+                collision = await db.scalar(select(Price).where(
+                    Price.sku_id == c.sku_id,
+                    Price.channel_id == c.channel_id,
+                    Price.start_at == c.start_at,
+                    Price.end_at == new_end
+                ))
+                # If collision exists and it's not the record itself (unlikely if unique constraint)
+                if collision and collision.id != c.id:
+                    db.delete(c) # Superseded/Redundant
+                else:
+                    c.end_at = new_end
+                    db.add(c)
+            
+            # Case 3: Overlaps Head (Starts inside New, ends after New) -> TRUNCATE START
+            elif c.end_at > payload.end_at:
+                new_start = payload.end_at + timedelta(days=1)
+                # Check for collision
+                collision = await db.scalar(select(Price).where(
+                     Price.sku_id == c.sku_id,
+                     Price.channel_id == c.channel_id,
+                     Price.start_at == new_start,
+                     Price.end_at == c.end_at
+                ))
+                if collision and collision.id != c.id:
+                     db.delete(c)
+                else:
+                     c.start_at = new_start
+                     db.add(c)
+
+    if existing_exact:
+        # Reuse/Revive existing record to satisfy unique constraint
+        
+        # Check permission if overriding a pending record
+        if existing_exact.status == 'pending' and user.role not in ['admin', 'super_admin']:
+             raise HTTPException(status_code=400, detail="Pending price exists for this exact date range; only admin can override")
+             
+        obj = existing_exact
+        obj.sale_price = Decimal(str(payload.sale_price))
+        obj.cost_price = Decimal(str(payload.cost_price)) if payload.cost_price is not None else None
+        
+        # Determine status
+        target_status = payload.status or "pending"
+        if user.role not in ["admin", "super_admin"]:
+            target_status = "pending"
+        obj.status = target_status
+        
+        obj.created_by = payload.created_by or user.username
+        # start_at/end_at are already identical
+        
+        db.add(obj)
+    else:
+        # Determine status
+        target_status = payload.status or "pending"
+        if user.role not in ["admin", "super_admin"]:
+            target_status = "pending"
+
+        obj = Price(
+            sku_id=payload.sku_id,
+            channel_id=payload.channel_id,
+            sale_price=Decimal(str(payload.sale_price)),
+            cost_price=Decimal(str(payload.cost_price)) if payload.cost_price is not None else None,
+            start_at=payload.start_at,
+            end_at=payload.end_at,
+            status=target_status,
+            created_by=payload.created_by or user.username,
+        )
+        db.add(obj)
+    
     # Flush to obtain ID before creating the related approval record.
     await db.flush()
-    approval_after_data = {
-        "sku_id": obj.sku_id,
-        "channel_id": obj.channel_id,
-        "sale_price": str(obj.sale_price),
-        "cost_price": str(obj.cost_price) if obj.cost_price is not None else None,
-        "start_at": obj.start_at.isoformat(),
-        "end_at": obj.end_at.isoformat(),
-        "status": obj.status,
-        "created_by": obj.created_by,
-    }
-    approval = Approval(
-        object_type="price",
-        object_id=obj.id,
-        action_type="璋冧环",
-        before_data=None,
-        after_data=approval_after_data,
-        status="pending",
-        applicant=user.username,
-        approver="manager",
-        applied_at=datetime.utcnow(),
+    
+    # Only create approval if status is pending
+    if obj.status == "pending":
+        approval_after_data = {
+            "sku_id": obj.sku_id,
+            "channel_id": obj.channel_id,
+            "sale_price": str(obj.sale_price),
+            "cost_price": str(obj.cost_price) if obj.cost_price is not None else None,
+            "start_at": obj.start_at.isoformat(),
+            "end_at": obj.end_at.isoformat(),
+            "status": obj.status,
+            "created_by": obj.created_by,
+        }
+        approval = Approval(
+            object_type="price",
+            object_id=obj.id,
+            action_type="调价",
+            before_data=None,
+            after_data=approval_after_data,
+            status="pending",
+            applicant=user.username,
+            approver="admin",
+            applied_at=now_china(),
+        )
+        db.add(approval)
+    
+    # Record audit log for price creation
+    audit = AuditLog(
+        table_name="price",
+        record_id=obj.id,
+        operation="CREATE" if not existing_exact else "UPDATE",
+        diff_data={
+            "sku_id": obj.sku_id,
+            "channel_id": obj.channel_id,
+            "date_range": f"{obj.start_at} ~ {obj.end_at}",
+            "set_price": str(obj.sale_price),
+            "before_prices": before_prices_info
+        },
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
     )
-    db.add(approval)
+    db.add(audit)
 
     await db.commit()
     await db.refresh(obj)
@@ -348,15 +427,16 @@ async def decide_price(
     payload: PriceDecision,
     db: DbSession,
     price_id: int = Path(..., ge=1),
-    user: User = Depends(require_roles(["manager"])),
+    user: User = Depends(require_roles(["admin"])),
 ):
     price = await db.get(Price, price_id)
     if not price:
-        raise HTTPException(status_code=404, detail="浠锋牸涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Price not found")
 
     if payload.approve:
         price.status = "active"
-        # 鏃х敓鏁堢増澶辨晥骞舵埅鏂椂闂?        active_prices = await db.scalars(
+        # Expire other active prices for the same SKU and channel
+        active_prices = await db.scalars(
             select(Price).where(
                 Price.sku_id == price.sku_id,
                 Price.channel_id == price.channel_id,
@@ -373,7 +453,7 @@ async def decide_price(
                     before_data={"status": "active"},
                     after_data={"status": "expired", "end_at": ap.end_at.isoformat()},
                     operator=user.username,
-                    operated_at=datetime.utcnow(),
+                    operated_at=now_china(),
                 )
             )
         db.add(
@@ -382,18 +462,35 @@ async def decide_price(
                 before_data=None,
                 after_data={"status": "active"},
                 operator=user.username,
-                operated_at=datetime.utcnow(),
+                operated_at=now_china(),
             )
         )
     else:
         price.status = "rejected"
 
-    # 鏇存柊鐩稿叧瀹℃壒璁板綍
+    # Update related Approval record
     await db.execute(
         update(Approval)
         .where(Approval.object_type == "price", Approval.object_id == price.id, Approval.status == "pending")
-        .values(status="approved" if payload.approve else "rejected", decided_at=datetime.utcnow(), comment=payload.comment or "")
+        .values(status="approved" if payload.approve else "rejected", decided_at=now_china(), comment=payload.comment or "")
     )
+    
+    # Audit Log
+    action_cn = "批准" if payload.approve else "驳回"
+    audit = AuditLog(
+        table_name="price",
+        record_id=price.id,
+        operation="审批决定",
+        diff_data={
+            "description": f"{action_cn}了 价格 调价 申请",
+            "result": "已批准" if payload.approve else "已驳回",
+            "comment": payload.comment
+        },
+        operator=user.username,
+        operated_at=now_china(),
+        source="approval_decision",
+    )
+    db.add(audit)
 
     db.add(price)
     await db.commit()
@@ -424,12 +521,12 @@ async def get_sku_channel_inventory(
     # Get SKU to find product
     sku = await db.get(Sku, sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU 涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="SKU not found")
     
     # Get Product
     product = await db.get(Product, sku.product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="浜у搧涓嶅瓨鍦?)
+        raise HTTPException(status_code=404, detail="Product not found")
     
     # Find channel allocation ratio from product.allowed_channels
     channel_ratio = 0
@@ -441,14 +538,14 @@ async def get_sku_channel_inventory(
     
     # If ratio is 0, return empty inventory
     if channel_ratio <= 0:
-        return {"items": [], "message": "璇ユ笭閬撴湭鍒嗛厤搴撳瓨閰嶉"}
+        return {"items": [], "message": "No inventory allocated for this channel"}
     
     # Get all product resources (with quantities)
     resources_stmt = select(ProductResource).where(ProductResource.product_id == product.id)
     product_resources = list(await db.scalars(resources_stmt))
     
     if not product_resources:
-        return {"items": [], "message": "浜у搧娌℃湁鍏宠仈璧勬簮"}
+        return {"items": [], "message": "Product has no linked resources"}
     
     # Parse date range
     start = datetime.strptime(start_date, "%Y-%m-%d").date()

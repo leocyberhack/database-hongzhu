@@ -31,15 +31,52 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
             ...(options.headers || {}),
         },
     })
+    const text = await res.text()
+
     if (!res.ok) {
-        const text = await res.text()
-        throw new Error(`API ${path} failed: ${res.status} ${text}`)
+        let errMsg = `请求失败 (${res.status})`
+        try {
+            const parsed = JSON.parse(text)
+            if (parsed?.detail) {
+                if (typeof parsed.detail === 'string') {
+                    errMsg = parsed.detail
+                } else if (Array.isArray(parsed.detail)) {
+                    errMsg = parsed.detail.map((d: any) => d?.msg || '').filter(Boolean).join('; ') || errMsg
+                }
+            }
+        } catch {
+            errMsg = text || errMsg
+        }
+        // 简单中英对照映射
+        const map: Record<string, string> = {
+            "POI name already exists": "POI 名称已存在",
+            "Resource name already exists": "资源名称已存在",
+            "Product name already exists": "产品名称已存在",
+            "Supplier name already exists": "供应商名称已存在",
+            "Channel name already exists": "渠道名称已存在",
+            "SKU name already exists on this channel": "该渠道下已有同名 SKU",
+            "SKU not found": "未找到 SKU",
+            "Channel not found": "未找到渠道",
+            "Product not found": "未找到产品",
+            "Supplier not found": "未找到供应商",
+            "Resource not found": "未找到资源",
+            "POI not found": "未找到 POI",
+            "Invalid date format, expected YYYY-MM-DD": "日期格式错误，应为 YYYY-MM-DD",
+            "Inventory record not found": "未找到库存记录",
+            "Channel creation failed": "创建渠道失败",
+            "Update failed": "更新失败",
+            "Channel creation failed, name might be duplicated": "创建渠道失败，可能是名称重复",
+            "Price not found": "未找到价格",
+        }
+        if (map[errMsg]) errMsg = map[errMsg]
+        if (res.status === 401) errMsg = "未登录或登录已过期，请重新登录"
+        throw new Error(errMsg)
     }
-    if (res.status === 204) {
+
+    if (res.status === 204 || text === '') {
         return {} as T
     }
-    const text = await res.text()
-    if (!text) return {} as T
+
     try {
         return JSON.parse(text)
     } catch {

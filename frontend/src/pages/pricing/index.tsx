@@ -23,13 +23,17 @@ export default function PricingPage() {
     const { data } = useData()
     const channels = data?.channels ?? []
     const skus = data?.skus ?? []
+    const products = data?.products ?? []
 
     const [loading, setLoading] = useState(false)
+    const [stockLimitMap, setStockLimitMap] = useState<Record<string, number>>({})
     const [items, setItems] = useState<PricingSummaryItem[]>([])
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
 
     // Filters
     const [filterSku, setFilterSku] = useState<number | null>(null)
     const [filterChannel, setFilterChannel] = useState<number | null>(null)
+    const [filterStatus, setFilterStatus] = useState<string | null>(null)
 
     // Modal / Drawer State
     const [calendarVisible, setCalendarVisible] = useState(false)
@@ -44,9 +48,14 @@ export default function PricingPage() {
             const qs = new URLSearchParams()
             if (filterSku) qs.append('sku_id', String(filterSku))
             if (filterChannel) qs.append('channel_id', String(filterChannel))
+            qs.append('page', '1')
+            qs.append('page_size', '1000') // 拉全量，前端分页
 
             const res = await apiRequest<{ items: PricingSummaryItem[] }>(`/api/pricing/summary?${qs.toString()}`)
-            setItems(res.items)
+            const list = res.items || []
+            const filtered = filterStatus ? list.filter((r) => r.status === filterStatus) : list
+            setItems(filtered)
+            setPagination((prev) => ({ ...prev, current: 1 }))
         } catch (err) {
             console.error(err)
         } finally {
@@ -56,10 +65,57 @@ export default function PricingPage() {
 
     useEffect(() => {
         fetchSummary()
-    }, [filterSku, filterChannel])
+    }, [filterSku, filterChannel, filterStatus])
 
-    const handleOpenCalendar = (record: PricingSummaryItem) => {
+    const fetchStockLimits = async (skuId: number, channelId: number) => {
+        try {
+            const sku = skus.find(s => Number(s.id) === Number(skuId))
+            if (!sku) {
+                setStockLimitMap({})
+                return
+            }
+            const product = products.find(p => String(p.id) === String(sku.product_id))
+            if (!product) {
+                setStockLimitMap({})
+                return
+            }
+
+            // 计算渠道占比（allowed_channels 支持对象/纯ID）
+            let ratio = 100
+            const allowed = (product as any).allowed_channels || []
+            if (Array.isArray(allowed) && allowed.length > 0) {
+                const alloc = allowed.find((a: any) => {
+                    if (typeof a === 'object' && a !== null) {
+                        return String(a.channel_id) === String(channelId)
+                    }
+                    return String(a) === String(channelId)
+                })
+                if (alloc && typeof alloc === 'object' && alloc.stock_ratio !== undefined && alloc.stock_ratio !== null) {
+                    ratio = Number(alloc.stock_ratio)
+                } else if (!alloc) {
+                    // 不在允许列表则视为 0
+                    ratio = 0
+                }
+            }
+
+            const res = await apiRequest<{ items: { date: string, available_qty: number }[] }>(
+                `/api/products/${product.id}/inventory`
+            )
+            const limit: Record<string, number> = {}
+            res.items.forEach(item => {
+                const cap = Math.floor(item.available_qty * (ratio / 100))
+                limit[item.date] = cap
+            })
+            setStockLimitMap(limit)
+        } catch (err) {
+            console.error('fetch stock limits failed', err)
+            setStockLimitMap({})
+        }
+    }
+
+    const handleOpenCalendar = async (record: PricingSummaryItem) => {
         setCurrentRecord(record)
+        await fetchStockLimits(record.sku_id, record.channel_id)
         setCalendarVisible(true)
     }
 
@@ -69,6 +125,7 @@ export default function PricingPage() {
     }
 
     const handleSaveCalendar = async () => {
+        // Disabled in read-only mode
         if (calendarRef.current && currentRecord) {
             await calendarRef.current.saveToBackend(currentRecord.sku_id, currentRecord.channel_id)
             setCalendarVisible(false)
@@ -165,7 +222,7 @@ export default function PricingPage() {
                         icon={<CalendarOutlined />}
                         onClick={() => handleOpenCalendar(record)}
                     >
-                        日历管理
+                        日历查看
                     </Button>
                     <Button
                         size="small"
@@ -213,6 +270,20 @@ export default function PricingPage() {
                             />
                         </Form.Item>
                     </Col>
+                    <Col span={6}>
+                        <Form.Item label="状态" style={{ marginBottom: 0 }}>
+                            <Select
+                                allowClear
+                                placeholder="全部状态"
+                                options={[
+                                    { value: 'active', label: '生效中' },
+                                    { value: 'empty', label: '未上架' },
+                                ]}
+                                value={filterStatus}
+                                onChange={(v) => setFilterStatus(v)}
+                            />
+                        </Form.Item>
+                    </Col>
                     <Col span={12} style={{ textAlign: 'right' }}>
                         <Button icon={<SearchOutlined />} onClick={fetchSummary}>刷新数据</Button>
                     </Col>
@@ -223,24 +294,30 @@ export default function PricingPage() {
                 <Table
                     rowKey={(r) => `${r.sku_id}_${r.channel_id}`}
                     columns={columns}
-                    dataSource={items}
+                    dataSource={items.slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)}
                     loading={loading}
-                    pagination={{ pageSize: 10 }}
-                    onChange={(pagination, filters, sorter) => {
-                        console.log('Table Params:', pagination, filters, sorter);
+                    pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: items.length,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条记录`,
                     }}
+                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
                 />
             </div>
 
             {/* Calendar Modal */}
             <Modal
-                title={`价格日历管理 - ${currentRecord?.sku_name} @ ${currentRecord?.channel_name}`}
+                title={`价格日历查看(只读) - ${currentRecord?.sku_name} @ ${currentRecord?.channel_name}`}
                 open={calendarVisible}
                 onCancel={() => setCalendarVisible(false)}
                 width={1000}
-                onOk={handleSaveCalendar}
-                okText="保存全部更改"
-                cancelText="取消"
+                footer={[
+                    <Button key="close" onClick={() => setCalendarVisible(false)}>
+                        关闭
+                    </Button>
+                ]}
                 destroyOnClose
             >
                 {currentRecord && (
@@ -248,7 +325,8 @@ export default function PricingPage() {
                         ref={calendarRef}
                         skuId={currentRecord.sku_id}
                         channelId={currentRecord.channel_id}
-                        readonlyStock={true}
+                        readOnly={true}
+                        stockLimitData={stockLimitMap}
                     />
                 )}
             </Modal>

@@ -76,7 +76,6 @@ class ResourceRead(ResourceBase, ORMBase):
 
 class SupplierBase(BaseModel):
     supplier_name: str
-    status: Optional[str] = None
     contact_info: Optional[dict] = None
     settlement_info: Optional[dict] = None
     qualification_files: Optional[list[dict]] = None
@@ -117,3 +116,14 @@ class SupplierResourceRead(SupplierResourceBase, ORMBase):
 class SupplierResourceAdjust(BaseModel):
     settlement_price: float
     reason: Optional[str] = None
+
+
+class SupplierResourcePriceHistoryRead(ORMBase):
+    id: int
+    supplier_resource_id: int
+    before_price: Optional[float] = None
+    after_price: Optional[float] = None
+    reason: Optional[str] = None
+    operator: Optional[str] = None
+    operated_at: Optional[datetime] = None
+    approval_id: Optional[int] = None
