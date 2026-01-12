@@ -243,12 +243,22 @@ async def create_resource(
     db.add(obj)
     await db.flush()
     
-    # Record audit log
+    # Record audit log with complete resource data including attrs
+    audit_data = {
+        "resource_name": obj.resource_name,
+        "resource_type": obj.resource_type,
+        "poi_id": obj.poi_id,
+        "status": obj.status
+    }
+    # Include attrs if present (门票/酒店特定字段)
+    if obj.attrs:
+        audit_data["attrs"] = obj.attrs
+    
     audit = AuditLog(
         table_name="resource",
         record_id=obj.id,
         operation="CREATE",
-        diff_data={"resource_name": obj.resource_name, "resource_type": obj.resource_type, "poi_id": obj.poi_id},
+        diff_data=audit_data,
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -276,8 +286,15 @@ async def update_resource(
         if dup:
             raise HTTPException(status_code=400, detail="Resource name already exists")
     
-    # Capture before state
-    before_data = {"resource_name": resource.resource_name, "resource_type": resource.resource_type, "status": resource.status}
+    # Capture before state with all important fields including attrs
+    before_data = {
+        "resource_name": resource.resource_name,
+        "resource_type": resource.resource_type,
+        "status": resource.status,
+        "poi_id": resource.poi_id
+    }
+    if resource.attrs:
+        before_data["attrs"] = resource.attrs
     
     # Validations
     update_data = payload.model_dump(exclude_unset=True)
@@ -294,7 +311,7 @@ async def update_resource(
     for field, value in update_data.items():
         setattr(resource, field, value)
     
-    # Record audit log
+    # Record audit log with complete before/after data
     audit = AuditLog(
         table_name="resource",
         record_id=resource.id,

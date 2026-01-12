@@ -6,6 +6,7 @@ import { apiRequest } from '@/lib/api'
 import type { SKU } from '@/types'
 import SKUCalendarEditor from '@/components/SKUCalendarEditor';
 import type { SKUCalendarEditorRef } from '@/components/SKUCalendarEditor';
+import ResourceDetailsPanel from '@/components/ResourceDetailsPanel'
 
 // SKU状态中文映射
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -628,11 +629,24 @@ export default function SKUListPage() {
                     {/* Product Composition Block */}
                     {selectedProduct && currentProductResources.length > 0 && (
                         <Card size="small" title="产品资源组成" style={{ marginBottom: 24 }}>
+                            <div style={{ marginBottom: 8, color: '#666', fontSize: 12 }}>
+                                💡 点击行左侧箭头可展开查看资源详细信息（门票、酒店、餐饮、交通等特定字段）
+                            </div>
                             <Table
                                 rowKey="id"
                                 dataSource={currentProductResources}
                                 pagination={false}
                                 size="small"
+                                expandable={{
+                                    expandedRowRender: (record) => {
+                                        const resource = resources.find(x => String(x.id) === String(record.resource_id))
+                                        if (!resource) {
+                                            return <div style={{ padding: 16, color: '#999' }}>加载资源信息...</div>
+                                        }
+                                        return <ResourceDetailsPanel resource={resource} />
+                                    },
+                                    rowExpandable: (record) => !!resources.find(x => String(x.id) === String(record.resource_id)),
+                                }}
                                 columns={[
                                     {
                                         title: '资源名称',

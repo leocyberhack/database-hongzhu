@@ -6,6 +6,10 @@ import { apiRequest } from '@/lib/api'
 import type { Resource } from '@/types'
 import SKUCalendarEditor from '@/components/SKUCalendarEditor'
 import type { SKUCalendarEditorRef } from '@/components/SKUCalendarEditor'
+import TicketResourceFields from '@/components/TicketResourceFields'
+import HotelResourceFields from '@/components/HotelResourceFields'
+import DiningResourceFields from '@/components/DiningResourceFields'
+import TransportResourceFields from '@/components/TransportResourceFields'
 
 const RESOURCE_TYPES = ['酒店', '门票', '餐饮', '交通', '组合', '其他']
 
@@ -36,6 +40,8 @@ export default function ResourceListPage() {
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
     const [selectedSupplierId, setSelectedSupplierId] = useState<number | undefined>(undefined)
     const calendarRef = useRef<SKUCalendarEditorRef>(null)
+    // 追踪当前选择的资源类型，用于动态显示字段
+    const [resourceType, setResourceType] = useState<string | null>(null)
 
     // 筛选器状态
     const [filters, setFilters] = useState<FilterState>({
@@ -73,18 +79,24 @@ export default function ResourceListPage() {
     const handleCreateResource = async (values: any) => {
         try {
             // 1. 先创建资源
-            const resourcePayload = {
+            const resourcePayload: any = {
                 poi_id: values.poi_id,
                 resource_name: values.resource_name,
                 resource_type: values.resource_type,
                 status: 'active',
             }
+
+            // 2. 添加特定类型的attrs字段（门票/酒店的详细信息）
+            if (values.attrs) {
+                resourcePayload.attrs = values.attrs
+            }
+
             const newResource = await apiRequest<{ id: string }>('/api/resources', {
                 method: 'POST',
                 body: JSON.stringify(resourcePayload),
             })
 
-            // 2. 再创建供应商-资源绑定关系
+            // 3. 再创建供应商-资源绑定关系
             for (const binding of values.supplier_bindings) {
                 const bindingPayload = {
                     supplier_id: binding.supplier_id,
@@ -101,6 +113,7 @@ export default function ResourceListPage() {
             message.success('资源创建成功，已绑定供应商')
             setCreateModalVisible(false)
             form.resetFields()
+            setResourceType(null) // 重置资源类型
             await refresh()
         } catch (err: any) {
             if (err.message?.includes('duplicate')) {
@@ -115,18 +128,27 @@ export default function ResourceListPage() {
         if (!selectedResource) return
         try {
             // 1. 更新资源基本信息
-            const resourcePayload = {
+            const resourcePayload: any = {
                 poi_id: values.poi_id,
                 resource_name: values.resource_name,
                 resource_type: values.resource_type,
                 status: values.status,
             }
-            if (
+
+            // 添加attrs字段（门票/酒店特定信息）
+            if (values.attrs) {
+                resourcePayload.attrs = values.attrs
+            }
+
+            // 检查资源基本信息或attrs是否有变化
+            const hasBasicChange =
                 selectedResource.poi_id !== resourcePayload.poi_id ||
                 selectedResource.resource_name !== resourcePayload.resource_name ||
                 selectedResource.resource_type !== resourcePayload.resource_type ||
-                selectedResource.status !== resourcePayload.status
-            ) {
+                selectedResource.status !== resourcePayload.status ||
+                JSON.stringify(selectedResource.attrs) !== JSON.stringify(resourcePayload.attrs)
+
+            if (hasBasicChange) {
                 await apiRequest(`/api/resources/${selectedResource.id}`, {
                     method: 'PUT',
                     body: JSON.stringify(resourcePayload)
@@ -183,6 +205,7 @@ export default function ResourceListPage() {
             message.success('资源已更新')
             setEditModalVisible(false)
             setSelectedResource(null)
+            setResourceType(null) // 重置资源类型
             await refresh()
         } catch (err: any) {
             message.error(err.message || '更新失败')
@@ -419,6 +442,8 @@ export default function ResourceListPage() {
                             icon={<EditOutlined />}
                             onClick={() => {
                                 setSelectedResource(record)
+                                // 设置资源类型以显示对应字段
+                                setResourceType(record.resource_type)
                                 // 获取现有供应商绑定信息
                                 const existingBindings = getResourceSuppliers(record.id).map(sr => ({
                                     supplier_id: sr.supplier_id,
@@ -577,9 +602,10 @@ export default function ResourceListPage() {
                 onCancel={() => {
                     setCreateModalVisible(false)
                     form.resetFields()
+                    setResourceType(null) // 重置资源类型
                 }}
                 footer={null}
-                width={600}
+                width={720}
             >
                 {/* ... existing form content ... */}
                 <Form form={form} layout="vertical" onFinish={handleCreateResource}>
@@ -598,8 +624,19 @@ export default function ResourceListPage() {
                         <Select
                             placeholder="选择类型"
                             options={RESOURCE_TYPES.map((t) => ({ value: t, label: t }))}
+                            onChange={(value) => {
+                                setResourceType(value)
+                                // 清除之前的attrs字段
+                                form.setFieldValue('attrs', undefined)
+                            }}
                         />
                     </Form.Item>
+
+                    {/* 根据资源类型动态显示特定字段 */}
+                    {resourceType === '门票' && <TicketResourceFields />}
+                    {resourceType === '酒店' && <HotelResourceFields />}
+                    {resourceType === '餐饮' && <DiningResourceFields />}
+                    {resourceType === '交通' && <TransportResourceFields />}
 
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定 <span style={{ color: 'red' }}>*</span></h4>
@@ -685,9 +722,10 @@ export default function ResourceListPage() {
                     setEditModalVisible(false)
                     setSelectedResource(null)
                     editForm.resetFields()
+                    setResourceType(null) // 重置资源类型
                 }}
                 footer={null}
-                width={600}
+                width={720}
             >
                 <Form form={editForm} layout="vertical" onFinish={handleUpdateResource}>
                     <Form.Item name="poi_id" label="所属POI" rules={[{ required: true, message: '请选择POI' }]}>
@@ -705,11 +743,22 @@ export default function ResourceListPage() {
                         <Select
                             placeholder="选择类型"
                             options={RESOURCE_TYPES.map((t) => ({ value: t, label: t }))}
+                            onChange={(value) => {
+                                setResourceType(value)
+                                // 清除之前的attrs字段
+                                editForm.setFieldValue('attrs', undefined)
+                            }}
                         />
                     </Form.Item>
                     <Form.Item name="status" label="状态" rules={[{ required: true }]}>
                         <Select options={[{ value: 'active', label: '启用' }, { value: 'inactive', label: '停用' }]} />
                     </Form.Item>
+
+                    {/* 根据资源类型动态显示特定字段 */}
+                    {resourceType === '门票' && <TicketResourceFields />}
+                    {resourceType === '酒店' && <HotelResourceFields />}
+                    {resourceType === '餐饮' && <DiningResourceFields />}
+                    {resourceType === '交通' && <TransportResourceFields />}
 
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定</h4>

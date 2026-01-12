@@ -1,7 +1,11 @@
 from datetime import datetime, date
 from typing import Optional, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# Import resource type-specific attrs schemas for reference
+# These define the structure of the 'attrs' JSONB field for different resource types
+from app.schemas.resource_attrs import TicketAttrs, HotelAttrs, GenericAttrs
 
 
 class ORMBase(BaseModel):
@@ -52,7 +56,11 @@ class ResourceBase(BaseModel):
     poi_id: int
     resource_name: str
     resource_type: str
-    attrs: Optional[dict] = None
+    # attrs should follow the schema of the corresponding resource_type:
+    # - "门票" -> TicketAttrs
+    # - "酒店" -> HotelAttrs
+    # - others -> GenericAttrs or custom dict
+    attrs: Optional[dict] = Field(None, description="Resource type-specific attributes (JSONB)")
     status: Optional[str] = None
 
 

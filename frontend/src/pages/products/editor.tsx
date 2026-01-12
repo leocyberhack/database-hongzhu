@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'
 import type { Resource, Product, Supplier, SupplierResource } from '@/types'
 import ProductStockPreviewCalendar from '@/components/ProductStockPreviewCalendar'
+import ResourceDetailsPanel from '@/components/ResourceDetailsPanel'
 
 // const { Option } = Select
 // const { TextArea } = Input
@@ -657,12 +658,25 @@ export default function ProductEditorPage() {
                             </Form.Item>
 
                             <Divider>资源组合</Divider>
+                            <div style={{ marginBottom: 8, color: '#666', fontSize: 12 }}>
+                                💡 点击行左侧箭头可展开查看资源详细信息（门票、酒店等特定字段）
+                            </div>
 
                             <Table
                                 rowKey="key"
                                 columns={itemColumns}
                                 dataSource={items}
                                 pagination={false}
+                                expandable={{
+                                    expandedRowRender: (record: SelectedResourceItem) => {
+                                        const resource = resourceMap[record.resource_id]
+                                        if (!resource) {
+                                            return <div style={{ padding: 16, color: '#999' }}>加载资源信息...</div>
+                                        }
+                                        return <ResourceDetailsPanel resource={resource} />
+                                    },
+                                    rowExpandable: (record) => !!resourceMap[record.resource_id],
+                                }}
                                 footer={() => !isReadOnly ? (
                                     <Button type="dashed" block icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
                                         添加资源
