@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Table, Button, Space, Modal, Form, Input, Popconfirm, Tag, message, Tooltip, Select } from 'antd'
+import { Table, Button, Space, Modal, Form, Input, Popconfirm, Tag, message, Tooltip } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
@@ -26,7 +26,7 @@ export default function ProductCategoryPage() {
             } else {
                 await apiRequest('/api/product-categories', {
                     method: 'POST',
-                    body: JSON.stringify({ ...values, status: 'active' }) // Default status
+                    body: JSON.stringify(values)
                 })
                 message.success('分类已创建')
             }
@@ -72,16 +72,7 @@ export default function ProductCategoryPage() {
             dataIndex: 'description',
             key: 'description',
         },
-        {
-            title: '状态',
-            dataIndex: 'status',
-            key: 'status',
-            render: (text: string) => (
-                <Tag color={text === 'active' ? 'green' : 'red'}>
-                    {text === 'active' ? '启用' : '停用'}
-                </Tag>
-            )
-        },
+
         {
             title: '关联产品数',
             key: 'count',
@@ -174,16 +165,7 @@ export default function ProductCategoryPage() {
                     >
                         <Input.TextArea />
                     </Form.Item>
-                    <Form.Item
-                        name="status"
-                        label="状态"
-                        initialValue="active"
-                    >
-                        <Select>
-                            <Select.Option value="active">启用</Select.Option>
-                            <Select.Option value="inactive">停用</Select.Option>
-                        </Select>
-                    </Form.Item>
+
                     <Form.Item>
                         <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
                             <Button onClick={() => setIsModalVisible(false)}>取消</Button>

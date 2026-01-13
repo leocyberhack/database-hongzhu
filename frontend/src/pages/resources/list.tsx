@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tag, Drawer, Descriptions, Card, Checkbox, Row, Col, Popconfirm, Tooltip } from 'antd'
-import { CalendarOutlined, PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
+import { CalendarOutlined, PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
 import type { Resource } from '@/types'
@@ -10,6 +10,7 @@ import TicketResourceFields from '@/components/TicketResourceFields'
 import HotelResourceFields from '@/components/HotelResourceFields'
 import DiningResourceFields from '@/components/DiningResourceFields'
 import TransportResourceFields from '@/components/TransportResourceFields'
+import ImportModal from './ImportModal'
 
 const RESOURCE_TYPES = ['酒店', '门票', '餐饮', '交通', '组合', '其他']
 
@@ -40,6 +41,7 @@ export default function ResourceListPage() {
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
     const [selectedSupplierId, setSelectedSupplierId] = useState<number | undefined>(undefined)
     const calendarRef = useRef<SKUCalendarEditorRef>(null)
+    const [importModalVisible, setImportModalVisible] = useState(false)
     // 追踪当前选择的资源类型，用于动态显示字段
     const [resourceType, setResourceType] = useState<string | null>(null)
 
@@ -491,9 +493,14 @@ export default function ResourceListPage() {
                     <h1 className="page-title">资源管理</h1>
                     <p className="page-subtitle">管理所有资源，创建资源时必须绑定供应商</p>
                 </div>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
-                    新建资源
-                </Button>
+                <Space>
+                    <Button icon={<UploadOutlined />} onClick={() => setImportModalVisible(true)}>
+                        批量导入
+                    </Button>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
+                        新建资源
+                    </Button>
+                </Space>
             </div>
 
             {/* 高级筛选器 */}
@@ -713,6 +720,14 @@ export default function ResourceListPage() {
                     </Form.Item>
                 </Form>
             </Modal>
+
+            <ImportModal
+                visible={importModalVisible}
+                onCancel={() => setImportModalVisible(false)}
+                onSuccess={() => {
+                    refresh()
+                }}
+            />
 
             {/* 编辑资源Modal */}
             <Modal
@@ -963,6 +978,6 @@ export default function ResourceListPage() {
                     </>
                 )}
             </Drawer>
-        </div>
+        </div >
     )
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm, InputNumber, Tooltip } from 'antd'
+import { Table, Button, Space, Modal, Form, Input, Select, message, Popconfirm, InputNumber, Tooltip } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
@@ -83,14 +83,7 @@ export default function ChannelsPage() {
                 return `${(numValue * 100).toFixed(2)}%`;
             }
         },
-        {
-            title: '状态',
-            dataIndex: 'status',
-            render: (v: string) => {
-                const map: any = { active: '启用', inactive: '停用' }
-                return <Tag color={v === 'active' ? 'green' : 'gray'}>{map[v] || v}</Tag>
-            }
-        },
+
         {
             title: '操作',
             render: (_: any, record: Channel) => {
@@ -145,7 +138,7 @@ export default function ChannelsPage() {
     // Mix in pending creations from approvals
     const pendingChannels: Channel[] = (data?.approvals || [])
         .filter(a => a.object_type === 'channel' && a.action_type === 'create' && a.status === 'pending')
-        .map((a, idx) => ({
+        .map((a) => ({
             id: `pending_${a.id}`, // Virtual ID
             channel_name: a.after_data?.channel_name || '待审批渠道',
             channel_type: a.after_data?.channel_type || '-',
@@ -218,14 +211,7 @@ export default function ChannelsPage() {
                     <Form.Item name="commission_rate" label="渠道费百分比 (0.05 = 5%)">
                         <InputNumber style={{ width: '100%' }} step="0.0001" placeholder="例如：0.05" />
                     </Form.Item>
-                    <Form.Item name="status" label="状态" initialValue="active">
-                        <Select
-                            options={[
-                                { value: 'active', label: '启用' },
-                                { value: 'inactive', label: '停用' },
-                            ]}
-                        />
-                    </Form.Item>
+
                     <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
                         <Space style={{ float: 'right' }}>
                             <Button onClick={() => {

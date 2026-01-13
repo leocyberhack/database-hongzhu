@@ -67,7 +67,7 @@ async def create_product_category(
         table_name="product_category",
         record_id=cat.id,
         operation="CREATE",
-        diff_data={"name": cat.name, "description": cat.description, "status": cat.status},
+        diff_data={"name": cat.name, "description": cat.description},
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -91,18 +91,17 @@ async def update_product_category(
         raise HTTPException(status_code=404, detail="Category not found")
     
     # Capture before state
-    before_data = {"name": cat.name, "description": cat.description, "status": cat.status}
+    before_data = {"name": cat.name, "description": cat.description}
     
     cat.name = payload.name
     cat.description = payload.description
-    cat.status = payload.status
     
     # Record audit log
     audit = AuditLog(
         table_name="product_category",
         record_id=cat.id,
         operation="UPDATE",
-        diff_data={"before": before_data, "after": {"name": payload.name, "description": payload.description, "status": payload.status}},
+        diff_data={"before": before_data, "after": {"name": payload.name, "description": payload.description}},
         operator=user.username,
         operated_at=now_china(),
         source="web",

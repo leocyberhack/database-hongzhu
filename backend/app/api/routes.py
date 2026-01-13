@@ -38,3 +38,7 @@ api_router.include_router(order_status.router, tags=["order-status-history"])
 api_router.include_router(sku_channels.router, prefix="/sku_channels", tags=["sku-channel"])
 api_router.include_router(channels.router, prefix="/channels", tags=["channel"])
 api_router.include_router(skus.router, prefix="/skus", tags=["sku"])
+
+# Import resources import router
+from app.api.endpoints import resources_import
+api_router.include_router(resources_import.router, prefix="/resources", tags=["resource-import"])

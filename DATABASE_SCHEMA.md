@@ -71,30 +71,93 @@
 
 #### `attrs` 字段结构说明 (JSONB)
 
-**门票 (Ticket)**
-- `ticket_type`: 票种 (成人/儿童等)
-- `entrance_times`: 入园次数
-- `age_limit`: { min: int, max: int } 年龄限制
-- `play_duration`: 游玩时间(小时)
-- `check_in_time/check_out_time`: 入园/退园时间
+Resource表的`attrs`字段根据`resource_type`存储不同类型资源的特定属性。所有字段均为可选(Optional)。
 
-**酒店 (Hotel)**
-- `room_type`: 房型
-- `bed_type`: 床型
-- `star_rating`: 星级
-- `check_in_time/check_out_time`: 入住/退房时间
-- `breakfast_included`: 含早 (bool)
-- `special_settlement_rules`: 特殊结算规则
+#### 门票资源 (Ticket) - 共20个字段
 
-**餐饮 (Dining)**
-- `meal_types`: 餐饮类型列表 (早餐, 午餐等)
-- `restaurant_name`: 餐厅名称
-- `opening_time`: 营业时间
+| 字段名 | 类型 | 中文说明 | 示例/备注 |
+| :--- | :--- | :--- | :--- |
+| ticket_type | String(枚举) | 票种 | 成人票/儿童票/学生票/老人票/双人票 |
+| address | String | 地址 | 门票使用地址 |
+| entrance_times | String | 入园次数 | "unlimited"或具体次数 |
+| age_limit | Object | 年龄限制 | {"min": 0, "max": 65} |
+| includes | String | 包含内容 | 门票包含的项目 |
+| excludes | String | 不包含内容 | 门票不包含的项目 |
+| earliest_entry_time | String | 最早入园时间 | 格式：HH:MM，如"08:00" |
+| latest_entry_time | String | 最晚入园时间 | 格式：HH:MM，如"18:00" |
+| advance_booking_days | Integer | 提前预定天数 | ≥0 |
+| advance_booking_time | Object | 提前预定时间 | {"hours": 2, "minutes": 30} |
+| phone | String | 联系电话 | |
+| description | String | 详细介绍 | |
+| pickup_location | String | 取票地址 | |
+| available_after_issue | String | 出票后可用时间 | 如"立即可用"/"24小时后可用" |
+| required_traveler_info | Array | 所需出行人信息 | ["身份证", "手机号", "姓名"] |
+| voucher_type | Array | 凭证类型 | ["身份证", "二维码", "手机号"] |
+| purchase_limit | String | 限购规则 | |
+| refund_policy | String | 退票规则 | |
+| play_duration | Float | 游玩时间（小时） | ≥0，如3.5表示3.5小时 |
+| additional_notes | String | 补充说明 | |
 
-**交通 (Transport)**
-- `transport_type`: 交通类型 (大巴/专车等)
-- `departure/destination`: 起终点
-- `max_seats`: 座位数
+#### 酒店资源 (Hotel) - 共24个字段
+
+| 字段名 | 类型 | 中文说明 | 示例/备注 |
+| :--- | :--- | :--- | :--- |
+| room_type | String(枚举) | 房型 | 标准/行政/豪华/套房 |
+| bed_type | String(枚举) | 床型 | 大床/双床/亲子 |
+| hotel_type | String(枚举) | 酒店类型 | 经济型/豪华型 |
+| phone | String | 联系电话 | |
+| address | String | 详细地址 | |
+| max_occupancy | Integer | 最大入住人数 | ≥1 |
+| breakfast_included | Boolean | 是否含早餐 | true/false |
+| star_rating | String(枚举) | 酒店星级 | 五星/四星/三星/无 |
+| cancellation_policy | String | 取消/退款政策 | |
+| purchase_limit | String | 限购规则 | |
+| required_traveler_info | Array | 所需出行人信息 | ["身份证", "手机号", "姓名"] |
+| description | String | 详细介绍 | |
+| check_in_time | String | 最早入住时间 | 格式：HH:MM，如"14:00" |
+| check_out_time | String | 最晚退房时间 | 格式：HH:MM，如"12:00" |
+| advance_booking_days | Integer | 提前预定天数 | ≥0 |
+| parking | String(枚举) | 停车场 | 无/免费/付费 |
+| has_pickup_service | Boolean | 接机/接站服务 | true/false |
+| has_24h_reception | Boolean | 24小时前台 | true/false |
+| has_luggage_storage | Boolean | 行李寄存 | true/false |
+| has_restaurant | Boolean | 有餐厅 | true/false |
+| extra_services | String | 其他额外服务 | |
+| area | Float | 面积（平米） | ≥0 |
+| special_settlement_rules | String | 特殊结算规则 | |
+| additional_notes | String | 补充说明 | |
+
+#### 餐饮资源 (Dining) - 共9个字段
+
+| 字段名 | 类型 | 中文说明 | 示例/备注 |
+| :--- | :--- | :--- | :--- |
+| meal_types | Array | 餐饮类型（多选） | ["早餐", "午餐", "晚餐"] |
+| dining_category | String(枚举) | 餐饮分类 | 正餐/小吃 |
+| restaurant_name | String | 餐厅名称 | |
+| restaurant_address | String | 餐厅地址 | |
+| phone | String | 联系电话 | |
+| opening_time | String | 营业开始时间 | 格式：HH:MM，如"10:00" |
+| closing_time | String | 营业结束时间 | 格式：HH:MM，如"22:00" |
+| reservation_required | Boolean | 是否需要预定 | true/false |
+| additional_notes | String | 补充说明 | |
+
+#### 交通资源 (Transport) - 共6个字段
+
+| 字段名 | 类型 | 中文说明 | 示例/备注 |
+| :--- | :--- | :--- | :--- |
+| transport_type | String(枚举) | 交通类型 | 大巴/商务车/轿车 |
+| departure | String | 起点 | |
+| destination | String | 终点 | |
+| max_seats | Integer | 最大座位数 | ≥1 |
+| duration | String | 行程时长 | 如"2小时30分钟" |
+| additional_notes | String | 补充说明 | |
+
+#### 通用资源 (Generic) - 用于组合等其他类型
+
+| 字段名 | 类型 | 中文说明 | 示例/备注 |
+| :--- | :--- | :--- | :--- |
+| notes | String | 通用备注 | |
+| extra | Object | 其他扩展字段 | 保持灵活性的自由字段 |
 
 ### 2.3 供应商表 (Supplier)
 表名: `supplier`
