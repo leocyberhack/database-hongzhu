@@ -11,15 +11,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "user",
-        sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("username", sa.String(), nullable=False, unique=True),
-        sa.Column("password_hash", sa.String(), nullable=False),
-        sa.Column("role", sa.String(), nullable=False, server_default="guest"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-    )
+    # User table already created in 20250101_0001_initial.py
+    # This migration is now a no-op to avoid duplicate table error
+    pass
 
 
 def downgrade() -> None:
-    op.drop_table("user")
+    # No-op since we didn't create anything
+    pass
