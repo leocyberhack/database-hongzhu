@@ -1,6 +1,6 @@
 import type React from 'react'
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
-import { apiRequest, storeAuth, clearAuth, getAuthUser, getToken } from '../lib/api'
+import { apiRequest, storeAuth, clearAuth, getAuthUser, getToken } from '@/lib/api'
 
 interface User {
     username: string

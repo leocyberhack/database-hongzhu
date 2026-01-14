@@ -2,7 +2,7 @@ import type React from 'react'
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { message } from 'antd'
 import type { MockData } from '../types'
-import { apiRequest } from '../lib/api'
+import { apiRequest } from '@/lib/api'
 import { useAuth } from './AuthContext'
 
 type MockDataKey = keyof MockData
