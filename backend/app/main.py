@@ -23,6 +23,7 @@ ALLOWED_ORIGINS = [
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    print(f"Connecting to DB: user={settings.db_user} host={settings.db_host} port={settings.db_port} db={settings.db_name}")
     app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
     
     # Allow local front-end dev server to call the API.
