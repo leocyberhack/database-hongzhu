@@ -38,6 +38,9 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def set_operator_context(request: Request, call_next):
+        if request.method == "OPTIONS":
+            return await call_next(request)
+            
         username = extract_operator_from_headers(request.headers)
         current_operator.set(username)
         response = await call_next(request)
