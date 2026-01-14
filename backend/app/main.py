@@ -29,7 +29,7 @@ def create_app() -> FastAPI:
     # 注意：CORS 中间件必须在其他中间件之前添加
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
