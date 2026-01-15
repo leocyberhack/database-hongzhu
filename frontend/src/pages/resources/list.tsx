@@ -10,6 +10,7 @@ import TicketResourceFields from '@/components/TicketResourceFields'
 import HotelResourceFields from '@/components/HotelResourceFields'
 import DiningResourceFields from '@/components/DiningResourceFields'
 import TransportResourceFields from '@/components/TransportResourceFields'
+import CombinedResourceFields from '@/components/CombinedResourceFields'
 import ImportModal from './ImportModal'
 
 const RESOURCE_TYPES = ['酒店', '门票', '餐饮', '交通', '组合', '其他']
@@ -639,11 +640,11 @@ export default function ResourceListPage() {
                         />
                     </Form.Item>
 
-                    {/* 根据资源类型动态显示特定字段 */}
                     {resourceType === '门票' && <TicketResourceFields />}
                     {resourceType === '酒店' && <HotelResourceFields />}
                     {resourceType === '餐饮' && <DiningResourceFields />}
                     {resourceType === '交通' && <TransportResourceFields />}
+                    {resourceType === '组合' && <CombinedResourceFields form={form} />}
 
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定 <span style={{ color: 'red' }}>*</span></h4>
@@ -774,6 +775,7 @@ export default function ResourceListPage() {
                     {resourceType === '酒店' && <HotelResourceFields />}
                     {resourceType === '餐饮' && <DiningResourceFields />}
                     {resourceType === '交通' && <TransportResourceFields />}
+                    {resourceType === '组合' && <CombinedResourceFields form={editForm} />}
 
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定</h4>

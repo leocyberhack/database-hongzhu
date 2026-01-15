@@ -3,14 +3,14 @@ import dayjs from 'dayjs'
 
 const { TextArea } = Input
 
-export default function DiningResourceFields() {
+export default function DiningResourceFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
             <h4 style={{ marginBottom: 16, color: '#52c41a' }}>🍽️ 餐饮特定信息</h4>
 
             {/* 1. 餐饮类型（多选） */}
             <Form.Item
-                name={['attrs', 'meal_types']}
+                name={[...prefix, 'meal_types']}
                 label="餐饮类型"
                 rules={[{ required: true, message: '请选择餐饮类型' }]}
             >
@@ -23,7 +23,7 @@ export default function DiningResourceFields() {
 
             {/* 2. 正餐 or 小吃 */}
             <Form.Item
-                name={['attrs', 'dining_category']}
+                name={[...prefix, 'dining_category']}
                 label="餐饮分类"
                 rules={[{ required: true, message: '请选择餐饮分类' }]}
             >
@@ -35,7 +35,7 @@ export default function DiningResourceFields() {
 
             {/* 3. 餐厅名称 */}
             <Form.Item
-                name={['attrs', 'restaurant_name']}
+                name={[...prefix, 'restaurant_name']}
                 label="餐厅名称"
                 rules={[{ required: true, message: '请输入餐厅名称' }]}
             >
@@ -44,7 +44,7 @@ export default function DiningResourceFields() {
 
             {/* 4. 餐厅地址 */}
             <Form.Item
-                name={['attrs', 'restaurant_address']}
+                name={[...prefix, 'restaurant_address']}
                 label="餐厅地址"
                 rules={[{ required: true, message: '请输入餐厅地址' }]}
             >
@@ -53,7 +53,7 @@ export default function DiningResourceFields() {
 
             {/* 5. 电话 */}
             <Form.Item
-                name={['attrs', 'phone']}
+                name={[...prefix, 'phone']}
                 label="联系电话"
             >
                 <Input placeholder="餐厅联系电话（可选）" />
@@ -64,7 +64,7 @@ export default function DiningResourceFields() {
                 <div style={{ marginBottom: 8 }}>营业时间</div>
                 <Input.Group compact>
                     <Form.Item
-                        name={['attrs', 'opening_time']}
+                        name={[...prefix, 'opening_time']}
                         noStyle
                         rules={[{ required: true, message: '营业开始时间必填' }]}
                         getValueFromEvent={(time) => time ? dayjs(time).format('HH:mm') : null}
@@ -74,7 +74,7 @@ export default function DiningResourceFields() {
                     </Form.Item>
                     <span style={{ display: 'inline-block', width: '4%', textAlign: 'center', lineHeight: '32px' }}>-</span>
                     <Form.Item
-                        name={['attrs', 'closing_time']}
+                        name={[...prefix, 'closing_time']}
                         noStyle
                         rules={[{ required: true, message: '营业结束时间必填' }]}
                         getValueFromEvent={(time) => time ? dayjs(time).format('HH:mm') : null}
@@ -87,7 +87,7 @@ export default function DiningResourceFields() {
 
             {/* 7. 是否需要预定 */}
             <Form.Item
-                name={['attrs', 'reservation_required']}
+                name={[...prefix, 'reservation_required']}
                 label="是否需要预定"
                 valuePropName="checked"
             >
@@ -96,7 +96,7 @@ export default function DiningResourceFields() {
 
             {/* 8. 补充说明 */}
             <Form.Item
-                name={['attrs', 'additional_notes']}
+                name={[...prefix, 'additional_notes']}
                 label="补充说明"
             >
                 <TextArea rows={3} placeholder="其他需要说明的内容（可选）" />

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -16,14 +17,23 @@ from urllib.parse import quote
 @router.get("/template", response_class=StreamingResponse)
 async def download_resource_template(
     resource_type: str,
+    sub_types: Optional[str] = Query(None, description="Comma-separated list of included types for combined resource"),
     user: User = Depends(require_roles(["admin", "super_admin", "product"]))
 ):
     """
     下载资源导入Excel模板
     """
     try:
-        excel_bytes = generate_excel_template(resource_type)
-        filename = f"{resource_type}_import_template.xlsx"
+        excel_bytes = generate_excel_template(resource_type, sub_types)
+        
+        filename = f"{resource_type}"
+        if resource_type == "组合" and sub_types:
+            # 文件名中加入组合类型，如 "组合(酒店,门票)_import_template.xlsx"
+            # 替换逗号为下划线或加号，避免某些文件系统问题，这里用 + 号连接比较清晰
+            safe_sub = sub_types.replace(",", "+").replace("，", "+")
+            filename += f"({safe_sub})"
+            
+        filename += "_import_template.xlsx"
         # 使用 RFC 5987 标准格式处理中文文件名，避免 latin-1 编码错误
         encoded_filename = quote(filename)
         
@@ -42,6 +52,7 @@ import io
 async def import_resources(
     file: UploadFile = File(...),
     resource_type: str = Form(...),
+    sub_types: Optional[str] = Form(None),
     db: DbSession = None,  # Will be injected
     user: User = Depends(require_roles(["admin", "super_admin", "product"]))
 ):
@@ -56,7 +67,7 @@ async def import_resources(
     try:
         # 1. 解析 Excel 数据
         # 这一步可能会抛出 ValueError，如果是格式错误
-        data_list = parse_excel_data(content, resource_type)
+        data_list = parse_excel_data(content, resource_type, sub_types)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

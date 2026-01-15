@@ -2,14 +2,14 @@ import { Form, Input, Select, InputNumber } from 'antd'
 
 const { TextArea } = Input
 
-export default function TransportResourceFields() {
+export default function TransportResourceFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#e6f7ff', borderRadius: 8, border: '1px solid #91d5ff' }}>
             <h4 style={{ marginBottom: 16, color: '#1890ff' }}>🚌 交通特定信息</h4>
 
             {/* 1. 交通类型 */}
             <Form.Item
-                name={['attrs', 'transport_type']}
+                name={[...prefix, 'transport_type']}
                 label="交通类型"
                 rules={[{ required: true, message: '请选择交通类型' }]}
             >
@@ -22,7 +22,7 @@ export default function TransportResourceFields() {
 
             {/* 2. 起点 */}
             <Form.Item
-                name={['attrs', 'departure']}
+                name={[...prefix, 'departure']}
                 label="起点"
                 rules={[{ required: true, message: '请输入起点' }]}
             >
@@ -31,7 +31,7 @@ export default function TransportResourceFields() {
 
             {/* 3. 终点 */}
             <Form.Item
-                name={['attrs', 'destination']}
+                name={[...prefix, 'destination']}
                 label="终点"
                 rules={[{ required: true, message: '请输入终点' }]}
             >
@@ -40,7 +40,7 @@ export default function TransportResourceFields() {
 
             {/* 4. 最大座位数 */}
             <Form.Item
-                name={['attrs', 'max_seats']}
+                name={[...prefix, 'max_seats']}
                 label="最大座位数"
                 rules={[{ required: true, message: '请输入最大座位数' }]}
             >
@@ -49,7 +49,7 @@ export default function TransportResourceFields() {
 
             {/* 5. 行程时长 */}
             <Form.Item
-                name={['attrs', 'duration']}
+                name={[...prefix, 'duration']}
                 label="行程时长"
                 rules={[{ required: true, message: '请输入行程时长' }]}
             >
@@ -58,7 +58,7 @@ export default function TransportResourceFields() {
 
             {/* 6. 补充说明 */}
             <Form.Item
-                name={['attrs', 'additional_notes']}
+                name={[...prefix, 'additional_notes']}
                 label="补充说明"
             >
                 <TextArea rows={3} placeholder="其他需要说明的内容（可选）" />

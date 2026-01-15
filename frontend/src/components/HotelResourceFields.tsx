@@ -3,14 +3,14 @@ import dayjs from 'dayjs'
 
 const { TextArea } = Input
 
-export default function HotelResourceFields() {
+export default function HotelResourceFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#fff7e6', borderRadius: 8, border: '1px solid #ffd591' }}>
             <h4 style={{ marginBottom: 16, color: '#fa8c16' }}>🏨 酒店特定信息</h4>
 
             {/* 1. 房型 */}
             <Form.Item
-                name={['attrs', 'room_type']}
+                name={[...prefix, 'room_type']}
                 label="房型"
                 rules={[{ required: true, message: '请选择房型' }]}
             >
@@ -24,7 +24,7 @@ export default function HotelResourceFields() {
 
             {/* 2. 床型 */}
             <Form.Item
-                name={['attrs', 'bed_type']}
+                name={[...prefix, 'bed_type']}
                 label="床型"
                 rules={[{ required: true, message: '请选择床型' }]}
             >
@@ -37,7 +37,7 @@ export default function HotelResourceFields() {
 
             {/* 3. 酒店类型 */}
             <Form.Item
-                name={['attrs', 'hotel_type']}
+                name={[...prefix, 'hotel_type']}
                 label="酒店类型"
                 rules={[{ required: true, message: '请选择酒店类型' }]}
             >
@@ -49,7 +49,7 @@ export default function HotelResourceFields() {
 
             {/* 4. 电话 */}
             <Form.Item
-                name={['attrs', 'phone']}
+                name={[...prefix, 'phone']}
                 label="联系电话"
             >
                 <Input placeholder="酒店联系电话（可选）" />
@@ -57,7 +57,7 @@ export default function HotelResourceFields() {
 
             {/* 5. 详细地址 */}
             <Form.Item
-                name={['attrs', 'address']}
+                name={[...prefix, 'address']}
                 label="详细地址"
                 rules={[{ required: true, message: '请输入详细地址' }]}
             >
@@ -66,7 +66,7 @@ export default function HotelResourceFields() {
 
             {/* 6. 最大入住人数 */}
             <Form.Item
-                name={['attrs', 'max_occupancy']}
+                name={[...prefix, 'max_occupancy']}
                 label="最大入住人数"
                 rules={[{ required: true, message: '请输入最大入住人数' }]}
             >
@@ -75,7 +75,7 @@ export default function HotelResourceFields() {
 
             {/* 7. 是否含早餐 */}
             <Form.Item
-                name={['attrs', 'breakfast_included']}
+                name={[...prefix, 'breakfast_included']}
                 label="是否含早餐"
                 valuePropName="checked"
             >
@@ -84,7 +84,7 @@ export default function HotelResourceFields() {
 
             {/* 8. 酒店星级 */}
             <Form.Item
-                name={['attrs', 'star_rating']}
+                name={[...prefix, 'star_rating']}
                 label="酒店星级"
                 rules={[{ required: true, message: '请选择酒店星级' }]}
             >
@@ -98,7 +98,7 @@ export default function HotelResourceFields() {
 
             {/* 9. 取消/退款政策 */}
             <Form.Item
-                name={['attrs', 'cancellation_policy']}
+                name={[...prefix, 'cancellation_policy']}
                 label="取消/退款政策"
             >
                 <TextArea rows={2} placeholder="例如：入住前24小时可免费取消" />
@@ -106,7 +106,7 @@ export default function HotelResourceFields() {
 
             {/* 10. 限购规则 */}
             <Form.Item
-                name={['attrs', 'purchase_limit']}
+                name={[...prefix, 'purchase_limit']}
                 label="限购规则"
             >
                 <Input placeholder="例如：每个身份证限订3间" />
@@ -114,7 +114,7 @@ export default function HotelResourceFields() {
 
             {/* 11. 所需出行人信息 */}
             <Form.Item
-                name={['attrs', 'required_traveler_info']}
+                name={[...prefix, 'required_traveler_info']}
                 label="所需出行人信息"
                 rules={[{ required: true, message: '请选择所需信息' }]}
             >
@@ -127,7 +127,7 @@ export default function HotelResourceFields() {
 
             {/* 12. 详细介绍 */}
             <Form.Item
-                name={['attrs', 'description']}
+                name={[...prefix, 'description']}
                 label="详细介绍"
             >
                 <TextArea rows={3} placeholder="酒店详细介绍（可选）" />
@@ -138,7 +138,7 @@ export default function HotelResourceFields() {
                 <div style={{ marginBottom: 8 }}>入住/退房时间</div>
                 <Input.Group compact>
                     <Form.Item
-                        name={['attrs', 'check_in_time']}
+                        name={[...prefix, 'check_in_time']}
                         noStyle
                         rules={[{ required: true, message: '最早入住时间必填' }]}
                         getValueFromEvent={(time) => time ? dayjs(time).format('HH:mm') : null}
@@ -148,7 +148,7 @@ export default function HotelResourceFields() {
                     </Form.Item>
                     <span style={{ display: 'inline-block', width: '4%', textAlign: 'center', lineHeight: '32px' }}>-</span>
                     <Form.Item
-                        name={['attrs', 'check_out_time']}
+                        name={[...prefix, 'check_out_time']}
                         noStyle
                         rules={[{ required: true, message: '最晚退房时间必填' }]}
                         getValueFromEvent={(time) => time ? dayjs(time).format('HH:mm') : null}
@@ -161,7 +161,7 @@ export default function HotelResourceFields() {
 
             {/* 15. 提前预定天数 */}
             <Form.Item
-                name={['attrs', 'advance_booking_days']}
+                name={[...prefix, 'advance_booking_days']}
                 label="需提前预定天数"
                 rules={[{ required: true, message: '请输入提前预定天数' }]}
             >
@@ -170,7 +170,7 @@ export default function HotelResourceFields() {
 
             {/* 16. 停车场 */}
             <Form.Item
-                name={['attrs', 'parking']}
+                name={[...prefix, 'parking']}
                 label="停车场"
                 rules={[{ required: true, message: '请选择停车场情况' }]}
             >
@@ -186,28 +186,28 @@ export default function HotelResourceFields() {
                 <div style={{ marginBottom: 8, fontWeight: 500 }}>酒店服务设施</div>
                 <div style={{ padding: '12px', background: '#fafafa', borderRadius: 4 }}>
                     <Form.Item
-                        name={['attrs', 'has_pickup_service']}
+                        name={[...prefix, 'has_pickup_service']}
                         valuePropName="checked"
                         style={{ marginBottom: 8 }}
                     >
                         <Checkbox>提供接机/接站服务</Checkbox>
                     </Form.Item>
                     <Form.Item
-                        name={['attrs', 'has_24h_reception']}
+                        name={[...prefix, 'has_24h_reception']}
                         valuePropName="checked"
                         style={{ marginBottom: 8 }}
                     >
                         <Checkbox>24小时前台</Checkbox>
                     </Form.Item>
                     <Form.Item
-                        name={['attrs', 'has_luggage_storage']}
+                        name={[...prefix, 'has_luggage_storage']}
                         valuePropName="checked"
                         style={{ marginBottom: 8 }}
                     >
                         <Checkbox>可寄存行李</Checkbox>
                     </Form.Item>
                     <Form.Item
-                        name={['attrs', 'has_restaurant']}
+                        name={[...prefix, 'has_restaurant']}
                         valuePropName="checked"
                         style={{ marginBottom: 0 }}
                     >
@@ -218,7 +218,7 @@ export default function HotelResourceFields() {
 
             {/* 21. 其他额外服务 */}
             <Form.Item
-                name={['attrs', 'extra_services']}
+                name={[...prefix, 'extra_services']}
                 label="其他额外服务"
             >
                 <TextArea rows={2} placeholder="例如：洗衣服务、健身房、游泳池等（可选）" />
@@ -226,7 +226,7 @@ export default function HotelResourceFields() {
 
             {/* 22. 面积 */}
             <Form.Item
-                name={['attrs', 'area']}
+                name={[...prefix, 'area']}
                 label="房间面积（平米）"
             >
                 <InputNumber placeholder="面积" min={0} style={{ width: '100%' }} addonAfter="㎡" />
@@ -234,7 +234,7 @@ export default function HotelResourceFields() {
 
             {/* 23. 特殊结算规则 */}
             <Form.Item
-                name={['attrs', 'special_settlement_rules']}
+                name={[...prefix, 'special_settlement_rules']}
                 label="特殊结算规则"
             >
                 <TextArea rows={2} placeholder="特殊的结算规则说明（可选）" />
@@ -242,7 +242,7 @@ export default function HotelResourceFields() {
 
             {/* 23. 补充说明 */}
             <Form.Item
-                name={['attrs', 'additional_notes']}
+                name={[...prefix, 'additional_notes']}
                 label="补充说明"
             >
                 <TextArea rows={3} placeholder="其他需要说明的内容（可选）" />

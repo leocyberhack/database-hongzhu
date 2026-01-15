@@ -31,7 +31,18 @@ export default function ImportModal({ visible, onCancel, onSuccess }: ImportModa
             // 使用 fetch 下载 blob
             const token = getToken()
             const apiBase = (import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000').trim().replace(/\/$/, '')
-            const response = await fetch(`${apiBase}/api/resources/template?resource_type=${type}`, {
+
+            let downloadApiUrl = `${apiBase}/api/resources/template?resource_type=${type}`
+            if (type === '组合') {
+                const included = form.getFieldValue('included_types')
+                if (!included || included.length < 2) {
+                    message.warning('组合资源至少需要包含两种类型的资源')
+                    return
+                }
+                downloadApiUrl += `&sub_types=${encodeURIComponent(included.join(','))}`
+            }
+
+            const response = await fetch(downloadApiUrl, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -46,7 +57,19 @@ export default function ImportModal({ visible, onCancel, onSuccess }: ImportModa
             const url = window.URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = url
-            a.download = `${type}导入模板.xlsx`
+
+            // 尝试从 Content-Disposition 获取后端生成的文件名
+            let filename = `${type}导入模板.xlsx`
+            const disposition = response.headers.get('Content-Disposition')
+            if (disposition) {
+                const filenameRegex = /filename\*=utf-8''(.+)/;
+                const matches = filenameRegex.exec(disposition);
+                if (matches != null && matches[1]) {
+                    filename = decodeURIComponent(matches[1]);
+                }
+            }
+
+            a.download = filename
             document.body.appendChild(a)
             a.click()
             window.URL.revokeObjectURL(url)
@@ -67,6 +90,9 @@ export default function ImportModal({ visible, onCancel, onSuccess }: ImportModa
             const formData = new FormData()
             formData.append('file', fileList[0].originFileObj)
             formData.append('resource_type', values.resource_type)
+            if (values.resource_type === '组合' && values.included_types) {
+                formData.append('sub_types', values.included_types.join(','))
+            }
 
             setUploading(true)
 
@@ -173,17 +199,33 @@ export default function ImportModal({ visible, onCancel, onSuccess }: ImportModa
                     </Select>
                 </Form.Item>
 
-                {/* 只有选择了类型才显示下载模板按钮 */}
                 <Form.Item noStyle shouldUpdate={(prev, curr) => prev.resource_type !== curr.resource_type}>
                     {({ getFieldValue }) => {
                         const type = getFieldValue('resource_type')
-                        return type ? (
-                            <Form.Item>
-                                <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
-                                    下载 {type} 导入模板
-                                </Button>
-                            </Form.Item>
-                        ) : null
+                        return (
+                            <>
+                                {type === '组合' && (
+                                    <Form.Item
+                                        name="included_types"
+                                        label="包含类型"
+                                        rules={[{ required: true, message: '请选择包含的类型' }]}
+                                    >
+                                        <Select
+                                            mode="multiple"
+                                            placeholder="请选择组合包含的资源类型"
+                                            options={['门票', '酒店', '餐饮', '交通'].map(t => ({ label: t, value: t }))}
+                                        />
+                                    </Form.Item>
+                                )}
+                                {type ? (
+                                    <Form.Item>
+                                        <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
+                                            下载 {type} 导入模板
+                                        </Button>
+                                    </Form.Item>
+                                ) : null}
+                            </>
+                        )
                     }}
                 </Form.Item>
 

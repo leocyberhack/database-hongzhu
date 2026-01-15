@@ -1,4 +1,5 @@
 import io
+import re
 from typing import List, Dict, Any, Optional
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -78,7 +79,14 @@ ATTRS_MAPPING = {
         "duration": "行程时长",
         "additional_notes": "补充说明"
     },
-    # 其他类型可以后续添加
+    "组合": {} # 动态处理
+}
+
+TYPE_CN_TO_EN = {
+    "酒店": "hotel",
+    "门票": "ticket",
+    "餐饮": "dining",
+    "交通": "transport"
 }
 
 # 基础列定义
@@ -93,14 +101,30 @@ BASE_COLUMNS = [
     "结算价3(选填)"
 ]
 
-def generate_excel_template(resource_type: str) -> bytes:
+def generate_excel_template(resource_type: str, sub_types: Optional[str] = None) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = f"{resource_type}导入模板"
     
-    # 获取该类型的特定字段
-    attrs_map = ATTRS_MAPPING.get(resource_type, {})
-    attr_columns = list(attrs_map.values())
+    attr_columns = []
+    
+    if resource_type == "组合":
+        # 组合类型特殊处理：根据 sub_types 生成带前缀的列
+        # sub_types e.g. "酒店,门票"
+        types_list = sub_types.split(",") if sub_types else []
+        # 不需要用户手动填写 "包含类型" 列，后面解析时根据数据自动推断
+        
+        for t in types_list:
+            t = t.strip()
+            if t in ATTRS_MAPPING:
+                t_map = ATTRS_MAPPING[t]
+                for k, v in t_map.items():
+                    # 生成 【类型】字段名 格式的列头
+                    attr_columns.append(f"【{t}】{v}")
+    else:
+        # 获取该类型的特定字段
+        attrs_map = ATTRS_MAPPING.get(resource_type, {})
+        attr_columns = list(attrs_map.values())
     
     # 组合所有列头
     headers = BASE_COLUMNS + attr_columns
@@ -116,6 +140,8 @@ def generate_excel_template(resource_type: str) -> bytes:
         # 简单列宽调整
         column_letter = get_column_letter(col_idx)
         ws.column_dimensions[column_letter].width = 25
+        if resource_type == "组合" and "【" in header:
+             ws.column_dimensions[column_letter].width = 30 # 加宽带前缀的列
 
     # === 添加示例行 ===
     # 基础列示例
@@ -132,22 +158,56 @@ def generate_excel_template(resource_type: str) -> bytes:
     
     # 属性列示例值生成
     example_attrs = []
-    for col_name in attr_columns:
-        val = ""
-        if "JSON" in col_name:
-            if "年龄" in col_name: val = '{"min":0,"max":100}'
-            elif "时间" in col_name: val = '{"hours":1,"minutes":30}'
-        elif "HH:MM" in col_name:
-            val = "09:00"
-        elif "是/否" in col_name:
-            val = "是"
-        elif "整数" in col_name:
-            val = 1
-        elif "逗号分隔" in col_name:
-            val = "示例A,示例B"
-        else:
-            val = "示例填写"
-        example_attrs.append(val)
+    
+    if resource_type == "组合":
+        # 为组合生成示例数据
+        for header in attr_columns:
+            val = ""
+            # header format: 【类型】字段名
+            if "JSON" in header:
+                if "年龄" in header: val = '{"min":0,"max":100}'
+                elif "时间" in header: val = '{"hours":1,"minutes":30}'
+            elif "HH:MM" in header:
+                val = "09:00"
+            elif "是/否" in header:
+                val = "是"
+            elif "整数" in header:
+                val = 1
+            elif "类型" in header and "包含" not in header:
+                    if "票种" in header: val = "成人票"
+                    elif "房型" in header: val = "标准"
+                    elif "床型" in header: val = "大床"
+                    elif "交通" in header: val = "商务车"
+            elif "逗号分隔" in header:
+                val = "示例A,示例B"
+            else:
+                val = "示例填写"
+            example_attrs.append(val)
+    else:
+        # 常规类型示例
+        for col_name in attr_columns:
+            val = ""
+            if "JSON" in col_name:
+                if "年龄" in col_name: val = '{"min":0,"max":100}'
+                elif "时间" in col_name: val = '{"hours":1,"minutes":30}'
+            elif "HH:MM" in col_name:
+                val = "09:00"
+            elif "是/否" in col_name:
+                val = "是"
+            elif "整数" in col_name:
+                val = 1
+            elif "类型" in col_name and "包含" not in col_name: 
+                 if "票种" in col_name: val = "成人票"
+                 elif "房型" in col_name: val = "标准"
+                 elif "床型" in col_name: val = "大床"
+                 elif "交通" in col_name: val = "商务车"
+            elif "包含类型" in col_name:
+                val = "酒店,门票"
+            elif "逗号分隔" in col_name:
+                val = "示例A,示例B"
+            else:
+                val = "示例填写"
+            example_attrs.append(val)
         
     example_row = example_base + example_attrs
     
@@ -162,16 +222,39 @@ def generate_excel_template(resource_type: str) -> bytes:
     return output.getvalue()
 
 
-def parse_excel_data(file_content: bytes, resource_type: str) -> List[Dict[str, Any]]:
+def process_cell_value(val: Any, field_name: str) -> Any:
+    """Helper to process cell value based on field name convention"""
+    if val is not None:
+        # 布尔值处理
+        if isinstance(val, str) and field_name in [
+            "breakfast_included", "has_pickup_service", "has_24h_reception", 
+            "has_luggage_storage", "has_restaurant", "reservation_required"
+        ]:
+            if val.strip() in ["是", "Yes", "true", "True", "TRUE"]:
+                return True
+            elif val.strip() in ["否", "No", "false", "False", "FALSE"]:
+                return False
+        
+        # 列表处理 (逗号分隔)
+        if field_name in ["required_traveler_info", "voucher_type", "meal_types", "included_types"] and isinstance(val, str):
+            # 分割并去除空白，过滤空字符串
+            return [item.strip() for item in val.replace("，", ",").split(",") if item.strip()]
+        
+        # 字符串去除首尾空格
+        if isinstance(val, str):
+            return val.strip()
+            
+    return val
+
+def parse_excel_data(file_content: bytes, resource_type: str, sub_types: Optional[str] = None) -> List[Dict[str, Any]]:
     wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=True)
     ws = wb.active
     
-    # 映射中文列名回字段名 (反转 ATTRS_MAPPING)
-    attrs_map = ATTRS_MAPPING.get(resource_type, {})
-    col_name_to_field = {v: k for k, v in attrs_map.items()}
-    
-    # 基础列索引（注意：openpyxl 是 1-based, 但我们处理 list 是 0-based）
-    # 假设列顺序严格固定，更安全的做法是读取第一行 header map
+    # 构建列名到字段的映射（仅针对非组合类型有效，组合类型需动态匹配）
+    col_name_to_field = {}
+    if resource_type != "组合":
+        attrs_map = ATTRS_MAPPING.get(resource_type, {})
+        col_name_to_field = {v: k for k, v in attrs_map.items()}
     
     headers = []
     for cell in ws[1]:
@@ -181,8 +264,7 @@ def parse_excel_data(file_content: bytes, resource_type: str) -> List[Dict[str, 
     
     # 从第二行开始读取
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
-        # 如果第一列（资源名称）为空，则认为是空行，跳过（除非整行有数据但没名字，那其实是错误数据，但为简单起见先视为空行）
-        if not row[0]: 
+        if not row[0]: # 资源名称为空跳过
             continue
             
         row_data = {
@@ -199,73 +281,79 @@ def parse_excel_data(file_content: bytes, resource_type: str) -> List[Dict[str, 
         if not row_data["poi_name"]:
             raise ValueError(f"第 {row_idx} 行错误: 关联POI不能为空")
             
-        # 供应商解析
-        # 供应商1 (index 2, 3)
-        if row[2]:
-            s_name = str(row[2]).strip()
-            # 结算价
-            try:
-                s_price = float(row[3]) if row[3] is not None else 0.0
-            except (ValueError, TypeError):
-                raise ValueError(f"第 {row_idx} 行错误: 供应商1结算价格式错误")
-            row_data["suppliers"].append({"name": s_name, "price": s_price})
-            
-        # 供应商2 (index 4, 5)
-        if len(row) > 4 and row[4]:
-            s_name = str(row[4]).strip()
-            try:
-                s_price = float(row[5]) if len(row) > 5 and row[5] is not None else 0.0
-            except (ValueError, TypeError):
-                raise ValueError(f"第 {row_idx} 行错误: 供应商2结算价格式错误")
-            row_data["suppliers"].append({"name": s_name, "price": s_price})
-            
-        # 供应商3 (index 6, 7)
-        if len(row) > 6 and row[6]:
-            s_name = str(row[6]).strip()
-            try:
-                s_price = float(row[7]) if len(row) > 7 and row[7] is not None else 0.0
-            except (ValueError, TypeError):
-                raise ValueError(f"第 {row_idx} 行错误: 供应商3结算价格式错误")
-            row_data["suppliers"].append({"name": s_name, "price": s_price})
+        # 供应商解析 (Columns 2-7) [Index 2,3, 4,5, 6,7]
+        for i in [2, 4, 6]:
+            if i < len(row) and row[i]:
+                s_name = str(row[i]).strip()
+                try:
+                    price_idx = i + 1
+                    s_price = float(row[price_idx]) if price_idx < len(row) and row[price_idx] is not None else 0.0
+                except (ValueError, TypeError):
+                    raise ValueError(f"第 {row_idx} 行错误: 供应商结算价格式错误")
+                row_data["suppliers"].append({"name": s_name, "price": s_price})
             
         if not row_data["suppliers"]:
              raise ValueError(f"第 {row_idx} 行错误: 至少需要填写供应商1")
 
         # Attrs 解析 (从 index 8 开始)
-        # 我们根据 headers 来匹配
         for i in range(8, len(row)):
             if i >= len(headers): break
             
             header_name = headers[i]
             if not header_name: continue
             
-            # 查找对应的字段名
-            field_name = col_name_to_field.get(header_name)
-            if field_name:
-                val = row[i]
+            val = row[i]
+            processed_val = None
+            
+            if resource_type == "组合":
+                # 组合类型：匹配 【类型】字段名
+                match = re.match(r"【(.*?)】(.*)", header_name)
+                if match:
+                    t_cn, f_cn = match.groups()
+                    # 找到对应类型的字段key
+                    t_map = ATTRS_MAPPING.get(t_cn, {})
+                    # 反转映射: 中文名 -> key
+                    rev_map = {v: k for k, v in t_map.items()}
+                    f_key = rev_map.get(f_cn)
+                    
+                    if f_key:
+                        t_en = TYPE_CN_TO_EN.get(t_cn)
+                        if t_en:
+                            if t_en not in row_data["attrs"]:
+                                row_data["attrs"][t_en] = {}
+                            
+                            processed_val = process_cell_value(val, f_key)
+                            # 只有值不为空时才设置，或者允许空值（取决于具体字段），这里都存入
+                            row_data["attrs"][t_en][f_key] = processed_val
+
+            else:
+                # 普通类型
+                field_name = col_name_to_field.get(header_name)
+                if field_name:
+                    processed_val = process_cell_value(val, field_name)
+                    row_data["attrs"][field_name] = processed_val
+
+        # 组合资源 included_types 处理
+        if resource_type == "组合":
+            if sub_types:
+                # 优先使用传入的指定类型
+                 row_data["attrs"]["included_types"] = [t.strip() for t in sub_types.split(",") if t.strip()]
+            else:
+                # 降级：自动推断
+                inferred_types = []
+                for type_cn, type_en in TYPE_CN_TO_EN.items():
+                    # 检查该类型是否有任何数据被解析出来
+                    if type_en in row_data["attrs"] and row_data["attrs"][type_en]:
+                        has_data = False
+                        for k, v in row_data["attrs"][type_en].items():
+                            if v is not None and v != "":
+                                has_data = True
+                                break
+                        if has_data:
+                            inferred_types.append(type_cn)
                 
-                # 特殊类型转换
-                if val is not None:
-                    # 布尔值处理
-                    if isinstance(val, str) and field_name in [
-                        "breakfast_included", "has_pickup_service", "has_24h_reception", 
-                        "has_luggage_storage", "has_restaurant", "reservation_required"
-                    ]:
-                        if val.strip() in ["是", "Yes", "true", "True", "TRUE"]:
-                            val = True
-                        elif val.strip() in ["否", "No", "false", "False", "FALSE"]:
-                            val = False
-                    
-                    # 列表处理 (逗号分隔)
-                    if field_name in ["required_traveler_info", "voucher_type", "meal_types"] and isinstance(val, str):
-                        # 分割并去除空白，过滤空字符串
-                        val = [item.strip() for item in val.replace("，", ",").split(",") if item.strip()]
-                    
-                    # 字符串去除首尾空格
-                    if isinstance(val, str):
-                        val = val.strip()
-                        
-                row_data["attrs"][field_name] = val
+                if inferred_types:
+                    row_data["attrs"]["included_types"] = inferred_types
 
         data_list.append(row_data)
         
