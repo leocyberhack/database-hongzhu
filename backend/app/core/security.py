@@ -8,13 +8,32 @@ from app.core.config import get_settings
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    # bcrypt requires bytes
-    try:
-        return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
-    except Exception:
-        # Fallback or robust handling for different formats if needed
-        # But for now, assume new bcrypt format
-        return False
+    """
+    Verify password against hash.
+    Supports both BCrypt (current) and PBKDF2 (legacy) for backward compatibility.
+    """
+    import bcrypt
+    
+    # Try BCrypt first (current standard)
+    if hashed.startswith('$2b$') or hashed.startswith('$2a$') or hashed.startswith('$2y$'):
+        try:
+            return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+        except Exception:
+            return False
+    
+    # Try PBKDF2 (legacy format from old installations)
+    if hashed.startswith('$pbkdf2'):
+        try:
+            from passlib.hash import pbkdf2_sha256
+            return pbkdf2_sha256.verify(plain, hashed)
+        except ImportError:
+            # passlib not installed, cannot verify legacy hashes
+            return False
+        except Exception:
+            return False
+    
+    # Unknown hash format
+    return False
 
 
 def hash_password(plain: str) -> str:

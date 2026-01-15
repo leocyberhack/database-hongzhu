@@ -115,6 +115,7 @@ export default function OperationLogsPage() {
     const [filters, setFilters] = useState({
         table_name: null as string | null,
         operator: null as string | null,
+        operation: null as string | null,
         dateRange: null as [Dayjs, Dayjs] | null,
     })
 
@@ -129,28 +130,18 @@ export default function OperationLogsPage() {
             })
             if (filters.table_name) params.append('table_name', filters.table_name)
             if (filters.operator) params.append('operator', filters.operator)
+            if (filters.operation) params.append('operation', filters.operation)
+            if (filters.dateRange) {
+                const [start, end] = filters.dateRange
+                params.append('start_date', start.format('YYYY-MM-DD'))
+                params.append('end_date', end.format('YYYY-MM-DD'))
+            }
 
             const res = await apiRequest<{ items: OperationLog[]; pagination: { total: number } }>(
                 `/api/audit-log?${params.toString()}`
             )
 
-            let filteredLogs = res.items || []
-
-            // 前端过滤日期范围
-            // NOTE: Ideally filtering should happen on backend for correct pagination, but assuming backend filters date if passed.
-            // But here we filtered on frontend in previous code. 
-            // If backend handles date_range, we should pass it. 
-            // But previous code filtered `res.items`. This implies pagination might be slightly off if backend didn't filter.
-            // The original code did:
-            if (filters.dateRange) {
-                const [start, end] = filters.dateRange
-                filteredLogs = filteredLogs.filter(log => {
-                    const logDate = dayjs(log.operated_at)
-                    return logDate.isAfter(start.startOf('day')) && logDate.isBefore(end.endOf('day'))
-                })
-            }
-
-            setLogs(filteredLogs)
+            setLogs(res.items || [])
             setPagination(prev => ({ ...prev, total: res.pagination?.total || 0 }))
         } catch (err: any) {
             console.error('Failed to fetch logs:', err)
@@ -279,11 +270,6 @@ export default function OperationLogsPage() {
             render: (v: string) => (
                 <Tag color="blue">{TABLE_NAME_MAP[v] || v}</Tag>
             ),
-            filters: Object.entries(TABLE_NAME_MAP).map(([key, label]) => ({
-                text: label,
-                value: key,
-            })),
-            onFilter: (value: any, record: OperationLog) => record.table_name === value,
         },
         {
             title: '记录ID',
@@ -298,11 +284,6 @@ export default function OperationLogsPage() {
                 const op = OPERATION_MAP[v] || { label: v, color: 'default' }
                 return <Tag color={op.color}>{op.label}</Tag>
             },
-            filters: Object.entries(OPERATION_MAP).map(([key, { label }]) => ({
-                text: label,
-                value: key,
-            })),
-            onFilter: (value: any, record: OperationLog) => record.operation === value,
         },
         {
             title: '操作详情',
@@ -350,6 +331,17 @@ export default function OperationLogsPage() {
                             value={filters.table_name}
                             onChange={(v) => setFilters({ ...filters, table_name: v })}
                             options={Object.entries(TABLE_NAME_MAP).map(([key, label]) => ({
+                                value: key,
+                                label: label,
+                            }))}
+                        />
+                        <Select
+                            placeholder="筛选操作类型"
+                            allowClear
+                            style={{ width: 150 }}
+                            value={filters.operation}
+                            onChange={(v) => setFilters({ ...filters, operation: v })}
+                            options={Object.entries(OPERATION_MAP).map(([key, { label }]) => ({
                                 value: key,
                                 label: label,
                             }))}

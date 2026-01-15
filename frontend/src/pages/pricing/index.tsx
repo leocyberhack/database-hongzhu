@@ -124,14 +124,6 @@ export default function PricingPage() {
         setHistoryVisible(true)
     }
 
-    const handleSaveCalendar = async () => {
-        // Disabled in read-only mode
-        if (calendarRef.current && currentRecord) {
-            await calendarRef.current.saveToBackend(currentRecord.sku_id, currentRecord.channel_id)
-            setCalendarVisible(false)
-            fetchSummary()
-        }
-    }
 
     const columns: any = [
         {
@@ -294,7 +286,7 @@ export default function PricingPage() {
                 <Table
                     rowKey={(r) => `${r.sku_id}_${r.channel_id}`}
                     columns={columns}
-                    dataSource={items.slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)}
+                    dataSource={items}
                     loading={loading}
                     pagination={{
                         current: pagination.current,

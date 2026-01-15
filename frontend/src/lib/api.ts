@@ -67,9 +67,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
             "Update failed": "更新失败",
             "Channel creation failed, name might be duplicated": "创建渠道失败，可能是名称重复",
             "Price not found": "未找到价格",
+            "Invalid token": "登录已过期，请重新登录",
+            "Invalid or expired token": "登录已过期，请重新登录",
+            "Missing credentials": "未登录，请先登录",
+            "Incorrect username or password": "用户名或密码错误",
+            "用户名或密码错误": "用户名或密码错误", // 确保后端返回中文时也能匹配（虽然本身就是中文）
         }
         if (map[errMsg]) errMsg = map[errMsg]
-        if (res.status === 401) errMsg = "未登录或登录已过期，请重新登录"
+        // Removed forced 401 overwrite to allow backend details (like 'Wrong password') to show through
         throw new Error(errMsg)
     }
 

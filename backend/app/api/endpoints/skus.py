@@ -123,7 +123,9 @@ async def list_skus(
     page_size: int = Query(default=20, ge=1, le=1000),
     product_id: Optional[int] = Query(default=None, description="Filter by product ID"),
     keyword: Optional[str] = Query(default=None, description="Search by sku name"),
-    status: Optional[str] = Query(default=None, description="Filter by status")
+    status: Optional[str] = Query(default=None, description="Filter by status"),
+    sort_field: Optional[str] = Query(default=None),
+    sort_order: Optional[str] = Query(default=None),
 ):
     stmt = select(Sku)
     
@@ -134,7 +136,20 @@ async def list_skus(
     if status:
         stmt = stmt.where(Sku.status == status)
     
-    stmt = stmt.order_by(Sku.created_at.desc())
+    # Sorting logic
+    if sort_field and hasattr(Sku, sort_field):
+        field = getattr(Sku, sort_field)
+        if sort_order == "descend":
+            stmt = stmt.order_by(field.desc())
+        else:
+            stmt = stmt.order_by(field.asc())
+            
+        # Special case: if sorting by sku_name, add secondary sort by poi_id
+        if sort_field == "sku_name":
+            stmt = stmt.order_by(Sku.poi_id.asc())
+    else:
+        # Default: Aggregate by POI (Cluster by POI)
+        stmt = stmt.order_by(Sku.poi_id.asc(), Sku.id.desc())
 
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))

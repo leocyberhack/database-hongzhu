@@ -408,6 +408,12 @@ export default function ResourceListPage() {
             onFilter: (value: string, record: Resource) => (record.status || 'active') === value,
         },
         {
+            title: '最后更新时间',
+            dataIndex: 'updated_at',
+            render: (v: string) => v ? new Date(v).toLocaleString() : '-',
+            sorter: (a: Resource, b: Resource) => new Date(a.updated_at || '').getTime() - new Date(b.updated_at || '').getTime(),
+        },
+        {
             title: '操作',
             width: 200,
             render: (_: any, record: Resource) => {

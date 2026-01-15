@@ -64,13 +64,30 @@ async def list_inventory_by_day(
     date: str = Query(..., description="日期 YYYY-MM-DD"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=1000),
+    sort_field: Optional[str] = Query(default=None),
+    sort_order: Optional[str] = Query(default=None),
 ):
     try:
         target = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
 
-    stmt = select(Inventory).where(Inventory.inventory_date == target).order_by(Inventory.sku_id)
+    stmt = select(Inventory).join(Sku, Inventory.sku_id == Sku.id).where(Inventory.inventory_date == target)
+    
+    # Sorting logic
+    if sort_field == "sku_name" or not sort_field:
+        if sort_order == "descend":
+            stmt = stmt.order_by(Sku.sku_name.desc(), Sku.poi_id.asc())
+        else:
+            stmt = stmt.order_by(Sku.sku_name.asc(), Sku.poi_id.asc())
+    elif sort_field and hasattr(Inventory, sort_field):
+        field = getattr(Inventory, sort_field)
+        if sort_order == "descend":
+            stmt = stmt.order_by(field.desc())
+        else:
+            stmt = stmt.order_by(field.asc())
+    else:
+        stmt = stmt.order_by(Inventory.sku_id)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
     rows = list(rows)

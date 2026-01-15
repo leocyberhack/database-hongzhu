@@ -95,6 +95,8 @@ def _collect_targets(objs: Iterable[Any]) -> Iterable[Any]:
 
 
 def before_flush(session: Session, flush_context, instances):
+    from app.utils.time import now_china
+    
     snap = session.info.setdefault("_oplog_snap", {"new": [], "dirty": {}, "deleted": {}})
     for obj in _collect_targets(session.new):
         snap["new"].append(obj)
@@ -102,6 +104,23 @@ def before_flush(session: Session, flush_context, instances):
         snap["dirty"][obj] = _snapshot_before(obj)
     for obj in _collect_targets(session.deleted):
         snap["deleted"][obj] = _serialize(obj)
+    
+    # 自动更新所有被修改对象的 updated_at 字段
+    # 这是一个通用的解决方案，无需逐一修改每个API端点
+    for obj in session.dirty:
+        if hasattr(obj, 'updated_at'):
+            # 只有当对象确实有变化时才更新时间戳
+            state = inspect(obj)
+            has_real_changes = False
+            for attr in state.mapper.column_attrs:
+                if attr.key == 'updated_at':
+                    continue  # 跳过 updated_at 本身
+                hist = state.attrs[attr.key].history
+                if hist.has_changes():
+                    has_real_changes = True
+                    break
+            if has_real_changes:
+                obj.updated_at = now_china()
 
 
 def after_flush(session: Session, flush_context):

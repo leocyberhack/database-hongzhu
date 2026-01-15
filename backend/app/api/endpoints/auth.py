@@ -82,3 +82,45 @@ async def reset_user_password(
     await db.refresh(user)
     return UserRead.model_validate(user)
 
+
+@router.delete("/auth/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: int,
+    db: DbSession,
+    current: User = Depends(require_roles(["super_admin"])),
+):
+    user = await db.get(UserModel, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # Prevent deleting yourself
+    if user.username == current.username:
+        raise HTTPException(status_code=400, detail="不能删除自己的账号")
+    
+    await db.delete(user)
+    await db.commit()
+
+
+@router.post("/auth/users/batch-delete", status_code=status.HTTP_204_NO_CONTENT)
+async def batch_delete_users(
+    user_ids: list[int],
+    db: DbSession,
+    current: User = Depends(require_roles(["super_admin"])),
+):
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="未提供用户ID")
+    
+    # Get all users to delete
+    users = await db.scalars(select(UserModel).where(UserModel.id.in_(user_ids)))
+    users_list = list(users)
+    
+    # Check if trying to delete yourself
+    for user in users_list:
+        if user.username == current.username:
+            raise HTTPException(status_code=400, detail="不能删除自己的账号")
+    
+    # Delete all
+    for user in users_list:
+        await db.delete(user)
+    
+    await db.commit()

@@ -58,14 +58,26 @@ async def list_pricing_summary(
     page_size: int = Query(default=50, ge=1, le=1000),
     sku_id: Optional[int] = Query(default=None),
     channel_id: Optional[int] = Query(default=None),
+    sort_field: Optional[str] = Query(default=None),
+    sort_order: Optional[str] = Query(default=None),
 ):
     # Retrieve all SKUs and Channels
     # Optimization: Filter SKUs first if sku_id is provided
     sku_stmt = select(Sku).join(Product)
     if sku_id:
         sku_stmt = sku_stmt.where(Sku.id == sku_id)
-    # Order for consistent pagination
-    sku_stmt = sku_stmt.order_by(Sku.id)
+    
+    # Sorting logic for SKUs
+    # Default: SKU Name asc, then POI asc
+    if sort_field == "sku_name" or not sort_field:
+        if sort_order == "descend":
+            sku_stmt = sku_stmt.order_by(Sku.sku_name.desc(), Sku.poi_id.asc())
+        else:
+            sku_stmt = sku_stmt.order_by(Sku.sku_name.asc(), Sku.poi_id.asc())
+    # Note: If sort_field is price or status, we must sort in-memory later.
+    else:
+        # Fallback to ID sort for stability if sorting by non-DB field
+        sku_stmt = sku_stmt.order_by(Sku.id)
     
     # We fetch SKUs first. 
     # Since we need to paginate the *combinations*, and we don't know how many channels are allowed per SKU without checking,

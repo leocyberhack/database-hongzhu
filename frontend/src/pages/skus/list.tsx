@@ -379,6 +379,12 @@ export default function SKUListPage() {
             sorter: (a: SKU, b: SKU) => a.status.localeCompare(b.status),
         },
         {
+            title: '最后更新时间',
+            dataIndex: 'updated_at',
+            render: (v: string) => v ? new Date(v).toLocaleString() : '-',
+            sorter: (a: SKU, b: SKU) => new Date(a.updated_at || '').getTime() - new Date(b.updated_at || '').getTime(),
+        },
+        {
             title: '操作',
             render: (_: any, record: SKU) => {
                 const isLocked = record.status === 'active'

@@ -56,7 +56,7 @@ async def create_product_category(
 ):
     dup = await db.scalar(select(ProductCategory).where(ProductCategory.name == payload.name))
     if dup:
-        raise HTTPException(status_code=400, detail="Category name already exists")
+        raise HTTPException(status_code=400, detail="该分类名称已存在")
     
     cat = ProductCategory(**payload.model_dump())
     db.add(cat)
@@ -88,7 +88,7 @@ async def update_product_category(
 ):
     cat = await db.get(ProductCategory, category_id)
     if not cat:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise HTTPException(status_code=404, detail="未找到该分类")
     
     # Capture before state
     before_data = {"name": cat.name, "description": cat.description}
@@ -121,7 +121,7 @@ async def delete_product_category(
 ):
     cat = await db.get(ProductCategory, category_id)
     if not cat:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise HTTPException(status_code=404, detail="未找到该分类")
     
     # Record audit log before deletion
     audit = AuditLog(
@@ -151,6 +151,8 @@ async def list_products(
     keyword: Optional[str] = Query(default=None),
     status: Optional[str] = Query(default=None),
     category_id: Optional[int] = Query(default=None),
+    sort_field: Optional[str] = Query(default=None),
+    sort_order: Optional[str] = Query(default=None),
 ):
     stmt = select(Product)
     if keyword:
@@ -159,9 +161,20 @@ async def list_products(
         stmt = stmt.where(Product.status == status)
     if category_id:
         stmt = stmt.where(Product.category_id == category_id)
+      
+    # Sorting logic
+    if sort_field and hasattr(Product, sort_field):
+        field = getattr(Product, sort_field)
+        if sort_order == "descend":
+            stmt = stmt.order_by(field.desc())
+        else:
+            stmt = stmt.order_by(field.asc())
+    else:
+        # Default: Aggregate by POI
+        stmt = stmt.order_by(Product.poi_id.asc(), Product.id.desc())
         
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = await db.scalars(stmt.order_by(Product.id.desc()).offset((page - 1) * page_size).limit(page_size))
+    rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
     # We might want to eagerly load resources or category in future, but for list view usually basic info is enough
     return ListResponse(
         items=[ProductRead.model_validate(r) for r in rows],
@@ -179,7 +192,7 @@ async def create_product(
 ):
     name_dup = await db.scalar(select(Product).where(Product.product_name == payload.product_name))
     if name_dup:
-        raise HTTPException(status_code=400, detail="Product name already exists")
+        raise HTTPException(status_code=400, detail="产品名称已存在")
     # structure_hash unique
     dup = await db.scalar(select(Product).where(Product.structure_hash == payload.structure_hash))
     # if dup:
@@ -189,7 +202,7 @@ async def create_product(
     if payload.resources:
         resource_ids = [r.resource_id for r in payload.resources]
         if len(resource_ids) != len(set(resource_ids)):
-            raise HTTPException(status_code=400, detail="A product cannot contain duplicate resources")
+            raise HTTPException(status_code=400, detail="产品不能包含重复的资源")
     poi_id = None
     if payload.resources:
         resource_ids = [line.resource_id for line in payload.resources]
@@ -198,7 +211,7 @@ async def create_product(
         # Logic Lock 1: Inactive resources cannot be used in products
         for r in resources_list:
             if r.status != "active":
-                 raise HTTPException(status_code=400, detail=f"Resource {r.resource_name} is not active and cannot be used")
+                 raise HTTPException(status_code=400, detail=f"资源 {r.resource_name} 未上架，无法使用")
 
         poi_counts = Counter([r.poi_id for r in resources_list])
         if poi_counts:
@@ -259,16 +272,16 @@ async def update_product(
 ):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="未找到该产品")
 
     # Validations...
     name_dup = await db.scalar(select(Product).where(Product.product_name == payload.product_name, Product.id != product_id))
     if name_dup:
-        raise HTTPException(status_code=400, detail="Product name already exists")
+        raise HTTPException(status_code=400, detail="产品名称已存在")
     if payload.resources:
         resource_ids = [r.resource_id for r in payload.resources]
         if len(resource_ids) != len(set(resource_ids)):
-            raise HTTPException(status_code=400, detail="A product cannot contain duplicate resources")
+            raise HTTPException(status_code=400, detail="产品不能包含重复的资源")
 
     # Capture before data for audit log
     existing_resources = await db.scalars(select(ProductResource).where(ProductResource.product_id == product_id))
@@ -295,7 +308,7 @@ async def update_product(
         # Logic Lock 1: Inactive resources cannot be used in products
         for r in resources_list:
             if r.status != "active":
-                 raise HTTPException(status_code=400, detail=f"Resource {r.resource_name} is not active and cannot be used")
+                 raise HTTPException(status_code=400, detail=f"资源 {r.resource_name} 未上架，无法使用")
 
         poi_counts = Counter([r.poi_id for r in resources_list])
         if poi_counts:
@@ -309,7 +322,7 @@ async def update_product(
     if product.status == "active" and payload.status != "active":
         sku_count = await db.scalar(select(func.count()).where(Sku.product_id == product_id))
         if sku_count and sku_count > 0:
-             raise HTTPException(status_code=400, detail="Cannot deactivate product with associated SKUs")
+             raise HTTPException(status_code=400, detail="无法下架已关联SKU的产品")
     
     product.status = payload.status
     product.structure_hash = payload.structure_hash
@@ -377,7 +390,7 @@ async def delete_product(
 ):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="未找到该产品")
     
     # Record audit log before deletion
     audit = AuditLog(
@@ -440,7 +453,7 @@ async def batch_update_products(
 async def get_product(db: DbSession, product_id: int = Path(..., ge=1), _: User = Depends(get_current_user)):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="未找到该产品")
     return ProductRead.model_validate(product)
 
 
@@ -452,7 +465,7 @@ async def snapshot_product(
 ):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="未找到该产品")
     resources = await db.scalars(select(ProductResource).where(ProductResource.product_id == product_id))
     snapshot_data = [
         {
@@ -491,14 +504,14 @@ async def get_product_inventory(
     
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="未找到该产品")
     
     # Get all product resources (with quantities)
     resources_stmt = select(ProductResource).where(ProductResource.product_id == product_id)
     product_resources = list(await db.scalars(resources_stmt))
     
     if not product_resources:
-        return {"items": [], "message": "Product has no linked resources"}
+        return {"items": [], "message": "产品未关联任何资源"}
     
     # Parse date range or default
     if start_date:
@@ -605,7 +618,7 @@ async def preview_product_inventory(
         try:
             start = datetime.strptime(payload.start_date, "%Y-%m-%d").date()
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid start_date format, expected YYYY-MM-DD")
+            raise HTTPException(status_code=400, detail="无效的开始日期格式，应为 YYYY-MM-DD")
     else:
         start = today
 
@@ -613,13 +626,13 @@ async def preview_product_inventory(
         try:
             end = datetime.strptime(payload.end_date, "%Y-%m-%d").date()
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid end_date format, expected YYYY-MM-DD")
+            raise HTTPException(status_code=400, detail="无效的结束日期格式，应为 YYYY-MM-DD")
     else:
         # Default to 2 years future to catch most inventory
         end = today + timedelta(days=730)
     
     if start > end:
-        raise HTTPException(status_code=400, detail="start_date cannot be later than end_date")
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
 
     # Get all resource IDs needed
     resource_ids = [r.resource_id for r in payload.resources]

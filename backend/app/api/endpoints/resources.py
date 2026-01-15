@@ -30,14 +30,74 @@ async def list_poi(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=1000),
     keyword: Optional[str] = Query(default=None),
+    sort_field: Optional[str] = Query(default=None),
+    sort_order: Optional[str] = Query(default=None),
 ):
     stmt = select(Poi)
     if keyword:
         stmt = stmt.where(Poi.poi_name.ilike(f"%{keyword}%"))
+    
+    # Sorting logic
+    if sort_field and hasattr(Poi, sort_field):
+        field = getattr(Poi, sort_field)
+        if sort_order == "descend":
+            stmt = stmt.order_by(field.desc())
+        else:
+            stmt = stmt.order_by(field.asc())
+    else:
+        # Default: Aggregate by city (Cluster by city)
+        # Use city asc, then id desc
+        stmt = stmt.order_by(Poi.city.asc(), Poi.id.desc())
+
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
     return ListResponse(
         items=[PoiRead.model_validate(r) for r in rows],
+        pagination=Pagination(total=total or 0, page=page, page_size=page_size),
+    )
+
+
+# ... (create, update, delete omitted, keeping file intact) ...
+
+
+@router.get("/resources", response_model=ListResponse)
+async def list_resources(
+    db: DbSession,
+    _: User = Depends(get_current_user),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=1000),
+    ids: Optional[list[int]] = Query(default=None),
+    poi_id: Optional[int] = Query(default=None),
+    resource_type: Optional[str] = Query(default=None),
+    keyword: Optional[str] = Query(default=None),
+    sort_field: Optional[str] = Query(default=None),
+    sort_order: Optional[str] = Query(default=None),
+):
+    stmt = select(Resource)
+    if ids:
+        stmt = stmt.where(Resource.id.in_(ids))
+    if poi_id:
+        stmt = stmt.where(Resource.poi_id == poi_id)
+    if resource_type:
+        stmt = stmt.where(Resource.resource_type == resource_type)
+    if keyword:
+        stmt = stmt.where(Resource.resource_name.ilike(f"%{keyword}%"))
+        
+    # Sorting logic
+    if sort_field and hasattr(Resource, sort_field):
+        field = getattr(Resource, sort_field)
+        if sort_order == "descend":
+            stmt = stmt.order_by(field.desc())
+        else:
+            stmt = stmt.order_by(field.asc())
+    else:
+        # Default: Aggregate by POI
+        stmt = stmt.order_by(Resource.poi_id.asc(), Resource.id.desc())
+
+    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
+    rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
+    return ListResponse(
+        items=[ResourceRead.model_validate(r) for r in rows],
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
     )
 
@@ -200,32 +260,7 @@ async def batch_update_poi(
     return {"updated": updated_count}
 
 
-@router.get("/resources", response_model=ListResponse)
-async def list_resources(
-    db: DbSession,
-    _: User = Depends(get_current_user),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=1000),
-    ids: Optional[list[int]] = Query(default=None),
-    poi_id: Optional[int] = Query(default=None),
-    resource_type: Optional[str] = Query(default=None),
-    keyword: Optional[str] = Query(default=None),
-):
-    stmt = select(Resource)
-    if ids:
-        stmt = stmt.where(Resource.id.in_(ids))
-    if poi_id:
-        stmt = stmt.where(Resource.poi_id == poi_id)
-    if resource_type:
-        stmt = stmt.where(Resource.resource_type == resource_type)
-    if keyword:
-        stmt = stmt.where(Resource.resource_name.ilike(f"%{keyword}%"))
-    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
-    return ListResponse(
-        items=[ResourceRead.model_validate(r) for r in rows],
-        pagination=Pagination(total=total or 0, page=page, page_size=page_size),
-    )
+
 
 
 @router.post("/resources", response_model=ResourceRead, status_code=status.HTTP_201_CREATED)
