@@ -229,8 +229,10 @@ export default function SupplierPage() {
                             icon={<EditOutlined />}
                             onClick={() => {
                                 setSelected(record)
+                                editForm.resetFields()
                                 editForm.setFieldsValue({
                                     supplier_name: record.supplier_name,
+                                    contact_name: record.contact_info?.contact_name,
                                     contact_phone: record.contact_info?.contact_phone,
                                 })
                                 setEditModalVisible(true)
@@ -398,6 +400,15 @@ export default function SupplierPage() {
                 open={editModalVisible}
                 onCancel={() => {
                     setEditModalVisible(false)
+                    editForm.resetFields()
+                    // Don't clear selected here if we want to return to detail view, 
+                    // BUT since users said "automatically jump out is annoying", 
+                    // we should probably clear selected to close everything or keep logic separate.
+                    // The issue is: on "Edit" click, we set 'selected'. The drawer opens if (selected && !editModalVisible).
+                    // So when editModalVisible becomes false, drawer opens.
+                    // FIX: Don't set 'selected' for Edit. Or use a separate state variable for editing.
+                    // Let's use a separate state or just clear selected when closing edit if it wasn't opened from detail.
+                    // FOR NOW: Simplest fix -> when closing edit, clear selected too so drawer doesn't pop up.
                     setSelected(null)
                 }}
                 footer={null}
@@ -414,7 +425,11 @@ export default function SupplierPage() {
                     </Form.Item>
 
                     <Space style={{ float: 'right', marginTop: 16 }}>
-                        <Button onClick={() => setEditModalVisible(false)}>取消</Button>
+                        <Button onClick={() => {
+                            setEditModalVisible(false)
+                            editForm.resetFields()
+                            setSelected(null)
+                        }}>取消</Button>
                         <Button type="primary" htmlType="submit">保存</Button>
                     </Space>
                 </Form>
