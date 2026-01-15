@@ -42,7 +42,6 @@ async def list_suppliers(
     ids: Optional[list[int]] = Query(default=None),
     keyword: Optional[str] = Query(default=None, description="Search keyword"),
     supplier_type: Optional[str] = Query(default=None),
-    status: Optional[str] = Query(default=None),
 ):
     stmt = select(Supplier)
     if ids:
@@ -51,8 +50,6 @@ async def list_suppliers(
         stmt = stmt.where(Supplier.supplier_name.ilike(f"%{keyword}%"))
     if supplier_type:
         stmt = stmt.where(Supplier.supplier_type == supplier_type)
-    if status:
-        stmt = stmt.where(Supplier.status == status)
 
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
@@ -80,7 +77,7 @@ async def create_supplier(
         table_name="supplier",
         record_id=obj.id,
         operation="CREATE",
-        diff_data={"supplier_name": obj.supplier_name, "status": obj.status, "contact_info": obj.contact_info},
+        diff_data={"supplier_name": obj.supplier_name, "contact_info": obj.contact_info},
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -233,7 +230,7 @@ async def update_supplier(
             raise HTTPException(status_code=400, detail="Supplier name already exists")
     
     # Capture before state
-    before_data = {"supplier_name": supplier.supplier_name, "status": supplier.status, "contact_info": supplier.contact_info}
+    before_data = {"supplier_name": supplier.supplier_name, "contact_info": supplier.contact_info}
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -271,7 +268,7 @@ async def delete_supplier(
         table_name="supplier",
         record_id=supplier.id,
         operation="DELETE",
-        diff_data={"supplier_name": supplier.supplier_name, "status": supplier.status},
+        diff_data={"supplier_name": supplier.supplier_name},
         operator=user.username,
         operated_at=now_china(),
         source="web",

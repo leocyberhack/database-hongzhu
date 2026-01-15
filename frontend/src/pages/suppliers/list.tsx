@@ -54,7 +54,6 @@ export default function SupplierPage() {
         try {
             const payload = {
                 supplier_name: values.supplier_name,
-                status: values.status || 'active',
                 contact_info: {
                     contact_name: values.contact_name,
                     contact_phone: values.contact_phone,
@@ -75,7 +74,6 @@ export default function SupplierPage() {
         try {
             const payload = {
                 supplier_name: values.supplier_name,
-                status: values.status,
                 contact_info: {
                     contact_name: values.contact_name,
                     contact_phone: values.contact_phone,
@@ -83,7 +81,6 @@ export default function SupplierPage() {
             }
             if (
                 selected.supplier_name === payload.supplier_name &&
-                selected.status === payload.status &&
                 selected.contact_info?.contact_name === payload.contact_info.contact_name &&
                 selected.contact_info?.contact_phone === payload.contact_info.contact_phone
             ) {
@@ -378,13 +375,7 @@ export default function SupplierPage() {
                     <Form.Item name="contact_phone" label="电话">
                         <Input placeholder="138****" />
                     </Form.Item>
-                    <Form.Item name="status" label="状态" initialValue="active">
-                        <Select options={[
-                            { value: 'active', label: '合作中' },
-                            { value: 'pending', label: '待审核' },
-                            { value: 'inactive', label: '已停用' }
-                        ]} />
-                    </Form.Item>
+
                     <Form.Item style={{ marginTop: 24 }}>
                         <Space style={{ width: '100%' }}>
                             <Button onClick={() => {
@@ -421,13 +412,7 @@ export default function SupplierPage() {
                     <Form.Item name="contact_phone" label="电话">
                         <Input />
                     </Form.Item>
-                    <Form.Item name="status" label="状态">
-                        <Select options={[
-                            { value: 'active', label: '合作中' },
-                            { value: 'pending', label: '待审核' },
-                            { value: 'inactive', label: '已停用' }
-                        ]} />
-                    </Form.Item>
+
                     <Space style={{ float: 'right', marginTop: 16 }}>
                         <Button onClick={() => setEditModalVisible(false)}>取消</Button>
                         <Button type="primary" htmlType="submit">保存</Button>
@@ -446,13 +431,7 @@ export default function SupplierPage() {
                     <p style={{ color: '#999', marginBottom: 16 }}>
                         请填写需要修改的字段，留空则不修改
                     </p>
-                    <Form.Item name="status" label="状态">
-                        <Select options={[
-                            { value: 'active', label: '合作中' },
-                            { value: 'pending', label: '待审核' },
-                            { value: 'inactive', label: '已停用' }
-                        ]} allowClear placeholder="批量修改状态" />
-                    </Form.Item>
+
                     <Space style={{ float: 'right', marginTop: 16 }}>
                         <Button onClick={() => setBatchUpdateVisible(false)}>取消</Button>
                         <Button type="primary" htmlType="submit">
@@ -473,11 +452,7 @@ export default function SupplierPage() {
                     <>
                         <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
                             <Descriptions.Item label="供应商名称">{selected.supplier_name}</Descriptions.Item>
-                            <Descriptions.Item label="状态">
-                                <Tag color={selected.status === 'active' ? 'green' : selected.status === 'pending' ? 'orange' : 'gray'}>
-                                    {selected.status === 'active' ? '合作中' : selected.status === 'pending' ? '待审核' : selected.status === 'inactive' ? '已停用' : selected.status}
-                                </Tag>
-                            </Descriptions.Item>
+
                             <Descriptions.Item label="联系人">{selected.contact_info?.contact_name || '-'}</Descriptions.Item>
                             <Descriptions.Item label="电话">{selected.contact_info?.contact_phone || '-'}</Descriptions.Item>
                         </Descriptions>
