@@ -14,6 +14,7 @@ import {
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 const { Header, Sider, Content } = Layout
 
@@ -139,6 +140,7 @@ export default function AppLayout() {
             key: '/admin/users',
             icon: <UserOutlined />,
             label: '用户管理',
+            children: [], // Ensure consistent type if other items have children
         }] : []),
     ]
 
@@ -184,88 +186,130 @@ export default function AppLayout() {
                 onCollapse={setCollapsed}
                 className="glass-panel"
                 style={{
-                    margin: '12px 0 12px 12px',
-                    borderRadius: '16px',
-                    border: '1px solid rgba(255,255,255,0.6)',
+                    margin: '16px 0 16px 16px',
+                    borderRadius: '24px',
+                    height: 'calc(100vh - 32px)',
+                    position: 'fixed',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    zIndex: 100,
                     overflow: 'hidden',
-                    zIndex: 10
+                    border: '1px solid rgba(255,255,255,0.4)',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.05)'
                 }}
                 theme="light"
             >
                 <div style={{
-                    height: 64,
+                    height: 80,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderBottom: '1px solid rgba(0,0,0,0.03)'
                 }}>
                     {!collapsed && (
-                        <span style={{
-                            fontSize: '18px',
-                            fontWeight: '800',
-                            background: 'linear-gradient(45deg, #ff4d4f, #ff7a45)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            fontFamily: 'Outfit, sans-serif'
-                        }}>
+                        <motion.span
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            style={{
+                                fontSize: '20px',
+                                fontWeight: '800',
+                                background: 'linear-gradient(45deg, #ff4d4f, #ff7a45)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                fontFamily: 'Outfit, sans-serif',
+                                letterSpacing: '-0.5px'
+                            }}>
                             RED PIG DB
-                        </span>
+                        </motion.span>
                     )}
                     {collapsed && (
                         <div style={{
                             width: 32,
                             height: 32,
                             background: 'linear-gradient(135deg, #ff4d4f, #f5222d)',
-                            borderRadius: 8,
-                            boxShadow: '0 4px 10px rgba(245,34,45,0.3)'
-                        }} />
+                            borderRadius: 10,
+                            boxShadow: '0 4px 10px rgba(245,34,45,0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontWeight: 'bold',
+                            fontSize: '16px'
+                        }}>P</div>
                     )}
                 </div>
 
-                <Menu
-                    mode="inline"
-                    defaultSelectedKeys={selectedKeys}
-                    defaultOpenKeys={defaultOpenKeys}
-                    selectedKeys={selectedKeys}
-                    items={menuItems}
-                    onClick={handleMenuClick}
-                    style={{ border: 'none', background: 'transparent', padding: '12px 0' }}
-                />
+                <div style={{ height: 'calc(100% - 80px)', overflowY: 'auto', paddingRight: collapsed ? 0 : 4 }}>
+                    <Menu
+                        mode="inline"
+                        defaultSelectedKeys={selectedKeys}
+                        defaultOpenKeys={defaultOpenKeys}
+                        selectedKeys={selectedKeys}
+                        items={menuItems}
+                        onClick={handleMenuClick}
+                        style={{ border: 'none', background: 'transparent', padding: '12px 0' }}
+                    />
+                </div>
             </Sider>
 
-            <Layout style={{ background: 'transparent' }}>
+            <Layout style={{
+                background: 'transparent',
+                marginLeft: collapsed ? 80 : 276,
+                transition: 'all 0.2s ease-in-out',
+                minHeight: '100vh'
+            }}>
                 <Header style={{
                     padding: '0 24px',
-                    background: 'rgba(255,255,255,0.7)',
-                    backdropFilter: 'blur(10px)',
-                    margin: '12px 12px 0 12px',
-                    borderRadius: '16px',
+                    background: 'rgba(255,255,255,0.6)',
+                    backdropFilter: 'blur(12px)',
+                    margin: '16px 16px 0 0',
+                    borderRadius: '24px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'flex-end',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
-                    height: 64
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
+                    height: 72,
+                    border: '1px solid rgba(255,255,255,0.5)'
                 }}>
                     <Space size="large">
-
-                        <Button type="text" shape="circle" icon={<BellOutlined />} />
-                        <div style={{ width: 1, height: 24, background: '#e2e8f0' }} />
+                        <Button type="text" shape="circle" icon={<BellOutlined />} style={{ color: '#64748b' }} />
+                        <div style={{ width: 1, height: 24, background: '#cbd5e1' }} />
                         <Dropdown menu={userMenu} placement="bottomRight">
-                            <Space style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: '20px', background: 'rgba(255,255,255,0.5)' }}>
+                            <Space style={{ cursor: 'pointer', padding: '6px 12px', borderRadius: '30px', background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.5)' }}>
                                 <Avatar style={{ backgroundColor: '#ff4d4f' }} icon={<UserOutlined />} />
-                                <span style={{ fontSize: '14px', fontWeight: 500 }}>{user?.username || 'User'}</span>
+                                <span style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>{user?.username || 'User'}</span>
                             </Space>
                         </Dropdown>
                     </Space>
                 </Header>
 
                 <Content style={{
-                    margin: '12px',
+                    margin: '16px 16px 16px 0',
                     minHeight: 280,
-                    borderRadius: '16px',
-                    overflow: 'auto'
+                    borderRadius: '24px',
+                    overflow: 'visible',
+                    position: 'relative'
                 }}>
-                    <Outlet />
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={location.pathname}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                            style={{ width: '100%', height: '100%' }}
+                        >
+                            <div className="glass-panel" style={{
+                                minHeight: '100%',
+                                padding: '24px',
+                                background: 'rgba(255, 255, 255, 0.55)',
+                                backdropFilter: 'blur(10px)',
+                            }}>
+                                <Outlet />
+                            </div>
+                        </motion.div>
+                    </AnimatePresence>
                 </Content>
             </Layout>
         </Layout>
