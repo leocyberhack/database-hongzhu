@@ -45,8 +45,7 @@ def upgrade() -> None:
     
     # 3. 为现有数据设置默认 poi_type
     # 策略：根据现有Resource的resource_type推断POI类型
-    # 如果POI下有多种资源类型，取第一个资源的类型
-    # 如果POI下没有资源，设置为 '其他'
+    # 如果POI下没有资源，默认设置为 '门票'（符合枚举约束）
     
     op.execute("""
         UPDATE poi 
@@ -57,8 +56,9 @@ def upgrade() -> None:
                 WHERE resource.poi_id = poi.id 
                 LIMIT 1
             ),
-            '其他'
+            '门票'
         )
+        WHERE poi_type IS NULL OR poi_type = '其他'
     """)
     
     # 4. 将 poi_type 设置为 NOT NULL
