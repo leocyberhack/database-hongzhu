@@ -1,222 +1,142 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  /* Brand Colors - Vivid Red */
-  --primary-50: #fff0f0;
-  --primary-100: #ffcccb;
-  --primary-200: #ff9e9d;
-  --primary-300: #ff6f6d;
-  --primary-400: #ff403d;
-  --primary-500: #f5222d;
-  --primary-600: #cf1322;
-  --primary-700: #a8071a;
-  
-  /* Modern Gradient */
-  --brand-gradient: linear-gradient(135deg, #ff403d 0%, #f5222d 50%, #cf1322 100%);
-  --brand-gradient-hover: linear-gradient(135deg, #ff6f6d 0%, #ff403d 50%, #f5222d 100%);
+  /* --- Modern Red/White Palette --- */
 
-  /* Neutrals */
-  --neutral-0: #ffffff;
-  --neutral-50: #fcfcfc;
-  --neutral-100: #f8fafc;
-  --neutral-200: #e2e8f0;
-  --neutral-300: #cbd5e1;
-  --neutral-400: #94a3b8;
-  --neutral-500: #64748b;
-  --neutral-600: #475569;
-  --neutral-700: #334155;
-  --neutral-800: #1e293b;
-  --neutral-900: #0f172a;
+  /* Backgrounds - Clean & Bright */
+  --bg-deep: #f8fafc;
+  /* Main Page Background */
+  --bg-subtle: #ffffff;
+  /* Card Backgrounds */
+  --bg-surface: #ffffff;
 
-  /* Glass System */
+  /* Primary Brand - Vivid Red */
+  --primary-color: #f5222d;
+  --primary-hover: #ff4d4f;
+  --primary-glow: rgba(245, 34, 45, 0.2);
+  --primary-gradient: linear-gradient(135deg, #f5222d 0%, #cf1322 100%);
+
+  /* Accents */
+  --accent-blue: #1677ff;
+  --accent-purple: #722ed1;
+  --accent-success: #52c41a;
+  --accent-warning: #faad14;
+
+  /* Text & Neutrals (High Contrast) */
+  --text-main: #0f172a;
+  /* Almost Black */
+  --text-secondary: #475569;
+  /* Dark Grey */
+  --text-muted: #94a3b8;
+  --border-dim: rgba(0, 0, 0, 0.06);
+  --border-bright: rgba(0, 0, 0, 0.1);
+
+  /* Glass System (Light Mode) */
   --glass-bg: rgba(255, 255, 255, 0.75);
   --glass-border: rgba(255, 255, 255, 0.6);
   --glass-highlight: rgba(255, 255, 255, 0.8);
-  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+  --glass-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.05);
 
   /* Layout */
   --header-height: 72px;
   --sider-width: 260px;
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --radius-sm: 8px;
 }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color: var(--neutral-800);
+  color: var(--text-main);
+  background-color: var(--bg-deep);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   margin: 0;
-  
-  /* Mesh Gradient Background */
-  background-color: #f8fafc;
-  background-image: 
-    radial-gradient(at 0% 0%, hsla(353, 90%, 96%, 1) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, hsla(340, 80%, 96%, 1) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, hsla(240, 50%, 96%, 1) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, hsla(350, 70%, 97%, 1) 0px, transparent 50%);
+  overflow-x: hidden;
+
+  /* Modern Mesh Gradient (Red/White) */
+  background-image:
+    radial-gradient(at 0% 0%, rgba(255, 240, 240, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(255, 245, 245, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(240, 245, 255, 0.5) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(255, 240, 240, 0.8) 0px, transparent 50%);
   background-size: 120% 120%;
   background-attachment: fixed;
   animation: bg-shift 20s ease-in-out infinite alternate;
 }
 
 @keyframes bg-shift {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 100% 100%; }
+  0% {
+    background-position: 0% 0%;
+  }
+
+  100% {
+    background-position: 100% 100%;
+  }
 }
 
-/* Animations */
-@keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-6px); }
-  100% { transform: translateY(0px); }
-}
-
-/* Typography Enhancements */
-h1, h2, h3, h4, h5, h6 {
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: 'Outfit', sans-serif;
-  color: var(--neutral-900);
+  color: var(--text-main);
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 0.6em;
 }
 
-h1 { font-size: 32px; }
-h2 { font-size: 24px; }
+h1 {
+  font-size: 32px;
+}
 
-/* Advanced Glassmorphism */
-.glass-panel {
+h2 {
+  font-size: 24px;
+}
+
+h3 {
+  font-size: 18px;
+}
+
+/* --- Components --- */
+
+/* Modern Light Glass Card */
+.glass-card {
   background: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
-  box-shadow: 
-    0 4px 6px -1px rgba(0, 0, 0, 0.05), 
-    0 2px 4px -1px rgba(0, 0, 0, 0.03),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-  border-radius: 24px;
-}
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--glass-shadow);
+  border-radius: var(--radius-md);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
+  overflow: hidden;
 }
 
 .glass-card:hover {
-  transform: translateY(-4px) scale(1.01);
-  box-shadow: 
-    0 20px 25px -5px rgba(0, 0, 0, 0.05), 
-    0 10px 10px -5px rgba(0, 0, 0, 0.02),
-    0 0 0 2px rgba(245, 34, 45, 0.05);
-  background: rgba(255, 255, 255, 0.95);
-  z-index: 1;
+  transform: translateY(-4px);
+  box-shadow:
+    0 12px 24px -8px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(245, 34, 45, 0.1);
+  background: rgba(255, 255, 255, 0.85);
 }
 
-/* Ant Design Override - Layout */
-.ant-layout {
-  background: transparent !important;
+/* Glass Panel (For Layout areas) */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
-.ant-layout-sider {
-  background: transparent !important;
-}
-
-.ant-menu {
-  background: transparent !important;
-  border-right: none !important;
-}
-
-.ant-menu-item {
-  border-radius: 12px;
-  margin-bottom: 4px;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
-.ant-menu-item-selected {
-  background: linear-gradient(90deg, var(--primary-50), rgba(255,255,255,0.5)) !important;
-  color: var(--primary-600) !important;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(245, 34, 45, 0.1);
-}
-
-.ant-menu-submenu-title {
-  font-weight: 500;
-  border-radius: 12px;
-}
-
-/* Ant Design Override - Table */
-.ant-table-wrapper .ant-table {
-  background: transparent;
-}
-
-.ant-table {
-  background: transparent !important;
-}
-
-.ant-table-thead > tr > th {
-  background: rgba(245, 248, 250, 0.6) !important;
-  border-bottom: 1px solid rgba(0,0,0,0.06) !important;
-  color: var(--neutral-500) !important;
-  font-family: 'Outfit', sans-serif;
-  font-weight: 600;
-  text-transform: uppercase;
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  padding: 16px !important;
-}
-
-.ant-table-tbody > tr > td {
-  border-bottom: 1px solid rgba(0,0,0,0.03) !important;
-  transition: background 0.2s;
-  padding: 16px !important;
-  font-size: 14px;
-}
-
-.ant-table-tbody > tr:hover > td {
-  background: rgba(255, 241, 240, 0.5) !important;
-}
-
-.ant-table-cell::before {
-  display: none !important;
-}
-
-/* Ant Design Override - Cards */
-.ant-card {
-  border-radius: 20px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important;
-  border: 1px solid rgba(255,255,255,0.8) !important;
-}
-
-/* Ant Design Override - Button */
-.ant-btn {
-  border-radius: 10px;
-  font-weight: 500;
-  box-shadow: none;
-}
-
-.ant-btn-primary {
-  background: var(--brand-gradient);
-  border: none;
-  box-shadow: 0 4px 14px 0 rgba(245, 34, 45, 0.39);
-  font-weight: 600;
-  padding: 0 20px;
-  height: 38px;
-  transition: all 0.3s ease;
-}
-
-.ant-btn-primary:hover {
-  background: var(--brand-gradient-hover) !important;
-  box-shadow: 0 6px 20px rgba(245, 34, 45, 0.23);
-  transform: translateY(-1px);
-}
-
-/* Page Common */
+/* Page Standard Layout */
 .page-container {
-  padding: 8px; /* Reset padding as layout handles it */
+  padding: 8px;
   max-width: 1800px;
   margin: 0 auto;
 }
@@ -225,38 +145,143 @@ h2 { font-size: 24px; }
   margin-bottom: 32px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--border-dim);
+  padding-bottom: 16px;
 }
 
 .page-title {
   font-size: 28px;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--neutral-900), var(--neutral-600));
+  background: linear-gradient(135deg, #1f1f1f 0%, #434343 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  letter-spacing: -0.03em;
   margin: 0;
 }
 
 .page-subtitle {
-  color: var(--neutral-500);
-  margin-top: 6px;
-  font-size: 15px;
-  font-weight: 400;
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+/* --- Ant Design Overrides (Light Mode) --- */
+
+/* Tables */
+.ant-table {
+  background: transparent !important;
+  color: var(--text-secondary);
+}
+
+.ant-table-thead>tr>th {
+  background: rgba(245, 245, 245, 0.5) !important;
+  color: var(--text-secondary) !important;
+  border-bottom: 1px solid var(--border-dim) !important;
+  font-family: 'Outfit', sans-serif;
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 16px !important;
+}
+
+.ant-table-tbody>tr>td {
+  border-bottom: 1px solid var(--border-dim) !important;
+  color: var(--text-main) !important;
+  padding: 16px !important;
+  transition: all 0.2s;
+}
+
+.ant-table-tbody>tr:hover>td {
+  background: rgba(245, 34, 45, 0.03) !important;
+  /* Very subtle red tint */
+}
+
+/* Pagination */
+.ant-pagination-item-active {
+  border-color: var(--primary-color) !important;
+  background: #fff !important;
+}
+
+.ant-pagination-item-active a {
+  color: var(--primary-color) !important;
+}
+
+/* Buttons */
+.ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.ant-btn-primary {
+  background: var(--primary-gradient) !important;
+  border: none !important;
+  box-shadow: 0 4px 10px var(--primary-glow);
+  font-weight: 600;
+}
+
+.ant-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 15px var(--primary-glow);
+}
+
+/* Menu/Sider */
+.ant-menu {
+  background: transparent !important;
+  border-right: none !important;
+}
+
+.ant-menu-item {
+  border-radius: 8px;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+.ant-menu-item-selected {
+  background: linear-gradient(90deg, #fff1f0, rgba(255, 255, 255, 0.5)) !important;
+  color: var(--primary-color) !important;
+  font-weight: 600;
+}
+
+.ant-menu-submenu-title {
+  color: var(--text-secondary) !important;
+}
+
+/* Card Overrides */
+.ant-card {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--border-dim) !important;
+  box-shadow: var(--glass-shadow) !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid var(--border-dim) !important;
+  color: var(--text-main) !important;
+}
+
+/* Form Inputs */
+.ant-input,
+.ant-picker,
+.ant-select-selector {
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.8) !important;
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.15);
-  border-radius: 3px;
+  background: #ccc;
+  border-radius: 4px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,0,0,0.25);
+  background: #999;
 }

@@ -5,7 +5,9 @@ from pydantic import BaseModel, Field
 
 # Import resource type-specific attrs schemas for reference
 # These define the structure of the 'attrs' JSONB field for different resource types
-from app.schemas.resource_attrs import TicketAttrs, HotelAttrs, GenericAttrs
+from app.schemas.resource_attrs import TicketAttrs, HotelAttrs, DiningAttrs, TransportAttrs
+# Import POI type-specific attrs schemas
+from app.schemas.poi_attrs import TicketPoiAttrs, HotelPoiAttrs, DiningPoiAttrs, TransportPoiAttrs
 
 
 class ORMBase(BaseModel):
@@ -26,10 +28,11 @@ class ListResponse(BaseModel):
 
 class PoiBase(BaseModel):
     poi_name: str
+    poi_type: str  # 必选：门票/酒店/餐饮/交通
     city: str
-    poi_type: Optional[str] = None
     address: Optional[str] = None
     tags: Optional[list[str]] = None
+    attrs: Optional[dict] = Field(None, description="POI类型的通用属性 (JSONB)")
     status: Optional[str] = None
 
 
@@ -39,10 +42,11 @@ class PoiCreate(PoiBase):
 
 class PoiUpdate(BaseModel):
     poi_name: Optional[str] = None
+    poi_type: Optional[str] = None  # 允许修改POI类型
     city: Optional[str] = None
-    poi_type: Optional[str] = None
     address: Optional[str] = None
     tags: Optional[list[str]] = None
+    attrs: Optional[dict] = None
     status: Optional[str] = None
 
 

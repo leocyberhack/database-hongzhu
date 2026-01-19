@@ -1,8 +1,17 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text, Enum as SaEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+import enum
 
 from app.core.database import Base
+
+
+class AssetType(str, enum.Enum):
+    """资源/POI类型枚举"""
+    TICKET = "门票"
+    HOTEL = "酒店"
+    DINING = "餐饮"
+    TRANSPORT = "交通"
 
 
 class User(Base):
@@ -20,10 +29,11 @@ class Poi(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     poi_name: Mapped[str] = mapped_column(String, nullable=False)
-    poi_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    poi_type: Mapped[AssetType] = mapped_column(SaEnum(AssetType, native_enum=False), nullable=False)
     city: Mapped[str] = mapped_column(String, nullable=False)
     address: Mapped[str | None] = mapped_column(String, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'active'"))
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
@@ -37,7 +47,7 @@ class Resource(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     poi_id: Mapped[int] = mapped_column(ForeignKey("poi.id", ondelete="RESTRICT"), nullable=False)
     resource_name: Mapped[str] = mapped_column(String, nullable=False)
-    resource_type: Mapped[str] = mapped_column(String, nullable=False)
+    resource_type: Mapped[AssetType] = mapped_column(SaEnum(AssetType, native_enum=False), nullable=False)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'draft'"))
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))

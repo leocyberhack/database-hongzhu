@@ -5,8 +5,13 @@ import { useSearchParams } from 'react-router-dom'
 import { useData } from '@/contexts/DataContext'
 import type { POI, Resource } from '@/types'
 import { apiRequest } from '@/lib/api'
+import TicketPoiFields from '@/components/TicketPoiFields'
+import HotelPoiFields from '@/components/HotelPoiFields'
+import DiningPoiFields from '@/components/DiningPoiFields'
+import TransportPoiFields from '@/components/TransportPoiFields'
 
-const RESOURCE_TYPES = ['门票', '酒店', '交通', '餐饮', '组合']
+const POI_TYPES = ['门票', '酒店', '餐饮', '交通'] // POI类型（不含组合）
+const RESOURCE_TYPES = ['门票', '酒店', '交通', '餐饮']
 
 interface FilterState {
     keyword: string
@@ -26,12 +31,26 @@ export default function ResourcePage() {
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
+    const [createModalVisible, setCreateModalVisible] = useState(false) // 新建POI Modal
+    const [poiType, setPoiType] = useState<string | null>(null) // 新建POI时选择的类型
 
     // 筛选器状态
     const [filters, setFilters] = useState<FilterState>({
         keyword: '',
         city: null,
     })
+
+    // 监听选中POI变化，填充表单
+    useEffect(() => {
+        if (selectedPoi) {
+            // 确保attrs字段存在，避免undefined问题
+            const initialValues = {
+                ...selectedPoi,
+                attrs: selectedPoi.attrs || {}
+            }
+            poiEditForm.setFieldsValue(initialValues)
+        }
+    }, [selectedPoi, poiEditForm])
 
     const poiList = data?.poi ?? []
     const resources = data?.resources ?? []
@@ -186,6 +205,8 @@ export default function ResourcePage() {
             await apiRequest('/api/poi', { method: 'POST', body: JSON.stringify(values) })
             message.success('已创建 POI')
             poiForm.resetFields()
+            setPoiType(null)
+            setCreateModalVisible(false)
             await refresh()
         } catch (err: any) {
             message.error(err.message || '创建失败')
@@ -285,8 +306,10 @@ export default function ResourcePage() {
         if (selectedPoi) {
             poiEditForm.setFieldsValue({
                 poi_name: selectedPoi.poi_name,
+                poi_type: selectedPoi.poi_type,
                 city: selectedPoi.city,
                 address: selectedPoi.address,
+                attrs: selectedPoi.attrs,
             })
         }
     }, [selectedPoi, poiEditForm])
@@ -342,6 +365,9 @@ export default function ResourcePage() {
                             </Form.Item>
                         </Col>
                         <Col span={8} style={{ textAlign: 'right' }}>
+                            <Button type="primary" onClick={() => setCreateModalVisible(true)} style={{ marginRight: 8 }}>
+                                新建 POI
+                            </Button>
                             {selectedRowKeys.length > 0 && (
                                 <Space>
                                     <Button onClick={() => setBatchUpdateVisible(true)} icon={<SettingOutlined />}>
@@ -365,61 +391,104 @@ export default function ResourcePage() {
                 </Form>
             </Card>
 
-            <Space align="start" style={{ width: '100%', display: 'flex' }} size={12}>
-                <div className="glass-card" style={{ flex: 1, padding: '24px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                        <h3 style={{ margin: 0 }}>POI 列表</h3>
-                        {selectedRowKeys.length > 0 && <span style={{ color: '#666' }}>已选择 {selectedRowKeys.length} 项</span>}
-                    </div>
-                    <Table<POI>
-                        rowKey="id"
-                        columns={columns}
-                        dataSource={filteredPoiList}
-                        rowSelection={{
-                            selectedRowKeys,
-                            onChange: setSelectedRowKeys,
-                        }}
-                        pagination={{
-                            current: pagination.current,
-                            pageSize: pagination.pageSize,
-                            total: filteredPoiList.length,
-                            showSizeChanger: true,
-                            showTotal: (total) => `共 ${total} 条记录`,
-                            onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
-                            onShowSizeChange: (current, size) => setPagination({ current, pageSize: size })
-                        }}
-                        onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
-                    />
+
+            {/* POI列表 - 全宽显示 */}
+            <div className="glass-card" style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <h3 style={{ margin: 0 }}>POI 列表</h3>
+                    {selectedRowKeys.length > 0 && <span style={{ color: '#666' }}>已选择 {selectedRowKeys.length} 项</span>}
                 </div>
+                <Table<POI>
+                    rowKey="id"
+                    columns={columns}
+                    dataSource={filteredPoiList}
+                    rowSelection={{
+                        selectedRowKeys,
+                        onChange: setSelectedRowKeys,
+                    }}
+                    pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: filteredPoiList.length,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条记录`,
+                        onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+                        onShowSizeChange: (current, size) => setPagination({ current, pageSize: size })
+                    }}
+                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
+                />
+            </div>
 
-                {/* 右侧新建POI表单 */}
-                <div className="glass-card" style={{ width: 360, padding: '24px' }}>
-                    <h3 style={{ marginBottom: '16px' }}>新建 POI</h3>
-                    <Form layout="vertical" form={poiForm} onFinish={addPoi}>
-                        <Form.Item name="poi_name" label="POI 名称" rules={[{ required: true, message: '请输入POI名称' }]}>
-                            <Input placeholder="如：丽江古城" />
-                        </Form.Item>
-                        <Form.Item name="city" label="城市" rules={[{ required: true, message: '请输入城市' }]}>
-                            <Input placeholder="丽江" />
-                        </Form.Item>
-                        <Form.Item name="address" label="地址">
-                            <Input placeholder="详细地址" />
-                        </Form.Item>
-                        {suggestions.length > 0 && (
-                            <div style={{ padding: 8, background: '#fff3cd', borderRadius: 4, marginBottom: 12, fontSize: 12 }}>
-                                ⚠️ 检测到同名同城的POI ({suggestions.length}个)，请确认是否重复
-                            </div>
-                        )}
-                        <Button type="primary" htmlType="submit" block>
-                            创建 POI
-                        </Button>
-                    </Form>
+            {/* 新建POI Modal */}
+            <Modal
+                title="新建 POI"
+                open={createModalVisible}
+                onCancel={() => {
+                    setCreateModalVisible(false)
+                    poiForm.resetFields()
+                    setPoiType(null)
+                }}
+                footer={null}
+                width={800}
+                style={{ top: 20 }}
+            >
+                <Form layout="vertical" form={poiForm} onFinish={addPoi}>
+                    <Form.Item name="poi_name" label="POI 名称" rules={[{ required: true, message: '请输入POI名称' }]}>
+                        <Input placeholder="如：丽江古城" />
+                    </Form.Item>
 
-                    <div style={{ marginTop: 24, padding: 12, background: '#e6f7ff', borderRadius: 4, fontSize: 12 }}>
+                    <Form.Item name="poi_type" label="POI 类型" rules={[{ required: true, message: '请选择POI类型' }]}>
+                        <Select
+                            placeholder="选择POI类型（必选）"
+                            onChange={(value) => {
+                                setPoiType(value)
+                                poiForm.setFieldsValue({ attrs: undefined })
+                            }}
+                        >
+                            {POI_TYPES.map(t => <Select.Option key={t} value={t}>{t}</Select.Option>)}
+                        </Select>
+                    </Form.Item>
+
+                    <Form.Item name="city" label="城市" rules={[{ required: true, message: '请输入城市' }]}>
+                        <Input placeholder="丽江" />
+                    </Form.Item>
+
+                    <Form.Item name="address" label="地址">
+                        <Input placeholder="详细地址" />
+                    </Form.Item>
+
+                    {suggestions.length > 0 && (
+                        <div style={{ padding: 8, background: '#fff3cd', borderRadius: 4, marginBottom: 12, fontSize: 12 }}>
+                            ⚠️ 检测到同名同城的POI ({suggestions.length}个)，请确认是否重复
+                        </div>
+                    )}
+
+                    {/* 根据POI类型显示对应的通用字段 */}
+                    {poiType === '门票' && <TicketPoiFields />}
+                    {poiType === '酒店' && <HotelPoiFields />}
+                    {poiType === '餐饮' && <DiningPoiFields />}
+                    {poiType === '交通' && <TransportPoiFields />}
+
+                    <div style={{ marginTop: 24, padding: 12, background: '#e6f7ff', borderRadius: 4, fontSize: 12, marginBottom: 16 }}>
                         💡 提示：创建POI后，前往"资源管理"页面创建具体的资源（门票、酒店房型等）并绑定供应商
                     </div>
-                </div>
-            </Space>
+
+                    <Form.Item style={{ marginBottom: 0 }}>
+                        <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                            <Button onClick={() => {
+                                setCreateModalVisible(false)
+                                poiForm.resetFields()
+                                setPoiType(null)
+                            }}>
+                                取消
+                            </Button>
+                            <Button type="primary" htmlType="submit">
+                                创建 POI
+                            </Button>
+                        </Space>
+                    </Form.Item>
+                </Form>
+            </Modal>
 
             {/* POI 编辑 Drawer */}
             <Drawer
@@ -433,16 +502,41 @@ export default function ResourcePage() {
                         <div className="glass-card" style={{ padding: '16px', marginBottom: 12 }}>
                             <h4 style={{ marginBottom: '12px' }}>基本信息</h4>
                             <Form layout="vertical" form={poiEditForm} onFinish={savePoi}>
-                                <Form.Item name="poi_name" label="名称" rules={[{ required: true }]}>
-                                    <Input />
-                                </Form.Item>
-                                <Form.Item name="city" label="城市" rules={[{ required: true }]}>
-                                    <Input />
-                                </Form.Item>
-                                <Form.Item name="address" label="地址">
-                                    <Input />
-                                </Form.Item>
-                                <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                                <Row gutter={16}>
+                                    <Col span={12}>
+                                        <Form.Item name="poi_name" label="名称" rules={[{ required: true }]}>
+                                            <Input />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item name="poi_type" label="类型">
+                                            <Select disabled>
+                                                {POI_TYPES.map(t => <Select.Option key={t} value={t}>{t}</Select.Option>)}
+                                            </Select>
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+
+                                <Row gutter={16}>
+                                    <Col span={12}>
+                                        <Form.Item name="city" label="城市" rules={[{ required: true }]}>
+                                            <Input />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item name="address" label="地址">
+                                            <Input />
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+
+                                {/* 动态字段编辑区域 */}
+                                {selectedPoi.poi_type === '门票' && <TicketPoiFields />}
+                                {selectedPoi.poi_type === '酒店' && <HotelPoiFields />}
+                                {selectedPoi.poi_type === '餐饮' && <DiningPoiFields />}
+                                {selectedPoi.poi_type === '交通' && <TransportPoiFields />}
+
+                                <Space style={{ width: '100%', justifyContent: 'flex-end', marginTop: 16 }}>
                                     <Button onClick={() => setSelectedPoi(null)}>取消</Button>
                                     <Button type="primary" htmlType="submit">
                                         保存

@@ -3,7 +3,7 @@ from app.utils.time import now_china
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import User, get_current_user, require_roles
@@ -108,20 +108,41 @@ async def create_poi(
     db: DbSession,
     user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
+    # poi_type必填校验
+    if not payload.poi_type:
+        raise HTTPException(status_code=400, detail="poi_type is required")
+    
+    # poi_type枚举值校验
+    valid_types = ["门票", "酒店", "餐饮", "交通"]
+    if payload.poi_type not in valid_types:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid poi_type. Must be one of: {', '.join(valid_types)}"
+        )
+    
     # Unique check by name（全局不重复，编辑未改名允许）
     exists = await db.scalar(select(Poi).where(Poi.poi_name == payload.poi_name))
     if exists:
         raise HTTPException(status_code=400, detail="POI name already exists")
+    
     obj = Poi(**payload.model_dump())
     db.add(obj)
     await db.flush()
     
-    # Record audit log
+    # Record audit log with poi_type and attrs
+    audit_data = {
+        "poi_name": obj.poi_name, 
+        "poi_type": obj.poi_type,
+        "city": obj.city
+    }
+    if obj.attrs:
+        audit_data["attrs"] = obj.attrs
+    
     audit = AuditLog(
         table_name="poi",
         record_id=obj.id,
         operation="CREATE",
-        diff_data={"poi_name": obj.poi_name, "city": obj.city},
+        diff_data=audit_data,
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -150,28 +171,54 @@ async def update_poi(
         if dup:
             raise HTTPException(status_code=400, detail="POI name already exists")
     
-    # Capture before state (only serializable fields)
+    # poi_type变更校验：如果要修改poi_type，需要检查是否有关联资源
+    if payload.poi_type and payload.poi_type != poi.poi_type:
+        # 检查该POI下是否有资源
+        resource_count = await db.scalar(
+            select(func.count()).select_from(Resource).where(Resource.poi_id == poi_id)
+        )
+        if resource_count and resource_count > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"无法修改POI类型：该POI下已有 {resource_count} 个资源，修改类型会导致资源类型不一致"
+            )
+        
+        # poi_type枚举值校验
+        valid_types = ["门票", "酒店", "餐饮", "交通"]
+        if payload.poi_type not in valid_types:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid poi_type. Must be one of: {', '.join(valid_types)}"
+            )
+    
+    # Capture before state (include poi_type and attrs)
     before_data = {
         "poi_name": poi.poi_name, 
+        "poi_type": poi.poi_type,
         "city": poi.city, 
         "status": poi.status
     }
     if poi.address:
         before_data["address"] = poi.address
+    if poi.attrs:
+        before_data["attrs"] = poi.attrs
     
     # Update only provided fields
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(poi, field, value)
     
-    # Capture after state (only serializable fields)
+    # Capture after state (include poi_type and attrs)
     after_data = {
         "poi_name": poi.poi_name,
+        "poi_type": poi.poi_type,
         "city": poi.city,
         "status": poi.status
     }
     if poi.address:
         after_data["address"] = poi.address
+    if poi.attrs:
+        after_data["attrs"] = poi.attrs
     
     # Record audit log
     audit = AuditLog(
@@ -188,6 +235,7 @@ async def update_poi(
     await db.commit()
     await db.refresh(poi)
     return PoiRead.model_validate(poi)
+
 
 
 @router.delete("/poi/{poi_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -273,8 +321,25 @@ async def create_resource(
     dup = await db.scalar(select(Resource).where(Resource.resource_name == payload.resource_name))
     if dup:
         raise HTTPException(status_code=400, detail="Resource name already exists")
+    
+    # 获取POI信息，自动继承poi_type作为resource_type
+    poi = await db.get(Poi, payload.poi_id)
+    if not poi:
+        raise HTTPException(status_code=404, detail="POI not found")
+    
+    # 强制：resource_type必须与POI的poi_type一致
+    # 如果payload中提供了resource_type，检查是否一致
+    if payload.resource_type and payload.resource_type != poi.poi_type:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"资源类型必须与POI类型一致。该POI类型为: {poi.poi_type}"
+        )
+    
+    # 自动设置resource_type为POI的poi_type
+    payload_dict = payload.model_dump()
+    payload_dict['resource_type'] = poi.poi_type
 
-    obj = Resource(**payload.model_dump())
+    obj = Resource(**payload_dict)
     db.add(obj)
     await db.flush()
     
@@ -320,6 +385,13 @@ async def update_resource(
         dup = await db.scalar(select(Resource).where(Resource.resource_name == payload.resource_name, Resource.id != resource_id))
         if dup:
             raise HTTPException(status_code=400, detail="Resource name already exists")
+    
+    # 禁止修改resource_type（因为它继承自POI的poi_type）
+    if payload.resource_type:
+        raise HTTPException(
+            status_code=400, 
+            detail="无法修改资源类型。资源类型继承自POI，如需修改请修改对应的POI类型"
+        )
     
     # Capture before state with all important fields including attrs
     before_data = {
@@ -408,12 +480,34 @@ async def delete_resource(
 async def batch_delete_resources(
     resource_ids: list[int],
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
+    from app.models import ProductResource, SupplierResource
+    
+    deleted_count = 0
     for resource_id in resource_ids:
         resource = await db.get(Resource, resource_id)
-        if resource:
-            await db.delete(resource)
+        if not resource:
+            continue
+        
+        # 检查是否被产品引用
+        product_usage = await db.scalar(
+            select(func.count()).select_from(ProductResource)
+            .where(ProductResource.resource_id == resource_id)
+        )
+        if product_usage and product_usage > 0:
+            # 跳过被引用的资源
+            continue
+        
+        # 先删除关联的SupplierResource记录
+        await db.execute(
+            delete(SupplierResource).where(SupplierResource.resource_id == resource_id)
+        )
+        
+        # 再删除Resource (ResourceInventory会通过CASCADE自动删除)
+        await db.delete(resource)
+        deleted_count += 1
+    
     await db.commit()
     return None
 

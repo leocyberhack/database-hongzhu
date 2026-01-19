@@ -3,9 +3,10 @@
 export interface POI {
     id: string
     poi_name: string
+    poi_type: string  // 门票/酒店/餐饮/交通
     city: string
     address?: string
-    attrs?: Record<string, unknown>
+    attrs?: Record<string, unknown>  // POI类型的通用字段
     created_at?: string
     updated_at?: string
 }

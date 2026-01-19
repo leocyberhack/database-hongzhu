@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tag, Drawer, Descriptions, Card, Checkbox, Row, Col, Popconfirm, Tooltip } from 'antd'
-import { CalendarOutlined, PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons'
+import { CalendarOutlined, PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
 import type { Resource } from '@/types'
@@ -10,10 +10,10 @@ import TicketResourceFields from '@/components/TicketResourceFields'
 import HotelResourceFields from '@/components/HotelResourceFields'
 import DiningResourceFields from '@/components/DiningResourceFields'
 import TransportResourceFields from '@/components/TransportResourceFields'
-import CombinedResourceFields from '@/components/CombinedResourceFields'
-import ImportModal from './ImportModal'
 
-const RESOURCE_TYPES = ['酒店', '门票', '餐饮', '交通', '组合', '其他']
+
+
+const RESOURCE_TYPES = ['酒店', '门票', '餐饮', '交通']
 
 interface FilterState {
     keyword: string
@@ -42,9 +42,11 @@ export default function ResourceListPage() {
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
     const [selectedSupplierId, setSelectedSupplierId] = useState<number | undefined>(undefined)
     const calendarRef = useRef<SKUCalendarEditorRef>(null)
-    const [importModalVisible, setImportModalVisible] = useState(false)
+
     // 追踪当前选择的资源类型，用于动态显示字段
     const [resourceType, setResourceType] = useState<string | null>(null)
+    // 追踪资源类型是否被POI锁定
+    const [isTypeLocked, setIsTypeLocked] = useState(false)
 
     // 筛选器状态
     const [filters, setFilters] = useState<FilterState>({
@@ -501,9 +503,7 @@ export default function ResourceListPage() {
                     <p className="page-subtitle">管理所有资源，创建资源时必须绑定供应商</p>
                 </div>
                 <Space>
-                    <Button icon={<UploadOutlined />} onClick={() => setImportModalVisible(true)}>
-                        批量导入
-                    </Button>
+
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
                         新建资源
                     </Button>
@@ -617,6 +617,7 @@ export default function ResourceListPage() {
                     setCreateModalVisible(false)
                     form.resetFields()
                     setResourceType(null) // 重置资源类型
+                    setIsTypeLocked(false)
                 }}
                 footer={null}
                 width={720}
@@ -627,8 +628,29 @@ export default function ResourceListPage() {
                         <Select
                             placeholder="选择POI"
                             showSearch
+                            allowClear
                             optionFilterProp="label"
                             options={poiList.map((p) => ({ value: p.id, label: `${p.poi_name} (${p.city})` }))}
+                            onChange={(value) => {
+                                if (!value) {
+                                    setIsTypeLocked(false)
+                                    setResourceType(null)
+                                    form.setFieldsValue({ resource_type: undefined, attrs: undefined })
+                                    return
+                                }
+                                const selectedPoi = poiList.find(p => p.id === value)
+                                if (selectedPoi && selectedPoi.poi_type && RESOURCE_TYPES.includes(selectedPoi.poi_type)) {
+                                    const shouldLock = selectedPoi.poi_type !== '其他'
+                                    setIsTypeLocked(shouldLock)
+                                    setResourceType(selectedPoi.poi_type)
+                                    form.setFieldsValue({
+                                        resource_type: selectedPoi.poi_type,
+                                        attrs: undefined
+                                    })
+                                } else {
+                                    setIsTypeLocked(false)
+                                }
+                            }}
                         />
                     </Form.Item>
                     <Form.Item name="resource_name" label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
@@ -637,6 +659,7 @@ export default function ResourceListPage() {
                     <Form.Item name="resource_type" label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
                         <Select
                             placeholder="选择类型"
+                            disabled={isTypeLocked}
                             options={RESOURCE_TYPES.map((t) => ({ value: t, label: t }))}
                             onChange={(value) => {
                                 setResourceType(value)
@@ -650,7 +673,6 @@ export default function ResourceListPage() {
                     {resourceType === '酒店' && <HotelResourceFields />}
                     {resourceType === '餐饮' && <DiningResourceFields />}
                     {resourceType === '交通' && <TransportResourceFields />}
-                    {resourceType === '组合' && <CombinedResourceFields form={form} />}
 
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定 <span style={{ color: 'red' }}>*</span></h4>
@@ -728,13 +750,7 @@ export default function ResourceListPage() {
                 </Form>
             </Modal>
 
-            <ImportModal
-                visible={importModalVisible}
-                onCancel={() => setImportModalVisible(false)}
-                onSuccess={() => {
-                    refresh()
-                }}
-            />
+
 
             {/* 编辑资源Modal */}
             <Modal
@@ -781,7 +797,6 @@ export default function ResourceListPage() {
                     {resourceType === '酒店' && <HotelResourceFields />}
                     {resourceType === '餐饮' && <DiningResourceFields />}
                     {resourceType === '交通' && <TransportResourceFields />}
-                    {resourceType === '组合' && <CombinedResourceFields form={editForm} />}
 
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定</h4>
