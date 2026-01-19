@@ -3,46 +3,26 @@
 :root {
   /* --- Modern Red/White Palette --- */
 
-  /* Backgrounds - Clean & Bright */
+  /* Backgrounds */
   --bg-deep: #f8fafc;
-  /* Main Page Background */
   --bg-subtle: #ffffff;
-  /* Card Backgrounds */
-  --bg-surface: #ffffff;
 
-  /* Primary Brand - Vivid Red */
+  /* Brand */
   --primary-color: #f5222d;
   --primary-hover: #ff4d4f;
-  --primary-glow: rgba(245, 34, 45, 0.2);
-  --primary-gradient: linear-gradient(135deg, #f5222d 0%, #cf1322 100%);
+  --primary-gradient: linear-gradient(135deg, #f5222d 0%, #ff7875 100%);
 
-  /* Accents */
-  --accent-blue: #1677ff;
-  --accent-purple: #722ed1;
-  --accent-success: #52c41a;
-  --accent-warning: #faad14;
-
-  /* Text & Neutrals (High Contrast) */
+  /* Text */
   --text-main: #0f172a;
-  /* Almost Black */
   --text-secondary: #475569;
-  /* Dark Grey */
-  --text-muted: #94a3b8;
-  --border-dim: rgba(0, 0, 0, 0.06);
-  --border-bright: rgba(0, 0, 0, 0.1);
 
-  /* Glass System (Light Mode) */
-  --glass-bg: rgba(255, 255, 255, 0.75);
+  /* Glass */
+  --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-highlight: rgba(255, 255, 255, 0.8);
   --glass-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.05);
 
-  /* Layout */
-  --header-height: 72px;
-  --sider-width: 260px;
-  --radius-lg: 24px;
-  --radius-md: 16px;
-  --radius-sm: 8px;
+  /* Animation Variables */
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 body {
@@ -50,29 +30,34 @@ body {
   color: var(--text-main);
   background-color: var(--bg-deep);
   line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
 
-  /* Modern Mesh Gradient (Red/White) */
-  background-image:
-    radial-gradient(at 0% 0%, rgba(255, 240, 240, 1) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(255, 245, 245, 1) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(240, 245, 255, 0.5) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, rgba(255, 240, 240, 0.8) 0px, transparent 50%);
-  background-size: 120% 120%;
-  background-attachment: fixed;
-  animation: bg-shift 20s ease-in-out infinite alternate;
+  /* Vibrant Aurora Background - Intensified */
+  background:
+    radial-gradient(circle at 10% 40%, rgba(255, 100, 100, 0.5), transparent 50%),
+    radial-gradient(circle at 90% 60%, rgba(100, 160, 255, 0.5), transparent 50%),
+    radial-gradient(circle at 50% 90%, rgba(255, 200, 200, 0.6), transparent 50%),
+    linear-gradient(135deg, #eef2f6 0%, #fff 100%);
+  background-size: 250% 250%;
+  animation: aurora-flow 6s ease-in-out infinite alternate;
 }
 
-@keyframes bg-shift {
+@keyframes aurora-flow {
   0% {
-    background-position: 0% 0%;
+    background-position: 0% 50%;
+    opacity: 0.9;
+  }
+
+  50% {
+    background-position: 100% 50%;
+    opacity: 1;
   }
 
   100% {
-    background-position: 100% 100%;
+    background-position: 50% 100%;
+    opacity: 0.9;
   }
 }
 
@@ -87,54 +72,68 @@ h6 {
   color: var(--text-main);
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin-bottom: 0.6em;
 }
 
-h1 {
-  font-size: 32px;
-}
+/* --- Interactive Components --- */
 
-h2 {
-  font-size: 24px;
-}
-
-h3 {
-  font-size: 18px;
-}
-
-/* --- Components --- */
-
-/* Modern Light Glass Card */
+/* 3D Glass Card */
 .glass-card {
   background: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  border-radius: var(--radius-md);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.02),
+    0 2px 4px -1px rgba(0, 0, 0, 0.02),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
   position: relative;
   overflow: hidden;
+  transition: all 0.4s var(--ease-spring);
+  z-index: 1;
+}
+
+/* Shine Effect on Hover */
+.glass-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(to right,
+      transparent 0%,
+      rgba(255, 255, 255, 0.8) 50%,
+      transparent 100%);
+  transform: skewX(-25deg);
+  transition: none;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .glass-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-8px) scale(1.01);
   box-shadow:
-    0 12px 24px -8px rgba(0, 0, 0, 0.1),
-    0 0 0 1px rgba(245, 34, 45, 0.1);
-  background: rgba(255, 255, 255, 0.85);
+    0 20px 40px -12px rgba(245, 34, 45, 0.15),
+    0 0 0 1px rgba(245, 34, 45, 0.2);
+  border-color: rgba(255, 255, 255, 0.9);
 }
 
-/* Glass Panel (For Layout areas) */
+.glass-card:hover::after {
+  left: 200%;
+  transition: left 0.8s ease-in-out;
+}
+
+/* Glass Panel */
 .glass-panel {
   background: rgba(255, 255, 255, 0.65);
   backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.02);
 }
 
-/* Page Standard Layout */
+/* Standard Page Layout */
 .page-container {
   padding: 8px;
   max-width: 1800px;
@@ -146,17 +145,36 @@ h3 {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  border-bottom: 1px solid var(--border-dim);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   padding-bottom: 16px;
 }
 
 .page-title {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 800;
   background: linear-gradient(135deg, #1f1f1f 0%, #434343 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin: 0;
+  display: inline-block;
+  position: relative;
+}
+
+/* Animated Underline for Title */
+.page-title::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 40px;
+  height: 4px;
+  background: var(--primary-color);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.page-container:hover .page-title::after {
+  width: 100%;
 }
 
 .page-subtitle {
@@ -165,7 +183,34 @@ h3 {
   margin-bottom: 4px;
 }
 
-/* --- Ant Design Overrides (Light Mode) --- */
+/* --- Ant Design Overrides --- */
+
+/* Buttons with Pulse */
+.ant-btn-primary {
+  background: var(--primary-gradient) !important;
+  border: none !important;
+  box-shadow: 0 4px 15px rgba(245, 34, 45, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.ant-btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s ease, height 0.6s ease;
+}
+
+.ant-btn-primary:active::before {
+  width: 300px;
+  height: 300px;
+}
 
 /* Tables */
 .ant-table {
@@ -176,112 +221,47 @@ h3 {
 .ant-table-thead>tr>th {
   background: rgba(245, 245, 245, 0.5) !important;
   color: var(--text-secondary) !important;
-  border-bottom: 1px solid var(--border-dim) !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
   font-family: 'Outfit', sans-serif;
   text-transform: uppercase;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;
-  padding: 16px !important;
-}
-
-.ant-table-tbody>tr>td {
-  border-bottom: 1px solid var(--border-dim) !important;
-  color: var(--text-main) !important;
-  padding: 16px !important;
-  transition: all 0.2s;
 }
 
 .ant-table-tbody>tr:hover>td {
   background: rgba(245, 34, 45, 0.03) !important;
-  /* Very subtle red tint */
 }
 
-/* Pagination */
-.ant-pagination-item-active {
-  border-color: var(--primary-color) !important;
-  background: #fff !important;
-}
-
-.ant-pagination-item-active a {
-  color: var(--primary-color) !important;
-}
-
-/* Buttons */
-.ant-btn {
-  border-radius: 8px;
-  font-weight: 500;
-}
-
-.ant-btn-primary {
-  background: var(--primary-gradient) !important;
-  border: none !important;
-  box-shadow: 0 4px 10px var(--primary-glow);
-  font-weight: 600;
-}
-
-.ant-btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 15px var(--primary-glow);
-}
-
-/* Menu/Sider */
+/* Menu */
 .ant-menu {
   background: transparent !important;
   border-right: none !important;
 }
 
 .ant-menu-item {
-  border-radius: 8px;
-  margin-bottom: 4px;
-  color: var(--text-secondary);
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .ant-menu-item-selected {
-  background: linear-gradient(90deg, #fff1f0, rgba(255, 255, 255, 0.5)) !important;
+  background: linear-gradient(90deg, #fff1f0, white) !important;
   color: var(--primary-color) !important;
   font-weight: 600;
-}
-
-.ant-menu-submenu-title {
-  color: var(--text-secondary) !important;
-}
-
-/* Card Overrides */
-.ant-card {
-  background: var(--glass-bg) !important;
-  border: 1px solid var(--border-dim) !important;
-  box-shadow: var(--glass-shadow) !important;
-}
-
-.ant-card-head {
-  border-bottom: 1px solid var(--border-dim) !important;
-  color: var(--text-main) !important;
-}
-
-/* Form Inputs */
-.ant-input,
-.ant-picker,
-.ant-select-selector {
-  border-radius: 8px !important;
-  background: rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 4px 12px rgba(245, 34, 45, 0.15);
+  transform: translateX(5px);
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 4px;
+  background: #cbd5e1;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #999;
 }

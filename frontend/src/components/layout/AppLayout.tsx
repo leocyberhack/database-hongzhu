@@ -1,4 +1,4 @@
-import { Layout, Menu, Button, Avatar, Dropdown, Space, ConfigProvider, theme } from 'antd'
+import { Layout, Menu, Button, Avatar, Dropdown, Space, ConfigProvider, theme, Badge } from 'antd'
 import {
     DashboardOutlined,
     DatabaseOutlined,
@@ -10,7 +10,8 @@ import {
     CheckCircleOutlined,
     BarChartOutlined,
     MenuFoldOutlined,
-    MenuUnfoldOutlined
+    MenuUnfoldOutlined,
+    SearchOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
@@ -171,24 +172,11 @@ export default function AppLayout() {
         .filter(item => item.children?.some(child => location.pathname.startsWith(child.key)))
         .map(item => item.key)
 
-    // Config for Light Mode
-    const lightTheme = {
-        algorithm: theme.defaultAlgorithm,
-        token: {
-            colorPrimary: '#f5222d',
-            colorBgContainer: '#ffffff',
-            colorText: '#1f1f1f',
-        },
-        components: {
-            Menu: {
-                itemBg: 'transparent',
-                subMenuItemBg: 'transparent',
-            }
-        }
-    }
-
     return (
-        <ConfigProvider theme={lightTheme}>
+        <ConfigProvider theme={{
+            algorithm: theme.defaultAlgorithm,
+            token: { colorPrimary: '#f5222d', colorBgContainer: '#ffffff', borderRadius: 8 }
+        }}>
             <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
                 <Sider
                     width={260}
@@ -205,36 +193,44 @@ export default function AppLayout() {
                         zIndex: 100,
                         borderRight: 'none',
                         overflow: 'hidden',
-                        background: 'rgba(255,255,255,0.85)' // Light Sidebar
+                        background: 'rgba(255,255,255,0.7)',
                     }}
                     theme="light"
                 >
-                    {/* Logo Section */}
+                    {/* Living Logo */}
                     <div style={{
-                        height: 80,
+                        height: 90,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        borderBottom: '1px solid var(--border-dim)'
+                        borderBottom: '1px solid rgba(0,0,0,0.03)'
                     }}>
                         {!collapsed ? (
                             <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                whileHover={{ scale: 1.05 }}
                                 style={{
-                                    fontSize: '22px',
+                                    fontSize: '24px',
                                     fontWeight: '900',
                                     fontFamily: 'Outfit, sans-serif',
                                     letterSpacing: '-0.5px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '10px'
+                                    gap: '12px',
+                                    cursor: 'pointer'
                                 }}
                             >
-                                <div style={{
-                                    width: 10, height: 10, background: 'var(--primary-color)',
-                                    borderRadius: '50%', boxShadow: '0 0 10px rgba(245,34,45,0.4)'
-                                }} />
+                                <motion.div
+                                    animate={{
+                                        boxShadow: ["0 0 0px #f5222d", "0 0 20px #f5222d", "0 0 0px #f5222d"],
+                                    }}
+                                    transition={{ duration: 2, repeat: Infinity }}
+                                    style={{
+                                        width: 12, height: 12, background: 'var(--primary-color)',
+                                        borderRadius: '50%'
+                                    }}
+                                />
                                 <span style={{
                                     background: 'linear-gradient(90deg, #f5222d, #ff7a45)',
                                     WebkitBackgroundClip: 'text',
@@ -242,22 +238,20 @@ export default function AppLayout() {
                                 }}>RED PIG</span>
                             </motion.div>
                         ) : (
-                            <div style={{
-                                width: 32, height: 32,
-                                background: 'var(--primary-color)',
-                                borderRadius: 8,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontWeight: 'bold', color: '#fff',
-                                boxShadow: '0 4px 10px rgba(245,34,45,0.3)'
-                            }}>R</div>
+                            <motion.div whileHover={{ rotate: 180 }} transition={{ type: "spring" }}>
+                                <div style={{
+                                    width: 36, height: 36,
+                                    background: 'var(--primary-color)',
+                                    borderRadius: 10,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontWeight: 'bold', color: '#fff',
+                                    boxShadow: '0 4px 15px rgba(245,34,45,0.4)'
+                                }}>R</div>
+                            </motion.div>
                         )}
                     </div>
 
-                    <div style={{
-                        height: 'calc(100% - 80px)',
-                        overflowY: 'auto',
-                        padding: '16px 8px'
-                    }}>
+                    <div style={{ height: 'calc(100% - 90px)', overflowY: 'auto', padding: '16px 8px' }}>
                         <Menu
                             mode="inline"
                             defaultSelectedKeys={selectedKeys}
@@ -273,70 +267,71 @@ export default function AppLayout() {
                 <Layout style={{
                     background: 'transparent',
                     marginLeft: collapsed ? 96 : 276,
-                    transition: 'margin-left 0.2s ease-in-out',
+                    transition: 'margin-left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
                     minHeight: '100vh',
                     marginRight: 16
                 }}>
                     <Header style={{
                         padding: '0 24px',
-                        background: 'rgba(255, 255, 255, 0.7)',
-                        backdropFilter: 'blur(10px)',
+                        background: 'rgba(255, 255, 255, 0.65)',
+                        backdropFilter: 'blur(16px)',
                         marginTop: 16,
-                        borderRadius: '16px',
+                        borderRadius: '20px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         height: 72,
-                        border: '1px solid var(--border-dim)',
-                        boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+                        border: '1px solid rgba(255,255,255,0.5)',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.02)'
                     }}>
-                        <Button
-                            type="text"
-                            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                            onClick={() => setCollapsed(!collapsed)}
-                            style={{ color: 'var(--text-secondary)' }}
-                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                            <Button
+                                type="text"
+                                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                                onClick={() => setCollapsed(!collapsed)}
+                                style={{ fontSize: '18px' }}
+                            />
+                        </div>
 
                         <Space size="large">
-                            <Button type="text" shape="circle" icon={<BellOutlined />} style={{ color: 'var(--text-secondary)' }} />
+                            <motion.div whileHover={{ rotate: 15 }} style={{ cursor: 'pointer' }}>
+                                <Badge dot color="red">
+                                    <BellOutlined style={{ fontSize: '20px', color: '#555' }} />
+                                </Badge>
+                            </motion.div>
 
                             <Dropdown menu={userMenu} placement="bottomRight">
-                                <Space style={{
-                                    cursor: 'pointer',
-                                    padding: '4px 12px',
-                                    borderRadius: '30px',
-                                    background: 'rgba(0,0,0,0.02)',
-                                    border: '1px solid var(--border-dim)'
-                                }}>
-                                    <Avatar size="small" style={{ backgroundColor: '#fff1f0', color: '#f5222d' }} icon={<UserOutlined />} />
-                                    <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-main)' }}>{user?.username || 'User'}</span>
-                                </Space>
+                                <motion.div
+                                    whileHover={{ scale: 1.05 }}
+                                    style={{
+                                        cursor: 'pointer',
+                                        padding: '4px 6px 4px 12px',
+                                        borderRadius: '30px',
+                                        background: 'white',
+                                        border: '1px solid #eee',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px'
+                                    }}>
+                                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>{user?.username || 'Admin'}</span>
+                                    <Avatar size="default" style={{ background: 'linear-gradient(135deg, #f5222d, #ff7875)' }} icon={<UserOutlined />} />
+                                </motion.div>
                             </Dropdown>
                         </Space>
                     </Header>
 
-                    <Content style={{
-                        marginTop: 16,
-                        marginBottom: 16,
-                        minHeight: 280,
-                        overflow: 'visible',
-                        position: 'relative'
-                    }}>
+                    <Content style={{ marginTop: 24, marginBottom: 24, minHeight: 280, position: 'relative' }}>
                         <AnimatePresence mode="wait">
                             <motion.div
                                 key={location.pathname}
-                                initial={{ opacity: 0, y: 15, scale: 0.99 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: -15, scale: 0.99 }}
-                                transition={{ duration: 0.3, ease: "easeOut" }}
-                                style={{ width: '100%', height: '100%' }}
+                                initial={{ opacity: 0, y: 30, filter: 'blur(10px)' }}
+                                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                                exit={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
+                                transition={{ duration: 0.4, ease: "easeOut" }}
+                                style={{ width: '100%' }}
                             >
-                                <div className="glass-panel" style={{
-                                    minHeight: '100%',
-                                    padding: '32px',
-                                }}>
-                                    <Outlet />
-                                </div>
+                                <Outlet />
                             </motion.div>
                         </AnimatePresence>
                     </Content>
