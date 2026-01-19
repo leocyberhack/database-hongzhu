@@ -24,11 +24,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 1. 添加 poi_type 字段（可为NULL，稍后填充默认值）
-    op.add_column('poi', sa.Column('poi_type', sa.String(), nullable=True))
+    # 使用 execute 检查列是否已存在，实现幂等迁移
+    conn = op.get_bind()
     
-    # 2. 添加 attrs 字段（JSONB）
-    op.add_column('poi', sa.Column('attrs', JSONB, nullable=True))
+    # 检查 poi_type 列是否存在
+    result = conn.execute(sa.text("""
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'poi' AND column_name = 'poi_type'
+    """))
+    if result.fetchone() is None:
+        op.add_column('poi', sa.Column('poi_type', sa.String(), nullable=True))
+    
+    # 检查 attrs 列是否存在
+    result = conn.execute(sa.text("""
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'poi' AND column_name = 'attrs'
+    """))
+    if result.fetchone() is None:
+        op.add_column('poi', sa.Column('attrs', JSONB, nullable=True))
     
     # 3. 为现有数据设置默认 poi_type
     # 策略：根据现有Resource的resource_type推断POI类型
