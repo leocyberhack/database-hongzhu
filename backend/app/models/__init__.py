@@ -29,7 +29,7 @@ class Poi(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     poi_name: Mapped[str] = mapped_column(String, nullable=False)
-    poi_type: Mapped[AssetType] = mapped_column(SaEnum(AssetType, native_enum=False), nullable=False)
+    poi_type: Mapped[str] = mapped_column(String, nullable=False)
     city: Mapped[str] = mapped_column(String, nullable=False)
     address: Mapped[str | None] = mapped_column(String, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
@@ -47,7 +47,7 @@ class Resource(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     poi_id: Mapped[int] = mapped_column(ForeignKey("poi.id", ondelete="RESTRICT"), nullable=False)
     resource_name: Mapped[str] = mapped_column(String, nullable=False)
-    resource_type: Mapped[AssetType] = mapped_column(SaEnum(AssetType, native_enum=False), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String, nullable=False)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'draft'"))
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
