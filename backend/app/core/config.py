@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     db_pool_timeout: int = 30
 
+    # MinIO 文件存储配置
+    minio_endpoint: str = "minio.zeabur.internal:9000"
+    minio_access_key: str = "minio"
+    minio_secret_key: str = ""
+    minio_bucket: str = "zeabur"
+    minio_public_url: str = "https://hongzhuwenjiancunchu.zeabur.app"
+    minio_secure: bool = False
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

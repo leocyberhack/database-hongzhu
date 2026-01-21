@@ -113,3 +113,29 @@ export function getAuthUser() {
 export function getToken() {
     return localStorage.getItem(TOKEN_KEY)
 }
+
+// Axios-style API wrapper
+export const api = {
+    get: async <T = any>(path: string) => {
+        const data = await apiRequest<T>(`/api${path}`)
+        return { data }
+    },
+    post: async <T = any>(path: string, body?: any) => {
+        const data = await apiRequest<T>(`/api${path}`, {
+            method: 'POST',
+            body: body ? JSON.stringify(body) : undefined
+        })
+        return { data }
+    },
+    put: async <T = any>(path: string, body?: any) => {
+        const data = await apiRequest<T>(`/api${path}`, {
+            method: 'PUT',
+            body: body ? JSON.stringify(body) : undefined
+        })
+        return { data }
+    },
+    delete: async <T = any>(path: string) => {
+        const data = await apiRequest<T>(`/api${path}`, { method: 'DELETE' })
+        return { data }
+    }
+}

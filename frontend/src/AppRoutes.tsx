@@ -20,6 +20,7 @@ import OperationLogPage from '@/pages/logs/operations'
 import SalesReportPage from '@/pages/reports/sales'
 import ProfitReportPage from '@/pages/reports/profit'
 import UserAdminPage from '@/pages/admin/users'
+import FilesPage from '@/pages/files'
 import { useAuth } from '@/contexts/AuthContext'
 import { DataProvider } from '@/contexts/DataContext'
 
@@ -90,6 +91,9 @@ export default function AppRoutes() {
 
                 {/* Admin - User Management */}
                 <Route path="admin/users" element={<UserAdminPage />} />
+
+                {/* 文件管理 */}
+                <Route path="files" element={<FilesPage />} />
 
                 <Route path="*" element={<div style={{ padding: 40, textAlign: 'center' }}>页面建设中</div>} />
             </Route>

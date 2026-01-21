@@ -374,4 +374,46 @@ __all__ = [
     "Approval",
     "AuditLog",
     "User",
+    "Folder",
+    "File",
 ]
+
+
+# ========================= 文件系统 =========================
+
+class Folder(Base):
+    """文件夹表"""
+    __tablename__ = "folder"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("folder.id", ondelete="CASCADE"), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+
+    # 自引用关系
+    parent = relationship("Folder", remote_side="Folder.id", backref="children")
+    files = relationship("File", back_populates="folder", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("name", "parent_id", name="uq_folder_name_parent"),
+    )
+
+
+class File(Base):
+    """文件表"""
+    __tablename__ = "file"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)  # 原始文件名
+    object_name: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)  # MinIO 中的路径
+    url: Mapped[str] = mapped_column(String(1000), nullable=False)  # 公网 URL
+    size: Mapped[int] = mapped_column(BigInteger, nullable=False)  # 文件大小 (bytes)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)  # MIME 类型
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("folder.id", ondelete="SET NULL"), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+
+    folder = relationship("Folder", back_populates="files")

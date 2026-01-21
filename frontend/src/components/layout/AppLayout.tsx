@@ -11,7 +11,7 @@ import {
     BarChartOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
-    SearchOutlined
+    PictureOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
@@ -38,6 +38,7 @@ export default function AppLayout() {
     const canSeeLogs = ['super_admin', 'admin'].includes(role)
     const canSeeReports = ['super_admin', 'admin'].includes(role)
     const canSeeUsers = role === 'super_admin'
+    const canSeeFiles = ['super_admin', 'admin', 'product', 'operator'].includes(role)
 
     const showSkuList = ['super_admin', 'admin', 'product', 'operator'].includes(role)
     const showChannelList = ['super_admin', 'admin', 'product', 'operator', 'csr'].includes(role)
@@ -135,6 +136,11 @@ export default function AppLayout() {
                 { key: '/reports/sales', label: '销售报表' },
                 { key: '/reports/profit', label: '利润分析' },
             ]
+        }] : []),
+        ...(canSeeFiles ? [{
+            key: '/files',
+            icon: <PictureOutlined />,
+            label: '文件管理',
         }] : []),
         ...(canSeeUsers ? [{
             key: '/admin/users',

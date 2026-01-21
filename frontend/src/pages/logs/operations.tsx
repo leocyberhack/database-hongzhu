@@ -33,6 +33,8 @@ const TABLE_NAME_MAP: Record<string, string> = {
     'inventory': 'SKU库存',
     'order': '订单',
     'approval': '审批',
+    'file': '文件',
+    'folder': '文件夹',
 }
 
 // 操作类型翻译和颜色
@@ -112,6 +114,14 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'suitable_for_people': '适配人数',
     'parking': '停车场信息',
     'reservation_required': '需要预定',
+    'filename': '文件名',
+    'folder_id': '所属文件夹',
+    'object_name': '对象路径',
+    'content_type': '类型',
+    'size': '大小',
+    'url': '链接',
+    'parent_id': '父文件夹',
+    'has_password': '密码状态',
 }
 
 // 状态值翻译

@@ -39,5 +39,6 @@ api_router.include_router(sku_channels.router, prefix="/sku_channels", tags=["sk
 api_router.include_router(channels.router, prefix="/channels", tags=["channel"])
 api_router.include_router(skus.router, prefix="/skus", tags=["sku"])
 
-# Import resources import router
-
+# File upload router
+from app.api.endpoints import files
+api_router.include_router(files.router, prefix="/files", tags=["files"])
