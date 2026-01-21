@@ -50,7 +50,9 @@ const OPERATION_MAP: Record<string, { label: string; color: string }> = {
 // 字段名翻译
 const FIELD_NAME_MAP: Record<string, string> = {
     'poi_name': 'POI名称',
+    'province': '省份',
     'city': '城市',
+    'district': '区/县',
     'address': '地址',
     'status': '状态',
     'resource_name': '资源名称',
@@ -60,6 +62,19 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'settlement_price': '结算价',
     'supplier_name': '供应商名称',
     'contact_info': '联系方式',
+    'attrs': '扩展字段',
+    'supplier_code': '供应商编码',
+    'business_scope': '业务范围',
+    'contact_email': '联系邮箱',
+    'license_no': '营业执照号',
+    'legal_person': '法人信息',
+    'credit_code': '信用代码',
+    'settlement_cycle': '结算周期',
+    'settlement_method': '结算方式',
+    'invoice_info': '发票信息',
+    'contract_no': '合同编号',
+    'contract_start_date': '合同开始时间',
+    'contract_end_date': '合同结束时间',
     'product_name': '产品名称',
     'category_id': '分类',
     'description': '描述',
@@ -122,6 +137,20 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'url': '链接',
     'parent_id': '父文件夹',
     'has_password': '密码状态',
+}
+
+const FIELD_ORDER = Object.keys(FIELD_NAME_MAP)
+const FIELD_ORDER_INDEX = new Map(FIELD_ORDER.map((key, index) => [key, index]))
+
+const sortFieldKeys = (keys: string[]) => {
+    return [...keys].sort((a, b) => {
+        const aIndex = FIELD_ORDER_INDEX.get(a)
+        const bIndex = FIELD_ORDER_INDEX.get(b)
+        if (aIndex !== undefined || bIndex !== undefined) {
+            return (aIndex ?? Number.MAX_SAFE_INTEGER) - (bIndex ?? Number.MAX_SAFE_INTEGER)
+        }
+        return a.localeCompare(b)
+    })
 }
 
 // 状态值翻译
@@ -217,7 +246,8 @@ export default function OperationLogsPage() {
             // Stats object special handling
             if (data.stats) {
                 parts.push('【统计信息】')
-                Object.entries(data.stats).forEach(([key, value]) => {
+                sortFieldKeys(Object.keys(data.stats)).forEach((key) => {
+                    const value = data.stats[key]
                     const fieldName = FIELD_NAME_MAP[key] || key
                     parts.push(`${fieldName}: ${value}`)
                 })
@@ -230,7 +260,8 @@ export default function OperationLogsPage() {
             if (data.before && data.after) {
                 // UPDATE操作，显示before/after
                 parts.push('【修改前】')
-                Object.entries(data.before).forEach(([key, value]) => {
+                sortFieldKeys(Object.keys(data.before)).forEach((key) => {
+                    const value = data.before[key]
                     const fieldName = FIELD_NAME_MAP[key] || key
                     let displayValue: any = value
 
@@ -242,7 +273,8 @@ export default function OperationLogsPage() {
                     parts.push(`${fieldName}: ${displayValue}`)
                 })
                 parts.push('【修改后】')
-                Object.entries(data.after).forEach(([key, value]) => {
+                sortFieldKeys(Object.keys(data.after)).forEach((key) => {
+                    const value = data.after[key]
                     const fieldName = FIELD_NAME_MAP[key] || key
                     let displayValue: any = value
 
@@ -255,8 +287,9 @@ export default function OperationLogsPage() {
                 })
             } else {
                 // CREATE/DELETE操作，直接显示数据
-                Object.entries(data).forEach(([key, value]) => {
-                    if (key === 'before' || key === 'after' || key === 'date_range' || key === 'type' || key === 'stats') return
+                const keys = Object.keys(data).filter((key) => !['before', 'after', 'date_range', 'type', 'stats'].includes(key))
+                sortFieldKeys(keys).forEach((key) => {
+                    const value = data[key]
                     const fieldName = FIELD_NAME_MAP[key] || key
                     let displayValue: any = value
 

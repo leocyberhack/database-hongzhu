@@ -133,8 +133,12 @@ async def create_poi(
     audit_data = {
         "poi_name": obj.poi_name, 
         "poi_type": obj.poi_type,
-        "city": obj.city
+        "province": obj.province,
+        "city": obj.city,
+        "district": obj.district,
     }
+    if obj.address:
+        audit_data["address"] = obj.address
     if obj.attrs:
         audit_data["attrs"] = obj.attrs
     
@@ -195,7 +199,9 @@ async def update_poi(
     before_data = {
         "poi_name": poi.poi_name, 
         "poi_type": poi.poi_type,
-        "city": poi.city, 
+        "province": poi.province,
+        "city": poi.city,
+        "district": poi.district,
         "status": poi.status
     }
     if poi.address:
@@ -212,7 +218,9 @@ async def update_poi(
     after_data = {
         "poi_name": poi.poi_name,
         "poi_type": poi.poi_type,
+        "province": poi.province,
         "city": poi.city,
+        "district": poi.district,
         "status": poi.status
     }
     if poi.address:
@@ -253,7 +261,13 @@ async def delete_poi(
         table_name="poi",
         record_id=poi.id,
         operation="DELETE",
-        diff_data={"poi_name": poi.poi_name, "city": poi.city},
+        diff_data={
+            "poi_name": poi.poi_name,
+            "province": poi.province,
+            "city": poi.city,
+            "district": poi.district,
+            "address": poi.address,
+        },
         operator=user.username,
         operated_at=now_china(),
         source="web",

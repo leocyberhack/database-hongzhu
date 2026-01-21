@@ -16,14 +16,6 @@ export default function TicketPoiFields({ prefix = ['attrs'] }: { prefix?: (stri
             <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 4 }}>
                 <h5 style={{ marginBottom: 12 }}>📍 地理位置</h5>
 
-                <Form.Item name={[...prefix, 'province']} label="省份">
-                    <Input placeholder="例如：北京" />
-                </Form.Item>
-
-                <Form.Item name={[...prefix, 'district']} label="区/县">
-                    <Input placeholder="例如：朝阳区" />
-                </Form.Item>
-
                 <Form.Item name={[...prefix, 'address']} label="详细地址" rules={[{ required: true, message: '请输入详细地址' }]}>
                     <Input placeholder="景区/场馆详细地址" />
                 </Form.Item>

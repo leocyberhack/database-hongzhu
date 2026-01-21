@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
 
 from app.api.auth import User, get_current_user
@@ -31,6 +32,43 @@ from app.schemas.inventory import (
 )
 
 router = APIRouter()
+
+SUPPLIER_ATTR_KEYS = (
+    "supplier_code",
+    "business_scope",
+    "contact_email",
+    "license_no",
+    "legal_person",
+    "credit_code",
+    "settlement_cycle",
+    "settlement_method",
+    "invoice_info",
+    "contract_no",
+)
+
+
+def _extract_supplier_attrs(attrs: Optional[dict], include_empty: bool = False) -> dict:
+    attrs = attrs or {}
+    data: dict = {}
+    for key in SUPPLIER_ATTR_KEYS:
+        value = attrs.get(key)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            if include_empty:
+                data[key] = None
+            continue
+        data[key] = value
+    return data
+
+
+def _supplier_audit_snapshot(supplier: Supplier, include_empty_attrs: bool = False) -> dict:
+    payload = {
+        "supplier_name": supplier.supplier_name,
+        "contact_info": supplier.contact_info,
+        "contract_start_date": supplier.contract_start_date,
+        "contract_end_date": supplier.contract_end_date,
+    }
+    payload.update(_extract_supplier_attrs(supplier.attrs, include_empty=include_empty_attrs))
+    return jsonable_encoder(payload)
 
 
 @router.get("/suppliers", response_model=ListResponse)
@@ -77,7 +115,7 @@ async def create_supplier(
         table_name="supplier",
         record_id=obj.id,
         operation="CREATE",
-        diff_data={"supplier_name": obj.supplier_name, "contact_info": obj.contact_info},
+        diff_data=_supplier_audit_snapshot(obj),
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -230,18 +268,20 @@ async def update_supplier(
             raise HTTPException(status_code=400, detail="Supplier name already exists")
     
     # Capture before state
-    before_data = {"supplier_name": supplier.supplier_name, "contact_info": supplier.contact_info}
+    before_data = _supplier_audit_snapshot(supplier, include_empty_attrs=True)
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(supplier, field, value)
+
+    after_data = _supplier_audit_snapshot(supplier, include_empty_attrs=True)
     
     # Record audit log
     audit = AuditLog(
         table_name="supplier",
         record_id=supplier.id,
         operation="UPDATE",
-        diff_data={"before": before_data, "after": update_data},
+        diff_data={"before": before_data, "after": after_data},
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -268,7 +308,7 @@ async def delete_supplier(
         table_name="supplier",
         record_id=supplier.id,
         operation="DELETE",
-        diff_data={"supplier_name": supplier.supplier_name},
+        diff_data=_supplier_audit_snapshot(supplier),
         operator=user.username,
         operated_at=now_china(),
         source="web",

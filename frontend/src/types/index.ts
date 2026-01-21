@@ -4,7 +4,9 @@ export interface POI {
     id: string
     poi_name: string
     poi_type: string  // 门票/酒店/餐饮/交通
+    province?: string
     city: string
+    district?: string
     address?: string
     attrs?: Record<string, unknown>  // POI类型的通用字段
     created_at?: string
@@ -30,10 +32,13 @@ export interface Supplier {
         contact_name?: string
         contact_phone?: string
     }
+    attrs?: Record<string, unknown>
     settlement_info?: Record<string, unknown>
     qualification_files?: any[]
     tags?: string[]
     remark?: string
+    contract_start_date?: string
+    contract_end_date?: string
     created_at?: string
     updated_at?: string
 }

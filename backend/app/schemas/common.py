@@ -29,7 +29,9 @@ class ListResponse(BaseModel):
 class PoiBase(BaseModel):
     poi_name: str
     poi_type: str  # 必选：门票/酒店/餐饮/交通
+    province: Optional[str] = None
     city: str
+    district: Optional[str] = None
     address: Optional[str] = None
     tags: Optional[list[str]] = None
     attrs: Optional[dict] = Field(None, description="POI类型的通用属性 (JSONB)")
@@ -43,7 +45,9 @@ class PoiCreate(PoiBase):
 class PoiUpdate(BaseModel):
     poi_name: Optional[str] = None
     poi_type: Optional[str] = None  # 允许修改POI类型
+    province: Optional[str] = None
     city: Optional[str] = None
+    district: Optional[str] = None
     address: Optional[str] = None
     tags: Optional[list[str]] = None
     attrs: Optional[dict] = None
@@ -93,6 +97,9 @@ class SupplierBase(BaseModel):
     qualification_files: Optional[list[dict]] = None
     tags: Optional[list[str]] = None
     remark: Optional[str] = None
+    attrs: Optional[dict] = None
+    contract_start_date: Optional[date] = None
+    contract_end_date: Optional[date] = None
 
 
 class SupplierCreate(SupplierBase):

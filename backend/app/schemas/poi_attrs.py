@@ -11,9 +11,6 @@ class TicketPoiAttrs(BaseModel):
     """门票POI的通用属性（所有该POI下的门票资源共享）"""
     
     # 地理位置信息
-    province: Optional[str] = Field(None, description="省份")
-    city: Optional[str] = Field(None, description="城市")
-    district: Optional[str] = Field(None, description="区/县")
     address: Optional[str] = Field(None, description="详细地址")
     
     # 入园信息

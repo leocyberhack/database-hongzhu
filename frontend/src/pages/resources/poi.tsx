@@ -43,10 +43,13 @@ export default function ResourcePage() {
     // 监听选中POI变化，填充表单
     useEffect(() => {
         if (selectedPoi) {
+            const attrs = selectedPoi.attrs || {}
             // 确保attrs字段存在，避免undefined问题
             const initialValues = {
                 ...selectedPoi,
-                attrs: selectedPoi.attrs || {}
+                province: selectedPoi.province || attrs.province,
+                district: selectedPoi.district || attrs.district,
+                attrs
             }
             poiEditForm.setFieldsValue(initialValues)
         }
@@ -216,10 +219,14 @@ export default function ResourcePage() {
     const savePoi = async (values: any) => {
         if (!selectedPoi) return
         try {
+            const attrsChanged = JSON.stringify(selectedPoi.attrs || {}) !== JSON.stringify(values.attrs || {})
             if (
                 selectedPoi.poi_name === values.poi_name &&
+                (selectedPoi.province || '') === (values.province || '') &&
                 selectedPoi.city === values.city &&
-                selectedPoi.address === values.address
+                (selectedPoi.district || '') === (values.district || '') &&
+                selectedPoi.address === values.address &&
+                !attrsChanged
             ) {
                 message.info('没有变更，无需保存')
                 setSelectedPoi(null)
@@ -304,12 +311,15 @@ export default function ResourcePage() {
 
     useEffect(() => {
         if (selectedPoi) {
+            const attrs = selectedPoi.attrs || {}
             poiEditForm.setFieldsValue({
                 poi_name: selectedPoi.poi_name,
                 poi_type: selectedPoi.poi_type,
+                province: selectedPoi.province || attrs.province,
                 city: selectedPoi.city,
+                district: selectedPoi.district || attrs.district,
                 address: selectedPoi.address,
-                attrs: selectedPoi.attrs,
+                attrs,
             })
         }
     }, [selectedPoi, poiEditForm])
@@ -449,9 +459,23 @@ export default function ResourcePage() {
                         </Select>
                     </Form.Item>
 
-                    <Form.Item name="city" label="城市" rules={[{ required: true, message: '请输入城市' }]}>
-                        <Input placeholder="丽江" />
-                    </Form.Item>
+                    <Row gutter={16}>
+                        <Col span={8}>
+                            <Form.Item name="province" label="省份">
+                                <Input placeholder="云南" />
+                            </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                            <Form.Item name="city" label="城市" rules={[{ required: true, message: '请输入城市' }]}>
+                                <Input placeholder="丽江" />
+                            </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                            <Form.Item name="district" label="区/县">
+                                <Input placeholder="古城区" />
+                            </Form.Item>
+                        </Col>
+                    </Row>
 
                     <Form.Item name="address" label="地址">
                         <Input placeholder="详细地址" />
@@ -518,12 +542,24 @@ export default function ResourcePage() {
                                 </Row>
 
                                 <Row gutter={16}>
-                                    <Col span={12}>
+                                    <Col span={8}>
+                                        <Form.Item name="province" label="省份">
+                                            <Input />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={8}>
                                         <Form.Item name="city" label="城市" rules={[{ required: true }]}>
                                             <Input />
                                         </Form.Item>
                                     </Col>
-                                    <Col span={12}>
+                                    <Col span={8}>
+                                        <Form.Item name="district" label="区/县">
+                                            <Input />
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+                                <Row gutter={16}>
+                                    <Col span={24}>
                                         <Form.Item name="address" label="地址">
                                             <Input />
                                         </Form.Item>

@@ -1,13 +1,64 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Descriptions, Drawer, Form, Input, Select, Space, Table, Tag, message, Card, Row, Col, Popconfirm, Modal, Tooltip } from 'antd'
+import { Button, Descriptions, Drawer, Form, Input, Space, Table, Tag, message, Card, Row, Col, Popconfirm, Modal, Tooltip, DatePicker } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import { useData } from '@/contexts/DataContext'
 import type { Supplier } from '@/types'
 import { apiRequest } from '@/lib/api'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
 
 interface FilterState {
     keyword: string
+}
+
+const supplierAttrKeys = [
+    'supplier_code',
+    'business_scope',
+    'contact_email',
+    'license_no',
+    'legal_person',
+    'credit_code',
+    'settlement_cycle',
+    'settlement_method',
+    'invoice_info',
+    'contract_no',
+] as const
+
+type SupplierAttrKey = typeof supplierAttrKeys[number]
+
+const normalizeAttrValue = (value: unknown) => {
+    if (value === undefined || value === null) return undefined
+    if (typeof value === 'string') {
+        const trimmed = value.trim()
+        return trimmed ? trimmed : undefined
+    }
+    return value
+}
+
+const buildSupplierAttrs = (values: Record<string, unknown>, existing?: Supplier) => {
+    const base: Record<string, unknown> = { ...(existing?.attrs ?? {}) }
+    supplierAttrKeys.forEach((key) => {
+        const nextValue = normalizeAttrValue(values[key])
+        if (nextValue === undefined) {
+            delete base[key]
+        } else {
+            base[key] = nextValue
+        }
+    })
+    return base
+}
+
+const formatDateValue = (value: any) => {
+    if (value === null) return null
+    if (value && typeof value.format === 'function') {
+        return value.format('YYYY-MM-DD')
+    }
+    return undefined
+}
+
+const formatAttrDisplay = (value: unknown) => {
+    const normalized = normalizeAttrValue(value)
+    return normalized === undefined ? '-' : String(normalized)
 }
 
 export default function SupplierPage() {
@@ -52,12 +103,16 @@ export default function SupplierPage() {
 
     const createSupplier = async (values: any) => {
         try {
+            const attrs = buildSupplierAttrs(values)
             const payload = {
                 supplier_name: values.supplier_name,
                 contact_info: {
                     contact_name: values.contact_name,
                     contact_phone: values.contact_phone,
                 },
+                attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
+                contract_start_date: formatDateValue(values.contract_start_date),
+                contract_end_date: formatDateValue(values.contract_end_date),
             }
             await apiRequest('/api/suppliers', { method: 'POST', body: JSON.stringify(payload) })
             message.success('供应商已创建')
@@ -72,18 +127,35 @@ export default function SupplierPage() {
     const updateSupplier = async (values: any) => {
         if (!selected) return
         try {
+            const attrs = buildSupplierAttrs(values, selected)
+            const contractStart = formatDateValue(values.contract_start_date)
+            const contractEnd = formatDateValue(values.contract_end_date)
             const payload = {
                 supplier_name: values.supplier_name,
                 contact_info: {
                     contact_name: values.contact_name,
                     contact_phone: values.contact_phone,
                 },
+                attrs,
+                contract_start_date: contractStart,
+                contract_end_date: contractEnd,
             }
-            if (
-                selected.supplier_name === payload.supplier_name &&
-                selected.contact_info?.contact_name === payload.contact_info.contact_name &&
-                selected.contact_info?.contact_phone === payload.contact_info.contact_phone
-            ) {
+            const nameChanged = selected.supplier_name !== payload.supplier_name
+            const contactChanged =
+                (selected.contact_info?.contact_name || '') !== (payload.contact_info.contact_name || '') ||
+                (selected.contact_info?.contact_phone || '') !== (payload.contact_info.contact_phone || '')
+            const attrsChanged = supplierAttrKeys.some((key: SupplierAttrKey) => {
+                const nextValue = normalizeAttrValue(attrs[key])
+                const prevValue = normalizeAttrValue((selected.attrs as Record<string, unknown> | undefined)?.[key])
+                const nextText = nextValue === undefined ? '' : String(nextValue)
+                const prevText = prevValue === undefined ? '' : String(prevValue)
+                return nextText !== prevText
+            })
+            const contractChanged =
+                (selected.contract_start_date || '') !== (contractStart || '') ||
+                (selected.contract_end_date || '') !== (contractEnd || '')
+
+            if (!nameChanged && !contactChanged && !attrsChanged && !contractChanged) {
                 message.info('没有变更，无需保存')
                 setEditModalVisible(false)
                 setSelected(null)
@@ -202,6 +274,18 @@ export default function SupplierPage() {
             render: (info: any) => info?.contact_phone || '-',
         },
         {
+            title: '合同开始时间',
+            dataIndex: 'contract_start_date',
+            render: (v: string) => v || '-',
+            sorter: (a: Supplier, b: Supplier) => (a.contract_start_date || '').localeCompare(b.contract_start_date || ''),
+        },
+        {
+            title: '合同结束时间',
+            dataIndex: 'contract_end_date',
+            render: (v: string) => v || '-',
+            sorter: (a: Supplier, b: Supplier) => (a.contract_end_date || '').localeCompare(b.contract_end_date || ''),
+        },
+        {
             title: '绑定资源数',
             render: (_: any, record: Supplier) => supplierResources.filter((sr) => sr.supplier_id === record.id).length,
             sorter: (a: Supplier, b: Supplier) => {
@@ -234,6 +318,18 @@ export default function SupplierPage() {
                                     supplier_name: record.supplier_name,
                                     contact_name: record.contact_info?.contact_name,
                                     contact_phone: record.contact_info?.contact_phone,
+                                    supplier_code: record.attrs?.supplier_code,
+                                    business_scope: record.attrs?.business_scope,
+                                    contact_email: record.attrs?.contact_email,
+                                    license_no: record.attrs?.license_no,
+                                    legal_person: record.attrs?.legal_person,
+                                    credit_code: record.attrs?.credit_code,
+                                    settlement_cycle: record.attrs?.settlement_cycle,
+                                    settlement_method: record.attrs?.settlement_method,
+                                    invoice_info: record.attrs?.invoice_info,
+                                    contract_no: record.attrs?.contract_no,
+                                    contract_start_date: record.contract_start_date ? dayjs(record.contract_start_date) : undefined,
+                                    contract_end_date: record.contract_end_date ? dayjs(record.contract_end_date) : undefined,
                                 })
                                 setEditModalVisible(true)
                             }}
@@ -377,6 +473,42 @@ export default function SupplierPage() {
                     <Form.Item name="contact_phone" label="电话">
                         <Input placeholder="138****" />
                     </Form.Item>
+                    <Form.Item name="contact_email" label="联系邮箱">
+                        <Input placeholder="example@company.com" />
+                    </Form.Item>
+                    <Form.Item name="supplier_code" label="供应商编码">
+                        <Input placeholder="SUP-001" />
+                    </Form.Item>
+                    <Form.Item name="business_scope" label="业务范围">
+                        <Input.TextArea placeholder="例如：门票、酒店、交通等" rows={3} />
+                    </Form.Item>
+                    <Form.Item name="license_no" label="营业执照号">
+                        <Input placeholder="营业执照编号" />
+                    </Form.Item>
+                    <Form.Item name="legal_person" label="法人信息">
+                        <Input placeholder="法人姓名" />
+                    </Form.Item>
+                    <Form.Item name="credit_code" label="信用代码">
+                        <Input placeholder="统一社会信用代码" />
+                    </Form.Item>
+                    <Form.Item name="settlement_cycle" label="结算周期">
+                        <Input placeholder="例如：T+7" />
+                    </Form.Item>
+                    <Form.Item name="settlement_method" label="结算方式">
+                        <Input placeholder="例如：对公转账" />
+                    </Form.Item>
+                    <Form.Item name="invoice_info" label="发票信息">
+                        <Input.TextArea placeholder="发票抬头、税号等" rows={3} />
+                    </Form.Item>
+                    <Form.Item name="contract_no" label="合同编号">
+                        <Input placeholder="合同编号" />
+                    </Form.Item>
+                    <Form.Item name="contract_start_date" label="合同开始时间">
+                        <DatePicker style={{ width: '100%' }} />
+                    </Form.Item>
+                    <Form.Item name="contract_end_date" label="合同结束时间">
+                        <DatePicker style={{ width: '100%' }} />
+                    </Form.Item>
 
                     <Form.Item style={{ marginTop: 24 }}>
                         <Space style={{ width: '100%' }}>
@@ -422,6 +554,42 @@ export default function SupplierPage() {
                     </Form.Item>
                     <Form.Item name="contact_phone" label="电话">
                         <Input />
+                    </Form.Item>
+                    <Form.Item name="contact_email" label="联系邮箱">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="supplier_code" label="供应商编码">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="business_scope" label="业务范围">
+                        <Input.TextArea rows={3} />
+                    </Form.Item>
+                    <Form.Item name="license_no" label="营业执照号">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="legal_person" label="法人信息">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="credit_code" label="信用代码">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="settlement_cycle" label="结算周期">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="settlement_method" label="结算方式">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="invoice_info" label="发票信息">
+                        <Input.TextArea rows={3} />
+                    </Form.Item>
+                    <Form.Item name="contract_no" label="合同编号">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="contract_start_date" label="合同开始时间">
+                        <DatePicker style={{ width: '100%' }} />
+                    </Form.Item>
+                    <Form.Item name="contract_end_date" label="合同结束时间">
+                        <DatePicker style={{ width: '100%' }} />
                     </Form.Item>
 
                     <Space style={{ float: 'right', marginTop: 16 }}>
@@ -470,6 +638,18 @@ export default function SupplierPage() {
 
                             <Descriptions.Item label="联系人">{selected.contact_info?.contact_name || '-'}</Descriptions.Item>
                             <Descriptions.Item label="电话">{selected.contact_info?.contact_phone || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="联系邮箱">{formatAttrDisplay(selected.attrs?.contact_email)}</Descriptions.Item>
+                            <Descriptions.Item label="供应商编码">{formatAttrDisplay(selected.attrs?.supplier_code)}</Descriptions.Item>
+                            <Descriptions.Item label="营业执照号">{formatAttrDisplay(selected.attrs?.license_no)}</Descriptions.Item>
+                            <Descriptions.Item label="法人信息">{formatAttrDisplay(selected.attrs?.legal_person)}</Descriptions.Item>
+                            <Descriptions.Item label="信用代码">{formatAttrDisplay(selected.attrs?.credit_code)}</Descriptions.Item>
+                            <Descriptions.Item label="结算周期">{formatAttrDisplay(selected.attrs?.settlement_cycle)}</Descriptions.Item>
+                            <Descriptions.Item label="结算方式">{formatAttrDisplay(selected.attrs?.settlement_method)}</Descriptions.Item>
+                            <Descriptions.Item label="合同编号">{formatAttrDisplay(selected.attrs?.contract_no)}</Descriptions.Item>
+                            <Descriptions.Item label="合同开始时间">{selected.contract_start_date || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="合同结束时间">{selected.contract_end_date || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="业务范围" span={2}>{formatAttrDisplay(selected.attrs?.business_scope)}</Descriptions.Item>
+                            <Descriptions.Item label="发票信息" span={2}>{formatAttrDisplay(selected.attrs?.invoice_info)}</Descriptions.Item>
                         </Descriptions>
 
                         <h4 style={{ margin: '16px 0' }}>已绑定的资源</h4>
