@@ -659,7 +659,7 @@ export default function ProductEditorPage() {
 
                             <Divider>资源组合</Divider>
                             <div style={{ marginBottom: 8, color: '#666', fontSize: 12 }}>
-                                💡 点击行左侧箭头可展开查看资源详细信息（门票、酒店等特定字段）
+                                💡 点击行左侧箭头可展开查看资源详细信息（景区、酒店等特定字段）
                             </div>
 
                             <Table
@@ -730,7 +730,7 @@ export default function ProductEditorPage() {
                 <Col span={8}>
                     <Card title="帮助指南" size="small" className="glass-card" bordered={false}>
                         <p>1. <b>分类管理</b>：请前往"产品管理 -&gt; 产品分类"建立分类。</p>
-                        <p>2. <b>资源选择</b>：从资源库中选择门票、酒店等。</p>
+                        <p>2. <b>资源选择</b>：从资源库中选择景区、酒店等。</p>
                         <p>3. <b>供应商指定</b>：必须为每个资源指定供应商，以便系统计算成本和后续下单。</p>
                         <p>4. <b>成本计算</b>：成本 = Σ(资源数量 × 供应商结算价)。</p>
                     </Card>

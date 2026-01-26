@@ -28,7 +28,8 @@ class ListResponse(BaseModel):
 
 class PoiBase(BaseModel):
     poi_name: str
-    poi_type: str  # 必选：门票/酒店/餐饮/交通
+    poi_type: str  # 必选：景区/酒店/餐饮/交通
+    poi_code: Optional[str] = None
     province: Optional[str] = None
     city: str
     district: Optional[str] = None
@@ -48,6 +49,7 @@ class PoiCreate(PoiBase):
 class PoiUpdate(BaseModel):
     poi_name: Optional[str] = None
     poi_type: Optional[str] = None  # 允许修改POI类型
+    poi_code: Optional[str] = None
     province: Optional[str] = None
     city: Optional[str] = None
     district: Optional[str] = None
@@ -68,9 +70,10 @@ class PoiRead(PoiBase, ORMBase):
 class ResourceBase(BaseModel):
     poi_id: int
     resource_name: str
+    resource_code: Optional[str] = None
     resource_type: str
     # attrs should follow the schema of the corresponding resource_type:
-    # - "门票" -> TicketAttrs
+    # - "景区" -> TicketAttrs
     # - "酒店" -> HotelAttrs
     # - others -> GenericAttrs or custom dict
     attrs: Optional[dict] = Field(None, description="Resource type-specific attributes (JSONB)")
@@ -84,6 +87,7 @@ class ResourceCreate(ResourceBase):
 class ResourceUpdate(BaseModel):
     poi_id: Optional[int] = None
     resource_name: Optional[str] = None
+    resource_code: Optional[str] = None
     resource_type: Optional[str] = None
     attrs: Optional[dict] = None
     status: Optional[str] = None

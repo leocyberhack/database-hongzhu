@@ -23,20 +23,59 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
     const resourceType = resource.resource_type
     const businessContacts = Array.isArray(poiAttrs.business_contacts) ? poiAttrs.business_contacts : []
 
+    const renderTagList = (labels: string[]) => {
+        if (!labels.length) return '-'
+        return labels.map((label) => (
+            <Tag key={label} color="blue">{label}</Tag>
+        ))
+    }
+
     // 渲染POI通用字段 (所有类型通用，但字段可能略有不同，这里显示最核心的)
     const renderPoiCommonAttrs = () => {
         if (!poi) return null
 
+        const hotelFacilities = [
+            poiAttrs.parking && poiAttrs.parking !== '无' ? `停车:${poiAttrs.parking}` : null,
+            poiAttrs.has_wifi ? 'WIFI' : null,
+            poiAttrs.has_wired_network ? '有线网络' : null,
+            poiAttrs.has_concierge_service ? '礼宾服务' : null,
+            poiAttrs.has_travel_ticket_service ? '旅游票务' : null,
+            poiAttrs.has_wakeup_service ? '叫醒服务' : null,
+            poiAttrs.has_room_service ? '送餐服务' : null,
+            poiAttrs.has_elevator ? '电梯' : null,
+            poiAttrs.has_meeting_room ? '会议厅' : null,
+            poiAttrs.has_bar ? '酒吧' : null,
+            poiAttrs.has_atm ? '自助取款机' : null,
+            poiAttrs.has_fax_copy ? '传真/复印机' : null,
+            poiAttrs.has_ktv ? 'KTV' : null,
+            poiAttrs.has_pool ? '游泳池' : null,
+            poiAttrs.has_gym ? '健身房' : null,
+            poiAttrs.has_chess_room ? '棋牌室' : null,
+            poiAttrs.has_tea_room ? '茶室' : null,
+            poiAttrs.has_billiards ? '台球桌' : null,
+            poiAttrs.has_sauna ? '桑拿' : null,
+            poiAttrs.has_massage ? '按摩' : null,
+            poiAttrs.has_beauty_hair ? '理发美容中心' : null,
+            poiAttrs.has_wedding_service ? '婚宴服务' : null,
+            poiAttrs.has_dry_cleaning ? '干洗服务' : null,
+            poiAttrs.has_laundry_room ? '洗衣房' : null,
+            poiAttrs.has_pickup_service ? '接机/站' : null,
+            poiAttrs.has_24h_reception ? '24h前台' : null,
+            poiAttrs.has_luggage_storage ? '行李寄存' : null,
+            poiAttrs.has_restaurant ? '餐厅' : null,
+        ].filter(Boolean) as string[]
+
         return (
             <>
                 <Divider orientation="left" style={{ margin: '12px 0', fontSize: 14, color: '#666' }}>
-                    🏢 POI 通用信息 ({poi.poi_name})
+                    🧭 POI 通用信息 ({poi.poi_name})
                 </Divider>
                 <Descriptions bordered size="small" column={3}>
+                    <Descriptions.Item label="POI编码">{poi.poi_code || '-'}</Descriptions.Item>
                     <Descriptions.Item label="城市">{poi.city}</Descriptions.Item>
-                    <Descriptions.Item label="地址" span={2}>{poi.address || '-'}</Descriptions.Item>
                     <Descriptions.Item label="经度">{poi.longitude ?? '-'}</Descriptions.Item>
                     <Descriptions.Item label="纬度">{poi.latitude ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="地址" span={2}>{poi.address || '-'}</Descriptions.Item>
                     <Descriptions.Item label="业务对接人" span={3}>
                         <ContactTableDisplay
                             contacts={businessContacts}
@@ -46,9 +85,10 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                         />
                     </Descriptions.Item>
 
-                    {/* 门票POI特定通用字段 */}
-                    {resourceType === '门票' && (
+                    {/* 景区POI特定通用字段 */}
+                    {resourceType === '景区' && (
                         <>
+                            <Descriptions.Item label="景区类别">{poiAttrs.scenic_category || '-'}</Descriptions.Item>
                             <Descriptions.Item label="开放时间">{poiAttrs.open_time || '-'}</Descriptions.Item>
                             <Descriptions.Item label="联系电话">{poiAttrs.phone || '-'}</Descriptions.Item>
                             <Descriptions.Item label="取票地点">{poiAttrs.pickup_location || '-'}</Descriptions.Item>
@@ -66,19 +106,15 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                         <>
                             <Descriptions.Item label="酒店类型">{poiAttrs.hotel_type || '-'}</Descriptions.Item>
                             <Descriptions.Item label="星级">{poiAttrs.star_rating || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="携程星级">{poiAttrs.ctrip_star_rating || '-'}</Descriptions.Item>
                             <Descriptions.Item label="联系电话">{poiAttrs.phone || '-'}</Descriptions.Item>
                             <Descriptions.Item label="入离时间">
                                 {(poiAttrs.check_in_time || poiAttrs.check_out_time)
                                     ? `${poiAttrs.check_in_time || ''} - ${poiAttrs.check_out_time || ''}`
                                     : '-'}
                             </Descriptions.Item>
-                            <Descriptions.Item label="设施服务" span={2}>
-                                {poiAttrs.parking && poiAttrs.parking !== '无' && <Tag color="blue">停车:{poiAttrs.parking}</Tag>}
-                                {poiAttrs.has_pickup_service && <Tag color="cyan">接机/站</Tag>}
-                                {poiAttrs.has_24h_reception && <Tag color="green">24h前台</Tag>}
-                                {poiAttrs.has_luggage_storage && <Tag color="orange">行李寄存</Tag>}
-                                {poiAttrs.has_restaurant && <Tag color="magenta">餐厅</Tag>}
-                                {!poiAttrs.parking && !poiAttrs.has_pickup_service && !poiAttrs.has_24h_reception && !poiAttrs.has_luggage_storage && !poiAttrs.has_restaurant && '-'}
+                            <Descriptions.Item label="设施服务" span={3}>
+                                {renderTagList(hotelFacilities)}
                             </Descriptions.Item>
                             <Descriptions.Item label="取消政策" span={3}>{poiAttrs.cancellation_policy || '-'}</Descriptions.Item>
                             <Descriptions.Item label="限购政策" span={3}>{poiAttrs.purchase_limit || '-'}</Descriptions.Item>
@@ -102,7 +138,7 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                     )}
 
                     {/* 其他类型暂无特定通用展示逻辑，仅回退 */}
-                    {resourceType !== '门票' && resourceType !== '酒店' && resourceType !== '餐饮' && (
+                    {resourceType !== '景区' && resourceType !== '酒店' && resourceType !== '餐饮' && (
                         <Descriptions.Item label="联系电话">{poiAttrs.phone || '-'}</Descriptions.Item>
                     )}
                 </Descriptions>
@@ -110,7 +146,7 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
         )
     }
 
-    // 渲染门票特定字段（资源独属）
+    // 渲染景区特定字段（资源独属）
     const renderTicketResourceAttrs = () => (
         <>
             <Descriptions.Item label="票种">{resourceAttrs.ticket_type || '-'}</Descriptions.Item>
@@ -134,7 +170,6 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                 {resourceAttrs.play_duration ? `${resourceAttrs.play_duration}小时` : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="需要出行人信息">
-                {/* 兼容旧数据结构或等待Resource字段更新 */}
                 {resourceAttrs.required_traveler_info?.map((info: string) => (
                     <Tag key={info} color="blue">{info}</Tag>
                 )) || '-'}
@@ -197,6 +232,7 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
             </Divider>
             <Descriptions bordered size="small" column={3}>
                 <Descriptions.Item label="资源名称">{resource.resource_name}</Descriptions.Item>
+                <Descriptions.Item label="资源编码">{resource.resource_code || '-'}</Descriptions.Item>
                 <Descriptions.Item label="资源类型">
                     <Tag color="blue">{resourceType}</Tag>
                 </Descriptions.Item>
@@ -208,13 +244,13 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
             </Descriptions>
 
             {/* 第三部分：资源独属详细信息 */}
-            {(resourceType === '门票' || resourceType === '酒店' || resourceType === '餐饮' || resourceType === '交通') && (
+            {(resourceType === '景区' || resourceType === '酒店' || resourceType === '餐饮' || resourceType === '交通') && (
                 <>
                     <Divider orientation="left" style={{ margin: '12px 0', fontSize: 14, color: '#666' }}>
-                        📝 {resourceType}独属信息
+                        📑 {resourceType}独属信息
                     </Divider>
                     <Descriptions bordered size="small" column={3}>
-                        {resourceType === '门票' && renderTicketResourceAttrs()}
+                        {resourceType === '景区' && renderTicketResourceAttrs()}
                         {resourceType === '酒店' && renderHotelAttrs()}
                         {resourceType === '餐饮' && renderDiningAttrs()}
                         {resourceType === '交通' && renderTransportAttrs()}

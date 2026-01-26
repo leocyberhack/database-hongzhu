@@ -6,9 +6,9 @@ from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 
 
-# ==================== 门票资源属性（资源独属字段）====================
+# ==================== 景区资源属性（资源独属字段）====================
 class TicketAttrs(BaseModel):
-    """门票资源的独属属性（POI层已定义通用字段）"""
+    """景区资源的独属属性（POI层已定义通用字段）"""
     
     # 票种
     ticket_type: Optional[Literal["成人票", "儿童票", "学生票", "老人票", "双人票", "家庭票", "团体票"]] = Field(None, description="票种类型")
@@ -25,11 +25,11 @@ class TicketAttrs(BaseModel):
     # 需提前预定时间（小时和分钟）
     advance_booking_time: Optional[dict] = Field(None, description="提前预定时间 {'hours': 2, 'minutes': 30}")
     
-    # 门票包含内容
-    includes: Optional[str] = Field(None, description="门票包含的内容")
+    # 景区包含内容
+    includes: Optional[str] = Field(None, description="景区包含的内容")
     
-    # 门票不包含内容
-    excludes: Optional[str] = Field(None, description="门票不包含的内容")
+    # 景区不包含内容
+    excludes: Optional[str] = Field(None, description="景区不包含的内容")
     
     # 出票后多久可用
     available_after_issue: Optional[str] = Field(None, description="例如：立即可用/24小时后可用")

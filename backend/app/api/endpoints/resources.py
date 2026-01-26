@@ -113,7 +113,7 @@ async def create_poi(
         raise HTTPException(status_code=400, detail="poi_type is required")
     
     # poi_type枚举值校验
-    valid_types = ["门票", "酒店", "餐饮", "交通"]
+    valid_types = ["景区", "酒店", "餐饮", "交通"]
     if payload.poi_type not in valid_types:
         raise HTTPException(
             status_code=400, 
@@ -133,6 +133,7 @@ async def create_poi(
     audit_data = {
         "poi_name": obj.poi_name, 
         "poi_type": obj.poi_type,
+        "poi_code": obj.poi_code,
         "province": obj.province,
         "city": obj.city,
         "district": obj.district,
@@ -192,7 +193,7 @@ async def update_poi(
             )
         
         # poi_type枚举值校验
-        valid_types = ["门票", "酒店", "餐饮", "交通"]
+        valid_types = ["景区", "酒店", "餐饮", "交通"]
         if payload.poi_type not in valid_types:
             raise HTTPException(
                 status_code=400, 
@@ -203,6 +204,7 @@ async def update_poi(
     before_data = {
         "poi_name": poi.poi_name, 
         "poi_type": poi.poi_type,
+        "poi_code": poi.poi_code,
         "province": poi.province,
         "city": poi.city,
         "district": poi.district,
@@ -226,6 +228,7 @@ async def update_poi(
     after_data = {
         "poi_name": poi.poi_name,
         "poi_type": poi.poi_type,
+        "poi_code": poi.poi_code,
         "province": poi.province,
         "city": poi.city,
         "district": poi.district,
@@ -275,6 +278,7 @@ async def delete_poi(
         operation="DELETE",
         diff_data={
             "poi_name": poi.poi_name,
+            "poi_code": poi.poi_code,
             "province": poi.province,
             "city": poi.city,
             "district": poi.district,
@@ -374,11 +378,12 @@ async def create_resource(
     # Record audit log with complete resource data including attrs
     audit_data = {
         "resource_name": obj.resource_name,
+        "resource_code": obj.resource_code,
         "resource_type": obj.resource_type,
         "poi_id": obj.poi_id,
         "status": obj.status
     }
-    # Include attrs if present (门票/酒店特定字段)
+    # Include attrs if present (景区/酒店特定字段)
     if obj.attrs:
         audit_data["attrs"] = obj.attrs
     
@@ -431,6 +436,7 @@ async def update_resource(
     # Capture before state with all important fields including attrs
     before_data = {
         "resource_name": resource.resource_name,
+        "resource_code": resource.resource_code,
         "resource_type": resource.resource_type,
         "status": resource.status,
         "poi_id": resource.poi_id
@@ -494,7 +500,11 @@ async def delete_resource(
         table_name="resource",
         record_id=resource.id,
         operation="DELETE",
-        diff_data={"resource_name": resource.resource_name, "resource_type": resource.resource_type},
+        diff_data={
+            "resource_name": resource.resource_name,
+            "resource_code": resource.resource_code,
+            "resource_type": resource.resource_type,
+        },
         operator=user.username,
         operated_at=now_china(),
         source="web",

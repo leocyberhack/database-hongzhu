@@ -262,7 +262,7 @@ export default function ProductListPage() {
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                     <h1 className="page-title">产品列表</h1>
-                    <p className="page-subtitle">管理所有产品，包括门票、酒店、线路及其组合</p>
+                    <p className="page-subtitle">管理所有产品，包括景区、酒店、线路及其组合</p>
                 </div>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/products/editor')}>
                     新建产品

@@ -14,13 +14,15 @@ class PoiBusinessContact(BaseModel):
     remark: Optional[str] = Field(None, description="备注")
 
 
-# ==================== 门票POI通用属性 ====================
+# ==================== 景区POI通用属性 ====================
 class TicketPoiAttrs(BaseModel):
-    """门票POI的通用属性（所有该POI下的门票资源共享）"""
+    """景区POI的通用属性（所有该POI下的景区资源共享）"""
     
     
     # 业务对接人信息
     business_contacts: Optional[List[PoiBusinessContact]] = Field(None, description="业务对接人信息")
+
+    scenic_category: Optional[str] = Field(None, description="景区类别")
 
     # 入园信息
     entrance_times: Optional[str] = Field(None, description="入园次数：unlimited或具体次数")
@@ -56,7 +58,6 @@ class TicketPoiAttrs(BaseModel):
     remark: Optional[str] = Field(None, description="备注")
 
 
-# ==================== 酒店POI通用属性（待定义）====================
 # ==================== 酒店POI通用属性 ====================
 class HotelPoiAttrs(BaseModel):
     """酒店POI的通用属性（所有该POI下的酒店房型资源共享）"""
@@ -73,6 +74,34 @@ class HotelPoiAttrs(BaseModel):
     
     # 4. 酒店星级
     star_rating: Optional[Literal["五星", "四星", "三星", "二星", "无"]] = Field(None, description="酒店星级")
+
+    # 携程星级
+    ctrip_star_rating: Optional[Literal["一钻", "二钻", "三钻", "四钻", "五钻", "六钻"]] = Field(None, description="携程星级")
+
+    # 网络/服务设施
+    has_wifi: Optional[bool] = Field(None, description="是否有WIFI")
+    has_wired_network: Optional[bool] = Field(None, description="是否有有线网络")
+    has_concierge_service: Optional[bool] = Field(None, description="是否有礼宾服务")
+    has_travel_ticket_service: Optional[bool] = Field(None, description="是否有旅游票务服务")
+    has_wakeup_service: Optional[bool] = Field(None, description="是否有叫醒服务")
+    has_room_service: Optional[bool] = Field(None, description="是否有送餐服务")
+    has_elevator: Optional[bool] = Field(None, description="有无电梯")
+    has_meeting_room: Optional[bool] = Field(None, description="有无会议厅")
+    has_bar: Optional[bool] = Field(None, description="有无酒吧")
+    has_atm: Optional[bool] = Field(None, description="有无自助取款机")
+    has_fax_copy: Optional[bool] = Field(None, description="有无传真/复印机")
+    has_ktv: Optional[bool] = Field(None, description="有无KTV")
+    has_pool: Optional[bool] = Field(None, description="有无游泳池")
+    has_gym: Optional[bool] = Field(None, description="有无健身房")
+    has_chess_room: Optional[bool] = Field(None, description="有无棋牌室")
+    has_tea_room: Optional[bool] = Field(None, description="有无茶室")
+    has_billiards: Optional[bool] = Field(None, description="有无台球桌")
+    has_sauna: Optional[bool] = Field(None, description="有无桑拿")
+    has_massage: Optional[bool] = Field(None, description="有无按摩")
+    has_beauty_hair: Optional[bool] = Field(None, description="有无理发美容中心")
+    has_wedding_service: Optional[bool] = Field(None, description="有无婚宴服务")
+    has_dry_cleaning: Optional[bool] = Field(None, description="有无干洗服务")
+    has_laundry_room: Optional[bool] = Field(None, description="有无洗衣房")
     
     # 5. 取消/退款政策
     cancellation_policy: Optional[str] = Field(None, description="取消和退款政策")

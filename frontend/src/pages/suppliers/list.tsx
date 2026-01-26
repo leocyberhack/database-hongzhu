@@ -487,7 +487,7 @@ export default function SupplierPage() {
                         <Input placeholder="SUP-001" />
                     </Form.Item>
                     <Form.Item name="business_scope" label="业务范围">
-                        <Input.TextArea placeholder="例如：门票、酒店、交通等" rows={3} />
+                        <Input.TextArea placeholder="例如：景区、酒店、交通等" rows={3} />
                     </Form.Item>
                     <Form.Item name="license_no" label="营业执照号">
                         <Input placeholder="营业执照编号" />

@@ -3,7 +3,8 @@
 export interface POI {
     id: string
     poi_name: string
-    poi_type: string  // 门票/酒店/餐饮/交通
+    poi_type: string  // 景区/酒店/餐饮/交通
+    poi_code?: string
     province?: string
     city: string
     district?: string
@@ -19,6 +20,7 @@ export interface Resource {
     id: string
     poi_id: string
     resource_name: string
+    resource_code?: string
     resource_type: string
     attrs?: Record<string, unknown>
     status?: string

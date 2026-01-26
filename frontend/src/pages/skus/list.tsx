@@ -636,7 +636,7 @@ export default function SKUListPage() {
                     {selectedProduct && currentProductResources.length > 0 && (
                         <Card size="small" title="产品资源组成" style={{ marginBottom: 24 }}>
                             <div style={{ marginBottom: 8, color: '#666', fontSize: 12 }}>
-                                💡 点击行左侧箭头可展开查看资源详细信息（门票、酒店、餐饮、交通等特定字段）
+                                💡 点击行左侧箭头可展开查看资源详细信息（景区、酒店、餐饮、交通等特定字段）
                             </div>
                             <Table
                                 rowKey="id"

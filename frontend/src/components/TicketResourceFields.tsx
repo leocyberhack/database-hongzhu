@@ -3,15 +3,15 @@ import { Form, Input, InputNumber, Select } from 'antd'
 const { TextArea } = Input
 
 /**
- * 门票资源的独属字段组件（POI层已定义通用字段）
+ * 景区资源的独属字段组件（POI层已定义通用字段）
  * 只包含资源级别的个性化属性
  */
 export default function TicketResourceFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#e6f7ff', borderRadius: 8, border: '1px solid #91d5ff' }}>
-            <h4 style={{ marginBottom: 16, color: '#1890ff' }}>🎫 门票资源独属信息</h4>
+            <h4 style={{ marginBottom: 16, color: '#1890ff' }}>🎫 景区资源独属信息</h4>
             <p style={{ marginBottom: 16, color: '#666', fontSize: 12 }}>
-                提示：通用字段（地址、入园时间、联系电话等）已在POI层设置，此处只需填写该门票特有的属性
+                提示：通用字段（地址、入园时间、联系电话等）已在POI层设置，此处只需填写该景区特有的属性
             </p>
 
             {/* 票种 */}
@@ -98,13 +98,13 @@ export default function TicketResourceFields({ prefix = ['attrs'] }: { prefix?: 
                 </Input.Group>
             </div>
 
-            {/* 门票包含内容 */}
-            <Form.Item name={[...prefix, 'includes']} label="门票包含内容">
-                <TextArea rows={2} placeholder="例如：景区大门票、观光车（可选）" />
+            {/* 景区包含内容 */}
+            <Form.Item name={[...prefix, 'includes']} label="景区包含内容">
+                <TextArea rows={2} placeholder="例如：景区大景区、观光车（可选）" />
             </Form.Item>
 
-            {/* 门票不包含内容 */}
-            <Form.Item name={[...prefix, 'excludes']} label="门票不包含内容">
+            {/* 景区不包含内容 */}
+            <Form.Item name={[...prefix, 'excludes']} label="景区不包含内容">
                 <TextArea rows={2} placeholder="例如：索道、游船（可选）" />
             </Form.Item>
 
@@ -129,7 +129,7 @@ export default function TicketResourceFields({ prefix = ['attrs'] }: { prefix?: 
 
             {/* 补充说明 */}
             <Form.Item name={[...prefix, 'additional_notes']} label="补充说明">
-                <TextArea rows={3} placeholder="该门票的其他需要说明的内容（可选）" />
+                <TextArea rows={3} placeholder="该景区的其他需要说明的内容（可选）" />
             </Form.Item>
         </div>
     )

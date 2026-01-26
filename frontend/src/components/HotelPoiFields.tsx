@@ -40,6 +40,21 @@ export default function HotelPoiFields({ prefix = ['attrs'] }: { prefix?: (strin
                     </Col>
                 </Row>
 
+                <Row gutter={16}>
+                    <Col span={12}>
+                        <Form.Item name={[...prefix, 'ctrip_star_rating']} label="携程星级">
+                            <Select placeholder="选择携程星级">
+                                <Select.Option value="一钻">一钻</Select.Option>
+                                <Select.Option value="二钻">二钻</Select.Option>
+                                <Select.Option value="三钻">三钻</Select.Option>
+                                <Select.Option value="四钻">四钻</Select.Option>
+                                <Select.Option value="五钻">五钻</Select.Option>
+                                <Select.Option value="六钻">六钻</Select.Option>
+                            </Select>
+                        </Form.Item>
+                    </Col>
+                </Row>
+
                 <Form.Item name={[...prefix, 'phone']} label="联系电话" rules={[{ required: true }]}>
                     <Input placeholder="酒店前台电话" />
                 </Form.Item>
@@ -148,7 +163,157 @@ export default function HotelPoiFields({ prefix = ['attrs'] }: { prefix?: (strin
                 </Form.Item>
             </div>
 
-            <Form.Item name={[...prefix, 'additional_notes']} label="补充说明">
+            
+            
+            
+            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 4 }}>
+                <h5 style={{ marginBottom: 12 }}>网络与基础设施</h5>
+
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_wifi']} valuePropName="checked">
+                            <Checkbox>WIFI</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_wired_network']} valuePropName="checked">
+                            <Checkbox>有线网络</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_elevator']} valuePropName="checked">
+                            <Checkbox>电梯</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_meeting_room']} valuePropName="checked">
+                            <Checkbox>会议厅</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_bar']} valuePropName="checked">
+                            <Checkbox>酒吧</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_atm']} valuePropName="checked">
+                            <Checkbox>自助取款机</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_fax_copy']} valuePropName="checked">
+                            <Checkbox>传真/复印机</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+            </div>
+
+            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 4 }}>
+                <h5 style={{ marginBottom: 12 }}>休闲娱乐</h5>
+
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_ktv']} valuePropName="checked">
+                            <Checkbox>KTV</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_pool']} valuePropName="checked">
+                            <Checkbox>游泳池</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_gym']} valuePropName="checked">
+                            <Checkbox>健身房</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_chess_room']} valuePropName="checked">
+                            <Checkbox>棋牌室</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_tea_room']} valuePropName="checked">
+                            <Checkbox>茶室</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_billiards']} valuePropName="checked">
+                            <Checkbox>台球桌</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_sauna']} valuePropName="checked">
+                            <Checkbox>桑拿</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_massage']} valuePropName="checked">
+                            <Checkbox>按摩</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+            </div>
+
+            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 4 }}>
+                <h5 style={{ marginBottom: 12 }}>服务</h5>
+
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_concierge_service']} valuePropName="checked">
+                            <Checkbox>礼宾服务</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_travel_ticket_service']} valuePropName="checked">
+                            <Checkbox>旅游票务服务</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_wakeup_service']} valuePropName="checked">
+                            <Checkbox>叫醒服务</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_room_service']} valuePropName="checked">
+                            <Checkbox>送餐服务</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_wedding_service']} valuePropName="checked">
+                            <Checkbox>婚宴服务</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_dry_cleaning']} valuePropName="checked">
+                            <Checkbox>干洗服务</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+                <Row gutter={16}>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_laundry_room']} valuePropName="checked">
+                            <Checkbox>洗衣房</Checkbox>
+                        </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                        <Form.Item name={[...prefix, 'has_beauty_hair']} valuePropName="checked">
+                            <Checkbox>理发美容中心</Checkbox>
+                        </Form.Item>
+                    </Col>
+                </Row>
+            </div>
+<Form.Item name={[...prefix, 'additional_notes']} label="补充说明">
                 <TextArea rows={2} placeholder="其他补充信息" />
             </Form.Item>
         </div>

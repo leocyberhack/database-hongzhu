@@ -8,7 +8,7 @@ from app.core.database import Base
 
 class AssetType(str, enum.Enum):
     """资源/POI类型枚举"""
-    TICKET = "门票"
+    TICKET = "景区"
     HOTEL = "酒店"
     DINING = "餐饮"
     TRANSPORT = "交通"
@@ -30,6 +30,7 @@ class Poi(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     poi_name: Mapped[str] = mapped_column(String, nullable=False)
     poi_type: Mapped[str] = mapped_column(String, nullable=False)
+    poi_code: Mapped[str | None] = mapped_column(String, nullable=True)
     province: Mapped[str | None] = mapped_column(String, nullable=True)
     city: Mapped[str] = mapped_column(String, nullable=False)
     district: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -80,6 +81,7 @@ class Resource(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     poi_id: Mapped[int] = mapped_column(ForeignKey("poi.id", ondelete="RESTRICT"), nullable=False)
     resource_name: Mapped[str] = mapped_column(String, nullable=False)
+    resource_code: Mapped[str | None] = mapped_column(String, nullable=True)
     resource_type: Mapped[str] = mapped_column(String, nullable=False)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'draft'"))

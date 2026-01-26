@@ -21,7 +21,7 @@ from sqlalchemy import select, func
 from app.core.database import SessionLocal
 from app.models import Poi, Resource
 
-# 门票类型：需要从Resource.attrs迁移到POI.attrs的通用字段
+# 景区类型：需要从Resource.attrs迁移到POI.attrs的通用字段
 TICKET_COMMON_FIELDS = [
     'address',              # 详细地址
     'entrance_times',       # 入园次数
@@ -52,22 +52,22 @@ TICKET_RESOURCE_FIELDS = [
 
 
 async def migrate_ticket_poi():
-    """迁移门票类型的POI和Resource"""
+    """迁移景区类型的POI和Resource"""
     async with SessionLocal() as db:
         print("=" * 70)
-        print("开始迁移门票类型的通用字段...")
+        print("开始迁移景区类型的通用字段...")
         print("=" * 70)
         
-        # 查找所有门票类型的POI
-        stmt = select(Poi).where(Poi.poi_type == '门票')
+        # 查找所有景区类型的POI
+        stmt = select(Poi).where(Poi.poi_type == '景区')
         result = await db.execute(stmt)
         ticket_pois = result.scalars().all()
         
         if not ticket_pois:
-            print("⚠️  没有找到门票类型的POI，跳过迁移")
+            print("⚠️  没有找到景区类型的POI，跳过迁移")
             return
         
-        print(f"\n找到 {len(ticket_pois)} 个门票类型的POI")
+        print(f"\n找到 {len(ticket_pois)} 个景区类型的POI")
         
         migrated_poi_count = 0
         migrated_resource_count = 0
@@ -176,10 +176,10 @@ async def verify_migration():
         print("=" * 70)
         
         # 检查POI
-        poi_stmt = select(Poi).where(Poi.poi_type == '门票')
+        poi_stmt = select(Poi).where(Poi.poi_type == '景区')
         pois = (await db.execute(poi_stmt)).scalars().all()
         
-        print(f"\n📊 门票POI统计:")
+        print(f"\n📊 景区POI统计:")
         print(f"  - 总数: {len(pois)}")
         
         pois_with_attrs = sum(1 for p in pois if p.attrs)
@@ -197,10 +197,10 @@ async def verify_migration():
                 print(f"    attrs: None")
         
         # 检查Resource
-        resource_stmt = select(Resource).where(Resource.resource_type == '门票')
+        resource_stmt = select(Resource).where(Resource.resource_type == '景区')
         resources = (await db.execute(resource_stmt)).scalars().all()
         
-        print(f"\n📊 门票Resource统计:")
+        print(f"\n📊 景区Resource统计:")
         print(f"  - 总数: {len(resources)}")
         
         resources_with_attrs = sum(1 for r in resources if r.attrs)

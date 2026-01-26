@@ -16,7 +16,7 @@ import TransportResourceFields from '@/components/TransportResourceFields'
 import ResourceManager from '@/components/ResourceManager'
 import ContactTableEditor from '@/components/ContactTableEditor'
 
-const POI_TYPES = ['门票', '酒店', '餐饮', '交通'] // POI类型（不含组合）
+const POI_TYPES = ['景区', '酒店', '餐饮', '交通'] // POI类型（不含组合）
 
 interface FilterState {
     keyword: string
@@ -385,6 +385,7 @@ export default function ResourcePage() {
             const resourcePayload: any = {
                 poi_id: targetPoi.id,
                 resource_name: resource.resource_name,
+                resource_code: resource.resource_code,
                 resource_type: targetPoi.poi_type || poiType,
                 status: 'active',
             }
@@ -502,6 +503,7 @@ export default function ResourcePage() {
             const attrsChanged = JSON.stringify(selectedPoi.attrs || {}) !== JSON.stringify(values.attrs || {})
             if (
                 selectedPoi.poi_name === payload.poi_name &&
+                (selectedPoi.poi_code || '') === (payload.poi_code || '') &&
                 (selectedPoi.province || '') === (payload.province || '') &&
                 selectedPoi.city === payload.city &&
                 (selectedPoi.district || '') === (payload.district || '') &&
@@ -602,6 +604,7 @@ export default function ResourcePage() {
         poiEditForm.setFieldsValue({
             poi_name: selectedPoi.poi_name,
             poi_type: selectedPoi.poi_type,
+            poi_code: selectedPoi.poi_code,
             address: selectedPoi.address,
             longitude: selectedPoi.longitude,
             latitude: selectedPoi.latitude,
@@ -755,12 +758,17 @@ export default function ResourcePage() {
                     initialValues={{ attrs: { business_contacts: [{}] } }}
                 >
                     <Row gutter={16}>
-                        <Col span={12}>
+                        <Col span={10}>
                             <Form.Item name="poi_name" label="POI 名称" rules={[{ required: true, message: '请输入POI名称' }]}>
                                 <Input placeholder="如：丽江古城" />
                             </Form.Item>
                         </Col>
-                        <Col span={12}>
+                        <Col span={7}>
+                            <Form.Item name="poi_code" label="POI 编码">
+                                <Input placeholder="如：POI-001" />
+                            </Form.Item>
+                        </Col>
+                        <Col span={7}>
                             <Form.Item name="poi_type" label="POI 类型" rules={[{ required: true, message: '请选择POI类型' }]}>
                                 <Select
                                     placeholder="选择POI类型（必选）"
@@ -879,7 +887,7 @@ export default function ResourcePage() {
                     </div>
 
                     {/* 根据POI类型显示对应的通用字段 */}
-                    {poiType === '门票' && <TicketPoiFields />}
+                    {poiType === '景区' && <TicketPoiFields />}
                     {poiType === '酒店' && <HotelPoiFields />}
                     {poiType === '餐饮' && <DiningPoiFields />}
                     {poiType === '交通' && <TransportPoiFields />}
@@ -958,6 +966,9 @@ export default function ResourcePage() {
                                                                     <Form.Item name={[field.name, 'resource_name']} label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
                                                                         <Input placeholder="例如：标准双床房" />
                                                                     </Form.Item>
+                                                                    <Form.Item name={[field.name, 'resource_code']} label="资源编码">
+                                                                        <Input placeholder="例如：RES-001" />
+                                                                    </Form.Item>
                                                                 </Col>
                                                                 <Col span={12}>
                                                                     <Form.Item name={[field.name, 'resource_type']} label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
@@ -970,7 +981,7 @@ export default function ResourcePage() {
                                                                 </Col>
                                                             </Row>
 
-                                                            {poiType === '门票' && <TicketResourceFields prefix={[field.name, 'attrs']} />}
+                                                            {poiType === '景区' && <TicketResourceFields prefix={[field.name, 'attrs']} />}
                                                             {poiType === '酒店' && <HotelResourceFields prefix={[field.name, 'attrs']} />}
                                                             {poiType === '餐饮' && <DiningResourceFields prefix={[field.name, 'attrs']} />}
                                                             {poiType === '交通' && <TransportResourceFields prefix={[field.name, 'attrs']} />}
@@ -1073,12 +1084,17 @@ export default function ResourcePage() {
                             <h4 style={{ marginBottom: '12px' }}>基本信息</h4>
                             <Form layout="vertical" form={poiEditForm} onFinish={savePoi}>
                                 <Row gutter={16}>
-                                    <Col span={12}>
+                                    <Col span={10}>
                                         <Form.Item name="poi_name" label="名称" rules={[{ required: true }]}>
                                             <Input />
                                         </Form.Item>
                                     </Col>
-                                    <Col span={12}>
+                                    <Col span={7}>
+                                        <Form.Item name="poi_code" label="POI 编码">
+                                            <Input />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={7}>
                                         <Form.Item name="poi_type" label="类型">
                                             <Select disabled>
                                                 {POI_TYPES.map(t => <Select.Option key={t} value={t}>{t}</Select.Option>)}
@@ -1185,7 +1201,7 @@ export default function ResourcePage() {
                                 </div>
 
                                 {/* 动态字段编辑区域 */}
-                                {selectedPoi.poi_type === '门票' && <TicketPoiFields />}
+                                {selectedPoi.poi_type === '景区' && <TicketPoiFields />}
                                 {selectedPoi.poi_type === '酒店' && <HotelPoiFields />}
                                 {selectedPoi.poi_type === '餐饮' && <DiningPoiFields />}
                                 {selectedPoi.poi_type === '交通' && <TransportPoiFields />}

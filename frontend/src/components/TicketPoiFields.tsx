@@ -4,17 +4,21 @@ import dayjs from 'dayjs'
 const { TextArea } = Input
 
 /**
- * 门票POI的通用字段组件
- * 这些字段所有该POI下的门票资源共享
+ * 景区POI的通用字段组件
+ * 这些字段所有该POI下的景区资源共享
  */
 export default function TicketPoiFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#fff7e6', borderRadius: 8, border: '1px solid #ffd591' }}>
-            <h4 style={{ marginBottom: 16, color: '#fa8c16' }}>🏞️ 门票POI通用信息（所有门票资源共享）</h4>
+            <h4 style={{ marginBottom: 16, color: '#fa8c16' }}>🏞️ 景区POI通用信息（所有景区资源共享）</h4>
 
             {/* 入园信息 */}
             <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 4 }}>
                 <h5 style={{ marginBottom: 12 }}>🎫 入园信息</h5>
+
+                <Form.Item name={[...prefix, 'scenic_category']} label="景区类别">
+                    <Input placeholder="如：自然风光/主题乐园" />
+                </Form.Item>
 
                 <Form.Item name={[...prefix, 'entrance_times']} label="入园次数" rules={[{ required: true }]}>
                     <Select placeholder="选择入园次数">

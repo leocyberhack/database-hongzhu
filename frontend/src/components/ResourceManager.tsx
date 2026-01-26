@@ -13,7 +13,7 @@ import TransportResourceFields from '@/components/TransportResourceFields'
 
 
 
-const RESOURCE_TYPES = ['酒店', '门票', '餐饮', '交通']
+const RESOURCE_TYPES = ['酒店', '景区', '餐饮', '交通']
 
 interface FilterState {
     keyword: string
@@ -121,11 +121,12 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
             const resourcePayload: any = {
                 poi_id: resolvedPoiId,
                 resource_name: values.resource_name,
+                resource_code: values.resource_code,
                 resource_type: resolvedResourceType,
                 status: 'active',
             }
 
-            // 2. 添加特定类型的attrs字段（门票/酒店的详细信息）
+            // 2. 添加特定类型的attrs字段（景区/酒店的详细信息）
             if (values.attrs) {
                 resourcePayload.attrs = values.attrs
             }
@@ -171,11 +172,12 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
             const resourcePayload: any = {
                 poi_id: poiId ?? values.poi_id,
                 resource_name: values.resource_name,
+                resource_code: values.resource_code,
                 resource_type: values.resource_type,
                 status: values.status,
             }
 
-            // 添加attrs字段（门票/酒店特定信息）
+            // 添加attrs字段（景区/酒店特定信息）
             if (values.attrs) {
                 resourcePayload.attrs = values.attrs
             }
@@ -184,6 +186,7 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
             const hasBasicChange =
                 selectedResource.poi_id !== resourcePayload.poi_id ||
                 selectedResource.resource_name !== resourcePayload.resource_name ||
+                selectedResource.resource_code !== resourcePayload.resource_code ||
                 selectedResource.resource_type !== resourcePayload.resource_type ||
                 selectedResource.status !== resourcePayload.status ||
                 JSON.stringify(selectedResource.attrs) !== JSON.stringify(resourcePayload.attrs)
@@ -707,6 +710,9 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                     <Form.Item name="resource_name" label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
                         <Input placeholder="例如：标准双床房" />
                     </Form.Item>
+                    <Form.Item name="resource_code" label="资源编码">
+                        <Input placeholder="例如：RES-001" />
+                    </Form.Item>
                     <Form.Item name="resource_type" label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
                         <Select
                             placeholder="选择类型"
@@ -720,7 +726,7 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                         />
                     </Form.Item>
 
-                    {resourceType === '门票' && <TicketResourceFields />}
+                    {resourceType === '景区' && <TicketResourceFields />}
                     {resourceType === '酒店' && <HotelResourceFields />}
                     {resourceType === '餐饮' && <DiningResourceFields />}
                     {resourceType === '交通' && <TransportResourceFields />}
@@ -816,6 +822,9 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                     <Form.Item name="resource_name" label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
                         <Input placeholder="例如：标准双床房" />
                     </Form.Item>
+                    <Form.Item name="resource_code" label="资源编码">
+                        <Input placeholder="例如：RES-001" />
+                    </Form.Item>
                     <Form.Item name="resource_type" label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
                         <Select
                             placeholder="选择类型"
@@ -833,7 +842,7 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                     </Form.Item>
 
                     {/* 根据资源类型动态显示特定字段 */}
-                    {resourceType === '门票' && <TicketResourceFields />}
+                    {resourceType === '景区' && <TicketResourceFields />}
                     {resourceType === '酒店' && <HotelResourceFields />}
                     {resourceType === '餐饮' && <DiningResourceFields />}
                     {resourceType === '交通' && <TransportResourceFields />}
@@ -998,6 +1007,7 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                     <>
                         <Descriptions column={2} bordered size="small" style={{ marginBottom: 16 }}>
                             <Descriptions.Item label="资源名称">{selectedResource.resource_name}</Descriptions.Item>
+                            <Descriptions.Item label="资源编码">{selectedResource.resource_code || '-'}</Descriptions.Item>
                             <Descriptions.Item label="资源类型">
                                 <Tag color="blue">{selectedResource.resource_type}</Tag>
                             </Descriptions.Item>
