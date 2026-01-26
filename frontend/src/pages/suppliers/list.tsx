@@ -2,10 +2,11 @@ import { useState, useMemo, useEffect } from 'react'
 import { Button, Descriptions, Drawer, Form, Input, Space, Table, Tag, message, Card, Row, Col, Popconfirm, Modal, Tooltip, DatePicker } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import { useData } from '@/contexts/DataContext'
-import type { Supplier } from '@/types'
+import type { Supplier, SupplierContact } from '@/types'
 import { apiRequest } from '@/lib/api'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import ContactTableEditor from '@/components/ContactTableEditor'
 
 interface FilterState {
     keyword: string
@@ -14,7 +15,6 @@ interface FilterState {
 const supplierAttrKeys = [
     'supplier_code',
     'business_scope',
-    'contact_email',
     'license_no',
     'legal_person',
     'credit_code',
@@ -34,6 +34,28 @@ const normalizeAttrValue = (value: unknown) => {
     }
     return value
 }
+
+const normalizeContactItem = (value: any): SupplierContact | null => {
+    if (!value || typeof value !== 'object') return null
+    const name = normalizeAttrValue(value.name ?? value.contact_name) as string | undefined
+    const phone = normalizeAttrValue(value.phone ?? value.contact_phone) as string | undefined
+    const email = normalizeAttrValue(value.email ?? value.contact_email) as string | undefined
+    const position = normalizeAttrValue(value.position) as string | undefined
+    if (!name && !phone && !email && !position) return null
+    return { name, phone, email, position }
+}
+
+const normalizeContacts = (value: unknown): SupplierContact[] => {
+    if (Array.isArray(value)) {
+        return value.map((item) => normalizeContactItem(item)).filter(Boolean) as SupplierContact[]
+    }
+    if (value && typeof value === 'object') {
+        const single = normalizeContactItem(value)
+        return single ? [single] : []
+    }
+    return []
+}
+
 
 const buildSupplierAttrs = (values: Record<string, unknown>, existing?: Supplier) => {
     const base: Record<string, unknown> = { ...(existing?.attrs ?? {}) }
@@ -90,9 +112,13 @@ export default function SupplierPage() {
             if (filters.keyword) {
                 const kw = filters.keyword.toLowerCase()
                 const nameMatch = s.supplier_name.toLowerCase().includes(kw)
-                const contactMatch = s.contact_info?.contact_name?.toLowerCase().includes(kw)
-                const phoneMatch = s.contact_info?.contact_phone?.includes(kw)
-                if (!nameMatch && !contactMatch && !phoneMatch) {
+                const contacts = normalizeContacts(s.contact_info)
+                const contactMatch = contacts.some((c) =>
+                    [c.name, c.phone, c.email, c.position].some((value) =>
+                        value ? String(value).toLowerCase().includes(kw) : false
+                    )
+                )
+                if (!nameMatch && !contactMatch) {
                     return false
                 }
             }
@@ -104,12 +130,10 @@ export default function SupplierPage() {
     const createSupplier = async (values: any) => {
         try {
             const attrs = buildSupplierAttrs(values)
+            const contacts = normalizeContacts(values.contacts)
             const payload = {
                 supplier_name: values.supplier_name,
-                contact_info: {
-                    contact_name: values.contact_name,
-                    contact_phone: values.contact_phone,
-                },
+                contact_info: contacts,
                 attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
                 contract_start_date: formatDateValue(values.contract_start_date),
                 contract_end_date: formatDateValue(values.contract_end_date),
@@ -130,20 +154,17 @@ export default function SupplierPage() {
             const attrs = buildSupplierAttrs(values, selected)
             const contractStart = formatDateValue(values.contract_start_date)
             const contractEnd = formatDateValue(values.contract_end_date)
+            const contacts = normalizeContacts(values.contacts)
             const payload = {
                 supplier_name: values.supplier_name,
-                contact_info: {
-                    contact_name: values.contact_name,
-                    contact_phone: values.contact_phone,
-                },
+                contact_info: contacts,
                 attrs,
                 contract_start_date: contractStart,
                 contract_end_date: contractEnd,
             }
             const nameChanged = selected.supplier_name !== payload.supplier_name
-            const contactChanged =
-                (selected.contact_info?.contact_name || '') !== (payload.contact_info.contact_name || '') ||
-                (selected.contact_info?.contact_phone || '') !== (payload.contact_info.contact_phone || '')
+            const prevContacts = normalizeContacts(selected.contact_info)
+            const contactChanged = JSON.stringify(prevContacts) !== JSON.stringify(contacts)
             const attrsChanged = supplierAttrKeys.some((key: SupplierAttrKey) => {
                 const nextValue = normalizeAttrValue(attrs[key])
                 const prevValue = normalizeAttrValue((selected.attrs as Record<string, unknown> | undefined)?.[key])
@@ -263,17 +284,6 @@ export default function SupplierPage() {
                 record.supplier_name.toLowerCase().includes(value.toLowerCase()),
         },
         {
-            title: '联系人',
-            dataIndex: 'contact_info',
-            render: (info: any) => info?.contact_name || '-',
-            sorter: (a: Supplier, b: Supplier) => (a.contact_info?.contact_name || '').localeCompare(b.contact_info?.contact_name || ''),
-        },
-        {
-            title: '电话',
-            dataIndex: 'contact_info',
-            render: (info: any) => info?.contact_phone || '-',
-        },
-        {
             title: '合同开始时间',
             dataIndex: 'contract_start_date',
             render: (v: string) => v || '-',
@@ -314,13 +324,12 @@ export default function SupplierPage() {
                             onClick={() => {
                                 setSelected(record)
                                 editForm.resetFields()
+                                const contacts = normalizeContacts(record.contact_info)
                                 editForm.setFieldsValue({
                                     supplier_name: record.supplier_name,
-                                    contact_name: record.contact_info?.contact_name,
-                                    contact_phone: record.contact_info?.contact_phone,
+                                    contacts: contacts.length > 0 ? contacts : [{}],
                                     supplier_code: record.attrs?.supplier_code,
                                     business_scope: record.attrs?.business_scope,
-                                    contact_email: record.attrs?.contact_email,
                                     license_no: record.attrs?.license_no,
                                     legal_person: record.attrs?.legal_person,
                                     credit_code: record.attrs?.credit_code,
@@ -362,6 +371,7 @@ export default function SupplierPage() {
         },
     ]
 
+
     // 获取供应商绑定的资源列表
     const supplyList = useMemo(
         () =>
@@ -398,7 +408,7 @@ export default function SupplierPage() {
                         <Col span={8}>
                             <Form.Item label="关键词" style={{ marginBottom: 0, width: '100%' }}>
                                 <Input
-                                    placeholder="搜索供应商名称、联系人或电话"
+                                    placeholder="搜索供应商名称、联系人、电话或邮箱"
                                     prefix={<SearchOutlined style={{ color: '#ccc' }} />}
                                     value={filters.keyword}
                                     onChange={e => setFilters({ ...filters, keyword: e.target.value })}
@@ -454,28 +464,25 @@ export default function SupplierPage() {
             </div>
 
             {/* 新建供应商Modal */}
-            <Drawer
+            <Modal
                 title="新建供应商"
                 open={createModalVisible}
-                onClose={() => {
+                onCancel={() => {
                     setCreateModalVisible(false)
                     supplierForm.resetFields()
                 }}
-                width={400}
+                footer={null}
+                centered
+                width={860}
             >
-                <Form layout="vertical" form={supplierForm} onFinish={createSupplier}>
+                <Form layout="vertical" form={supplierForm} onFinish={createSupplier} initialValues={{ contacts: [{}] }}>
                     <Form.Item name="supplier_name" label="供应商名称" rules={[{ required: true, message: '请输入供应商名称' }]}>
                         <Input placeholder="例如：北京旅游集散中心" />
                     </Form.Item>
-                    <Form.Item name="contact_name" label="联系人">
-                        <Input placeholder="张三" />
-                    </Form.Item>
-                    <Form.Item name="contact_phone" label="电话">
-                        <Input placeholder="138****" />
-                    </Form.Item>
-                    <Form.Item name="contact_email" label="联系邮箱">
-                        <Input placeholder="example@company.com" />
-                    </Form.Item>
+                    <div style={{ marginBottom: 16 }}>
+                        <h4 style={{ marginBottom: 12 }}>联系人信息</h4>
+                        <ContactTableEditor name="contacts" addLabel="添加联系人" />
+                    </div>
                     <Form.Item name="supplier_code" label="供应商编码">
                         <Input placeholder="SUP-001" />
                     </Form.Item>
@@ -524,7 +531,7 @@ export default function SupplierPage() {
                         </Space>
                     </Form.Item>
                 </Form>
-            </Drawer>
+            </Modal>
 
             {/* 编辑供应商Modal */}
             <Modal
@@ -544,20 +551,17 @@ export default function SupplierPage() {
                     setSelected(null)
                 }}
                 footer={null}
+                centered
+                width={860}
             >
                 <Form layout="vertical" form={editForm} onFinish={updateSupplier}>
                     <Form.Item name="supplier_name" label="供应商名称" rules={[{ required: true, message: '请输入供应商名称' }]}>
                         <Input />
                     </Form.Item>
-                    <Form.Item name="contact_name" label="联系人">
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="contact_phone" label="电话">
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="contact_email" label="联系邮箱">
-                        <Input />
-                    </Form.Item>
+                    <div style={{ marginBottom: 16 }}>
+                        <h4 style={{ marginBottom: 12 }}>联系人信息</h4>
+                        <ContactTableEditor name="contacts" addLabel="添加联系人" />
+                    </div>
                     <Form.Item name="supplier_code" label="供应商编码">
                         <Input />
                     </Form.Item>
@@ -635,10 +639,26 @@ export default function SupplierPage() {
                     <>
                         <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
                             <Descriptions.Item label="供应商名称">{selected.supplier_name}</Descriptions.Item>
-
-                            <Descriptions.Item label="联系人">{selected.contact_info?.contact_name || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="电话">{selected.contact_info?.contact_phone || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="联系邮箱">{formatAttrDisplay(selected.attrs?.contact_email)}</Descriptions.Item>
+                            <Descriptions.Item label="联系人信息" span={2}>
+                                {(() => {
+                                    const contacts = normalizeContacts(selected.contact_info)
+                                    if (contacts.length === 0) return '-'
+                                    return (
+                                        <Table
+                                            size="small"
+                                            pagination={false}
+                                            rowKey={(_, index) => String(index)}
+                                            dataSource={contacts}
+                                            columns={[
+                                                { title: '联系人', dataIndex: 'name' },
+                                                { title: '电话', dataIndex: 'phone' },
+                                                { title: '邮箱', dataIndex: 'email' },
+                                                { title: '职位', dataIndex: 'position' },
+                                            ]}
+                                        />
+                                    )
+                                })()}
+                            </Descriptions.Item>
                             <Descriptions.Item label="供应商编码">{formatAttrDisplay(selected.attrs?.supplier_code)}</Descriptions.Item>
                             <Descriptions.Item label="营业执照号">{formatAttrDisplay(selected.attrs?.license_no)}</Descriptions.Item>
                             <Descriptions.Item label="法人信息">{formatAttrDisplay(selected.attrs?.legal_person)}</Descriptions.Item>

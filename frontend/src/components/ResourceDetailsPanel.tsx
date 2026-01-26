@@ -1,5 +1,6 @@
 import { Descriptions, Tag, Empty, Divider } from 'antd'
 import type { Resource, POI } from '@/types'
+import ContactTableDisplay from '@/components/ContactTableDisplay'
 
 interface ResourceDetailsPanelProps {
     resource: Resource
@@ -20,6 +21,7 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
     const resourceAttrs: any = resource.attrs || {}
     const poiAttrs: any = poi?.attrs || {}
     const resourceType = resource.resource_type
+    const businessContacts = Array.isArray(poiAttrs.business_contacts) ? poiAttrs.business_contacts : []
 
     // 渲染POI通用字段 (所有类型通用，但字段可能略有不同，这里显示最核心的)
     const renderPoiCommonAttrs = () => {
@@ -32,7 +34,17 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                 </Divider>
                 <Descriptions bordered size="small" column={3}>
                     <Descriptions.Item label="城市">{poi.city}</Descriptions.Item>
-                    <Descriptions.Item label="地址" span={2}>{poi.address || poiAttrs.address || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="地址" span={2}>{poi.address || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="经度">{poi.longitude ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="纬度">{poi.latitude ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="业务对接人" span={3}>
+                        <ContactTableDisplay
+                            contacts={businessContacts}
+                            showRemark
+                            headerLabels={['姓名', '电话', '邮箱', '职位', '备注']}
+                            emptyText="-"
+                        />
+                    </Descriptions.Item>
 
                     {/* 门票POI特定通用字段 */}
                     {resourceType === '门票' && (
@@ -84,7 +96,6 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                                     ? `${poiAttrs.opening_time} - ${poiAttrs.closing_time}`
                                     : '-'}
                             </Descriptions.Item>
-                            <Descriptions.Item label="地址" span={3}>{poiAttrs.restaurant_address || poiAttrs.address || '-'}</Descriptions.Item>
                             <Descriptions.Item label="停车场">{poiAttrs.parking || '-'}</Descriptions.Item>
                             <Descriptions.Item label="详细介绍" span={2}>{poiAttrs.description || '-'}</Descriptions.Item>
                         </>

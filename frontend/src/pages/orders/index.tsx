@@ -53,7 +53,7 @@ export default function OrdersPage() {
             title: '状态',
             dataIndex: 'status',
             render: (v: string) => (
-                <Tag color={v === 'verified' ? 'green' : v === 'frozen' ? 'blue' : v === 'refunded' ? 'red' : 'gray'}>{v}</Tag>
+                <Tag color={v === 'verified' ? 'green' : v === 'paid' ? 'blue' : v === 'refunded' ? 'red' : 'gray'}>{v}</Tag>
             ),
         },
         {
@@ -129,17 +129,6 @@ export default function OrdersPage() {
                     </Form.Item>
                     <Form.Item name="travel_date" label="出行日期" rules={[{ required: true, message: '请选择出行日期' }]}>
                         <DatePicker style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item name="status" label="状态" initialValue="pending">
-                        <Select
-                            options={[
-                                { value: 'pending', label: '待确认' },
-                                { value: 'frozen', label: '已冻结库存' },
-                                { value: 'verified', label: '已核销' },
-                                { value: 'refunded', label: '已退款' },
-                                { value: 'cancelled', label: '已取消' },
-                            ]}
-                        />
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
                         <Space style={{ float: 'right' }}>

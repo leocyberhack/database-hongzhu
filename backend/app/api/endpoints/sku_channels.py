@@ -135,6 +135,11 @@ async def update_sku_channel(
     if not sc:
         raise HTTPException(status_code=404, detail="Binding not found")
 
+    if payload.channel_id is not None:
+        channel = await db.get(Channel, payload.channel_id)
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
+
     # If channel changes, ensure no duplicate sku_name on that channel
     target_channel = payload.channel_id if payload.channel_id is not None else sc.channel_id
     if target_channel:

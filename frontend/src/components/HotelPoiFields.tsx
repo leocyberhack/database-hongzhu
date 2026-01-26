@@ -40,10 +40,6 @@ export default function HotelPoiFields({ prefix = ['attrs'] }: { prefix?: (strin
                     </Col>
                 </Row>
 
-                <Form.Item name={[...prefix, 'address']} label="详细地址" rules={[{ required: true }]}>
-                    <Input placeholder="酒店详细地址" />
-                </Form.Item>
-
                 <Form.Item name={[...prefix, 'phone']} label="联系电话" rules={[{ required: true }]}>
                     <Input placeholder="酒店前台电话" />
                 </Form.Item>

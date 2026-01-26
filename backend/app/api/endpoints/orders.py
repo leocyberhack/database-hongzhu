@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Inventory, InventoryLog, Order, OrderStatusHistory, Price, Sku
+from app.models import AuditLog, Inventory, InventoryLog, Order, OrderStatusHistory, Price, Sku, Product
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.order import OrderCreate, OrderDecision, OrderRead
 
@@ -122,6 +122,12 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
     sku = await db.get(Sku, payload.sku_id)
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
+
+    product = await db.get(Product, payload.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if sku.product_id != payload.product_id:
+        raise HTTPException(status_code=400, detail="SKU does not belong to product")
     
     # Calculate Dynamic Cost based on Resource Settlement Price
     # This replaces the static cost from Price table

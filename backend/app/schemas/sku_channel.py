@@ -13,6 +13,7 @@ class SkuChannelCreate(SkuChannelBase):
     pass
 
 class SkuChannelUpdate(BaseModel):
+    channel_id: Optional[int] = None
     channel_sku_code: Optional[str] = None
     status: Optional[str] = None
 

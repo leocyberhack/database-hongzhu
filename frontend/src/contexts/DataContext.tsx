@@ -44,6 +44,37 @@ const emptyData: MockData = {
     audit_log: [],
 }
 
+const DEFAULT_PAGE_SIZE = 1000
+
+function buildPagedUrl(base: string, page: number, pageSize: number) {
+    const joiner = base.includes('?') ? '&' : '?'
+    return `${base}${joiner}page=${page}&page_size=${pageSize}`
+}
+
+async function fetchAll<T>(endpoint: string): Promise<T[]> {
+    let page = 1
+    let items: T[] = []
+    while (true) {
+        const res = await apiRequest<{ items: T[]; pagination?: { total?: number } }>(
+            buildPagedUrl(endpoint, page, DEFAULT_PAGE_SIZE)
+        )
+        const batch = res.items ?? []
+        items = items.concat(batch)
+        const total = res.pagination?.total
+        if (total === undefined || total === null) {
+            break
+        }
+        if (items.length >= total) {
+            break
+        }
+        if (batch.length === 0) {
+            break
+        }
+        page += 1
+    }
+    return items
+}
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
     const [data, setData] = useState<MockData | null>(null)
     const [loading, setLoading] = useState<boolean>(true)
@@ -52,7 +83,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const fetchBackend = useCallback(async () => {
         setLoading(true)
         try {
-            const qs = '?page=1&page_size=1000'
             const [
                 poiRes,
                 resRes,
@@ -75,50 +105,50 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 auditRes,
                 prodCatRes,
             ] = await Promise.all([
-                apiRequest<{ items: MockData['poi'] }>(`/api/poi${qs}`),
-                apiRequest<{ items: MockData['resources'] }>(`/api/resources${qs}`),
-                apiRequest<{ items: MockData['suppliers'] }>(`/api/suppliers${qs}`),
-                apiRequest<{ items: MockData['supplier_resources'] }>(`/api/supplier-resources${qs}`),
-                apiRequest<{ items: MockData['supplier_resource_price_history'] }>(`/api/supplier-resource-price-history${qs}`),
-                apiRequest<{ items: MockData['products'] }>(`/api/products${qs}`),
-                apiRequest<{ items: MockData['product_resources'] }>(`/api/product-resources${qs}`),
-                apiRequest<{ items: MockData['product_structure_snapshot'] }>(`/api/product-snapshots${qs}`),
-                apiRequest<{ items: MockData['skus'] }>(`/api/skus${qs}`),
-                apiRequest<{ items: MockData['channels'] }>(`/api/channels${qs}`),
-                apiRequest<{ items: MockData['sku_channels'] }>(`/api/sku_channels${qs}`).catch(() => ({ items: [] })),
-                apiRequest<{ items: MockData['prices'] }>(`/api/prices${qs}`),
-                apiRequest<{ items: MockData['price_history'] }>(`/api/price-history${qs}`),
-                apiRequest<{ items: MockData['inventory'] }>(`/api/inventory${qs}`),
-                apiRequest<{ items: MockData['inventory_log'] }>(`/api/inventory/logs${qs}`),
-                apiRequest<{ items: MockData['orders'] }>(`/api/orders${qs}`),
-                apiRequest<{ items: MockData['order_status_history'] }>(`/api/order-status-history${qs}`).catch(() => ({ items: [] })),
-                apiRequest<{ items: MockData['approvals'] }>(`/api/approvals${qs}`),
-                apiRequest<{ items: MockData['audit_log'] }>(`/api/audit-log${qs}`),
-                apiRequest<{ items: MockData['product_categories'] }>(`/api/product-categories${qs}`),
+                fetchAll<MockData['poi'][number]>(`/api/poi`),
+                fetchAll<MockData['resources'][number]>(`/api/resources`),
+                fetchAll<MockData['suppliers'][number]>(`/api/suppliers`),
+                fetchAll<MockData['supplier_resources'][number]>(`/api/supplier-resources`),
+                fetchAll<MockData['supplier_resource_price_history'][number]>(`/api/supplier-resource-price-history`),
+                fetchAll<MockData['products'][number]>(`/api/products`),
+                fetchAll<MockData['product_resources'][number]>(`/api/product-resources`),
+                fetchAll<MockData['product_structure_snapshot'][number]>(`/api/product-snapshots`),
+                fetchAll<MockData['skus'][number]>(`/api/skus`),
+                fetchAll<MockData['channels'][number]>(`/api/channels`),
+                fetchAll<MockData['sku_channels'][number]>(`/api/sku_channels`).catch(() => []),
+                fetchAll<MockData['prices'][number]>(`/api/prices`),
+                fetchAll<MockData['price_history'][number]>(`/api/price-history`),
+                fetchAll<MockData['inventory'][number]>(`/api/inventory`),
+                fetchAll<MockData['inventory_log'][number]>(`/api/inventory/logs`),
+                fetchAll<MockData['orders'][number]>(`/api/orders`),
+                fetchAll<MockData['order_status_history'][number]>(`/api/order-status-history`).catch(() => []),
+                fetchAll<MockData['approvals'][number]>(`/api/approvals`),
+                fetchAll<MockData['audit_log'][number]>(`/api/audit-log`),
+                fetchAll<MockData['product_categories'][number]>(`/api/product-categories`),
             ])
 
             const next: MockData = {
                 ...emptyData,
-                poi: poiRes.items,
-                resources: resRes.items,
-                suppliers: supRes.items,
-                supplier_resources: supLinkRes.items,
-                supplier_resource_price_history: supPriceHistRes.items,
-                product_categories: prodCatRes.items,
-                products: prodRes.items,
-                product_resources: prodLinkRes.items,
-                product_structure_snapshot: prodSnapRes.items,
-                skus: skuRes.items,
-                channels: channelRes.items,
-                sku_channels: skuChannelRes.items ?? [],
-                prices: priceRes.items,
-                price_history: priceHistRes.items,
-                inventory: invRes.items,
-                inventory_log: invLogRes.items,
-                orders: orderRes.items,
-                order_status_history: orderHistRes.items ?? [],
-                approvals: approvalRes.items,
-                audit_log: auditRes.items,
+                poi: poiRes,
+                resources: resRes,
+                suppliers: supRes,
+                supplier_resources: supLinkRes,
+                supplier_resource_price_history: supPriceHistRes,
+                product_categories: prodCatRes,
+                products: prodRes,
+                product_resources: prodLinkRes,
+                product_structure_snapshot: prodSnapRes,
+                skus: skuRes,
+                channels: channelRes,
+                sku_channels: skuChannelRes ?? [],
+                prices: priceRes,
+                price_history: priceHistRes,
+                inventory: invRes,
+                inventory_log: invLogRes,
+                orders: orderRes,
+                order_status_history: orderHistRes ?? [],
+                approvals: approvalRes,
+                audit_log: auditRes,
             }
             setData(next)
         } catch (err) {

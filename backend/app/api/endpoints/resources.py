@@ -137,6 +137,10 @@ async def create_poi(
         "city": obj.city,
         "district": obj.district,
     }
+    if obj.longitude is not None:
+        audit_data["longitude"] = obj.longitude
+    if obj.latitude is not None:
+        audit_data["latitude"] = obj.latitude
     if obj.address:
         audit_data["address"] = obj.address
     if obj.attrs:
@@ -204,6 +208,10 @@ async def update_poi(
         "district": poi.district,
         "status": poi.status
     }
+    if poi.longitude is not None:
+        before_data["longitude"] = poi.longitude
+    if poi.latitude is not None:
+        before_data["latitude"] = poi.latitude
     if poi.address:
         before_data["address"] = poi.address
     if poi.attrs:
@@ -223,6 +231,10 @@ async def update_poi(
         "district": poi.district,
         "status": poi.status
     }
+    if poi.longitude is not None:
+        after_data["longitude"] = poi.longitude
+    if poi.latitude is not None:
+        after_data["latitude"] = poi.latitude
     if poi.address:
         after_data["address"] = poi.address
     if poi.attrs:
@@ -267,6 +279,8 @@ async def delete_poi(
             "city": poi.city,
             "district": poi.district,
             "address": poi.address,
+            "longitude": poi.longitude,
+            "latitude": poi.latitude,
         },
         operator=user.username,
         operated_at=now_china(),
@@ -399,6 +413,13 @@ async def update_resource(
         dup = await db.scalar(select(Resource).where(Resource.resource_name == payload.resource_name, Resource.id != resource_id))
         if dup:
             raise HTTPException(status_code=400, detail="Resource name already exists")
+
+    if payload.poi_id and payload.poi_id != resource.poi_id:
+        new_poi = await db.get(Poi, payload.poi_id)
+        if not new_poi:
+            raise HTTPException(status_code=404, detail="POI not found")
+        if new_poi.poi_type != resource.resource_type:
+            raise HTTPException(status_code=400, detail="资源类型必须与POI类型一致")
     
     # 禁止修改resource_type（因为它继承自POI的poi_type）
     if payload.resource_type:

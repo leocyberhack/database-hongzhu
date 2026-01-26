@@ -47,7 +47,6 @@ async def create_channel(
             channel_type=payload.channel_type,
             commission_rate=payload.commission_rate,
             created_at=now_china(),
-            updated_at=now_china()  # Fixed: Added updated_at to match model
         )
 
     channel = Channel(**payload.model_dump())
@@ -60,7 +59,7 @@ async def create_channel(
             table_name="channel",
             record_id=channel.id,
             operation="CREATE",
-            diff_data={"channel_name": channel.channel_name, "channel_type": channel.channel_type, "commission_rate": str(channel.commission_rate) if channel.commission_rate else None, "status": channel.status},
+            diff_data={"channel_name": channel.channel_name, "channel_type": channel.channel_type, "commission_rate": str(channel.commission_rate) if channel.commission_rate else None},
             operator=current_user.username,
             operated_at=now_china(),
             source="web",
@@ -84,7 +83,6 @@ async def list_channels(
     page_size: int = Query(default=20, ge=1, le=1000),
     parent_id: Optional[int] = Query(default=None, description="Search keyword"),
     keyword: Optional[str] = Query(default=None, description="Search keyword"),
-    status: Optional[str] = Query(default=None, description="Filter by status")
 ):
     stmt = select(Channel)
     
@@ -92,8 +90,6 @@ async def list_channels(
         stmt = stmt.where(Channel.parent_id == parent_id)
     if keyword:
         stmt = stmt.where(Channel.channel_name.ilike(f"%{keyword}%"))
-    if status is not None:
-         stmt = stmt.where(Channel.status == status)
     
     # Order by creation time desc
     stmt = stmt.order_by(Channel.created_at.desc())

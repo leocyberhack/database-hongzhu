@@ -36,7 +36,6 @@ router = APIRouter()
 SUPPLIER_ATTR_KEYS = (
     "supplier_code",
     "business_scope",
-    "contact_email",
     "license_no",
     "legal_person",
     "credit_code",
@@ -79,15 +78,12 @@ async def list_suppliers(
     page_size: int = Query(default=20, ge=1, le=1000),
     ids: Optional[list[int]] = Query(default=None),
     keyword: Optional[str] = Query(default=None, description="Search keyword"),
-    supplier_type: Optional[str] = Query(default=None),
 ):
     stmt = select(Supplier)
     if ids:
         stmt = stmt.where(Supplier.id.in_(ids))
     if keyword:
         stmt = stmt.where(Supplier.supplier_name.ilike(f"%{keyword}%"))
-    if supplier_type:
-        stmt = stmt.where(Supplier.supplier_type == supplier_type)
 
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
@@ -189,6 +185,37 @@ async def bind_supplier_resource(
     await db.commit()
     await db.refresh(obj)
     return SupplierResourceRead.model_validate(obj)
+
+
+@router.delete("/supplier-resources/{supplier_resource_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_supplier_resource(
+    supplier_resource_id: int,
+    db: DbSession,
+    user: User = Depends(get_current_user),
+):
+    sr = await db.get(SupplierResource, supplier_resource_id)
+    if not sr:
+        raise HTTPException(status_code=404, detail="Supplier resource not found")
+
+    audit = AuditLog(
+        table_name="supplier_resource",
+        record_id=sr.id,
+        operation="DELETE",
+        diff_data={
+            "supplier_id": sr.supplier_id,
+            "resource_id": sr.resource_id,
+            "supply_status": sr.supply_status,
+            "settlement_price": str(sr.settlement_price) if sr.settlement_price is not None else None,
+        },
+        operator=user.username,
+        operated_at=now_china(),
+        source="web",
+    )
+    db.add(audit)
+
+    await db.delete(sr)
+    await db.commit()
+    return None
 
 
 @router.post(

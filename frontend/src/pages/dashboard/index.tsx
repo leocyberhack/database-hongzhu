@@ -1,5 +1,5 @@
 import { Col, Row, Table, Tag, Button } from 'antd'
-import { ArrowUpOutlined, AccountBookOutlined, ShoppingCartOutlined, UsergroupAddOutlined, RiseOutlined } from '@ant-design/icons'
+import { AccountBookOutlined, ShoppingCartOutlined, UsergroupAddOutlined, RiseOutlined } from '@ant-design/icons'
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
 import { useData } from '@/contexts/DataContext'
 import { motion } from 'framer-motion'
@@ -194,7 +194,7 @@ export default function DashboardPage() {
                                     size="middle"
                                     columns={[
                                         {
-                                            title: 'Information', dataIndex: 'order_no', render: (t, r) => (
+                                            title: 'Information', dataIndex: 'order_no', render: (t) => (
                                                 <div>
                                                     <div style={{ fontWeight: 600, color: '#333' }}>{t}</div>
                                                     <div style={{ fontSize: '11px', color: '#999' }}>2 mins ago</div>

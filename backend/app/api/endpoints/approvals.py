@@ -157,7 +157,7 @@ async def decide_approval(
                     stmt = select(Channel).where(Channel.id == approval.object_id)
                     chan = await db.scalar(stmt)
                     if chan:
-                        db.delete(chan)
+                        await db.delete(chan)
                         
                         exec_audit = AuditLog(
                             table_name="channel",

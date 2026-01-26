@@ -8,6 +8,8 @@ export interface POI {
     city: string
     district?: string
     address?: string
+    longitude?: number
+    latitude?: number
     attrs?: Record<string, unknown>  // POI类型的通用字段
     created_at?: string
     updated_at?: string
@@ -28,10 +30,7 @@ export interface Supplier {
     id: string
     supplier_name: string
     status: 'active' | 'inactive' | 'pending'
-    contact_info?: {
-        contact_name?: string
-        contact_phone?: string
-    }
+    contact_info?: SupplierContact[]
     attrs?: Record<string, unknown>
     settlement_info?: Record<string, unknown>
     qualification_files?: any[]
@@ -41,6 +40,13 @@ export interface Supplier {
     contract_end_date?: string
     created_at?: string
     updated_at?: string
+}
+
+export interface SupplierContact {
+    name?: string
+    phone?: string
+    email?: string
+    position?: string
 }
 
 export interface SupplierResource {
@@ -111,7 +117,7 @@ export interface ProductResource {
 export interface ProductStructureSnapshot {
     id: string
     product_id: string
-    snapshot_json: string
+    snapshot_data: Record<string, unknown>[]
     created_at?: string
 }
 
@@ -160,10 +166,11 @@ export interface Price {
 export interface PriceHistory {
     id: string
     price_id: string
-    old_price?: number
-    new_price: number
-    changed_at: string
-    reason?: string
+    before_data?: Record<string, unknown>
+    after_data?: Record<string, unknown>
+    operator?: string
+    operated_at: string
+    approval_id?: number
 }
 
 export interface Inventory {
@@ -202,7 +209,7 @@ export interface Order {
     cost_amount?: number
     profit_amount?: number
     travel_date: string
-    status: 'pending' | 'frozen' | 'verified' | 'refunded' | 'cancelled'
+    status: 'paid' | 'verified' | 'refunded'
     created_at?: string
     updated_at?: string
 }
@@ -210,9 +217,10 @@ export interface Order {
 export interface OrderStatusHistory {
     id: string
     order_id: string
-    old_status?: string
-    new_status: string
-    changed_at: string
+    before_status?: string
+    after_status: string
+    operated_at: string
+    operator?: string
     reason?: string
 }
 

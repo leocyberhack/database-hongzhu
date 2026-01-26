@@ -46,3 +46,13 @@ class PriceRead(PriceBase, ORMBase):
 class PriceDecision(BaseModel):
     approve: bool
     comment: Optional[str] = None
+
+
+class PriceHistoryRead(ORMBase):
+    id: int
+    price_id: int
+    before_data: Optional[dict] = None
+    after_data: Optional[dict] = None
+    operator: Optional[str] = None
+    operated_at: datetime
+    approval_id: Optional[int] = None

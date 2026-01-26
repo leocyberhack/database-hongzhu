@@ -312,7 +312,9 @@ export default function FilesPage() {
                 try {
                     const err = await response.json()
                     errMsg = err.detail || errMsg
-                } catch {}
+                } catch (parseError) {
+                    console.warn(parseError)
+                }
                 throw new Error(errMsg)
             }
             const blob = await response.blob()
@@ -349,7 +351,9 @@ export default function FilesPage() {
                 try {
                     const err = await response.json()
                     errMsg = err.detail || errMsg
-                } catch {}
+                } catch (parseError) {
+                    console.warn(parseError)
+                }
                 throw new Error(errMsg)
             }
             const blob = await response.blob()

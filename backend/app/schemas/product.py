@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.schemas.common import ORMBase
 
@@ -43,6 +43,29 @@ class ProductBase(BaseModel):
     poi_id: Optional[int] = None
     allowed_channels: Optional[list[ChannelAllocation]] = None  # Changed to list of allocations
 
+    @field_validator("allowed_channels", mode="before")
+    @classmethod
+    def normalize_allowed_channels(cls, value):
+        if value is None:
+            return value
+        if not isinstance(value, list):
+            return value
+        normalized = []
+        for item in value:
+            if isinstance(item, dict):
+                if "channel_id" not in item:
+                    continue
+                if item.get("stock_ratio") is None:
+                    item = {**item, "stock_ratio": 100}
+                normalized.append(item)
+                continue
+            try:
+                channel_id = int(item)
+            except (TypeError, ValueError):
+                continue
+            normalized.append({"channel_id": channel_id, "stock_ratio": 100})
+        return normalized
+
 
 class ProductCreate(ProductBase):
     resources: list[ProductResourceLine]
@@ -69,7 +92,6 @@ class ProductSnapshotRead(ORMBase):
     product_id: int
     snapshot_data: dict
     created_at: datetime
-
 
 
 

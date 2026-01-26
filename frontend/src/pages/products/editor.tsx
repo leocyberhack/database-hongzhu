@@ -2,9 +2,9 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
     Form, Input, Button, Select, Card, Space, InputNumber, Switch, Table,
-    Modal, Tag, Divider, Row, Col, Statistic, message, List, Popconfirm, Spin
+    Modal, Tag, Divider, Row, Col, Statistic, message, Spin
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, SearchOutlined, EditOutlined, CheckOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, SearchOutlined, CheckOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '@/lib/api'

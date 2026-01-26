@@ -18,6 +18,7 @@ from app.api.endpoints import order_status
 from app.api.endpoints import sku_channels
 from app.api.endpoints import channels
 from app.api.endpoints import skus
+from app.api.endpoints import regions
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -38,6 +39,7 @@ api_router.include_router(order_status.router, tags=["order-status-history"])
 api_router.include_router(sku_channels.router, prefix="/sku_channels", tags=["sku-channel"])
 api_router.include_router(channels.router, prefix="/channels", tags=["channel"])
 api_router.include_router(skus.router, prefix="/skus", tags=["sku"])
+api_router.include_router(regions.router, tags=["region"])
 
 # File upload router
 from app.api.endpoints import files

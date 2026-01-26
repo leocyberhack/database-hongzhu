@@ -5,7 +5,7 @@ from app.api.auth import User, get_current_user
 from app.api.deps import DbSession
 from app.models import ProductResource, ProductStructureSnapshot
 from app.schemas.common import ListResponse, Pagination
-from app.schemas.product import ProductResourceRead
+from app.schemas.product import ProductResourceRead, ProductSnapshotRead
 
 router = APIRouter()
 
@@ -43,6 +43,6 @@ async def list_product_snapshots(
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.order_by(ProductStructureSnapshot.created_at.desc()).offset((page - 1) * page_size).limit(page_size))
     return ListResponse(
-        items=[row for row in rows],
+        items=[ProductSnapshotRead.model_validate(row) for row in rows],
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
     )

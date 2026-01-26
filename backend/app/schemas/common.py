@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from typing import Optional, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Import resource type-specific attrs schemas for reference
 # These define the structure of the 'attrs' JSONB field for different resource types
@@ -33,13 +33,16 @@ class PoiBase(BaseModel):
     city: str
     district: Optional[str] = None
     address: Optional[str] = None
+    longitude: Optional[float] = None
+    latitude: Optional[float] = None
     tags: Optional[list[str]] = None
     attrs: Optional[dict] = Field(None, description="POI类型的通用属性 (JSONB)")
     status: Optional[str] = None
 
 
 class PoiCreate(PoiBase):
-    pass
+    province: str
+    district: str
 
 
 class PoiUpdate(BaseModel):
@@ -49,6 +52,8 @@ class PoiUpdate(BaseModel):
     city: Optional[str] = None
     district: Optional[str] = None
     address: Optional[str] = None
+    longitude: Optional[float] = None
+    latitude: Optional[float] = None
     tags: Optional[list[str]] = None
     attrs: Optional[dict] = None
     status: Optional[str] = None
@@ -90,9 +95,16 @@ class ResourceRead(ResourceBase, ORMBase):
     updated_at: Optional[datetime] = None
 
 
+class SupplierContact(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    position: Optional[str] = None
+
+
 class SupplierBase(BaseModel):
     supplier_name: str
-    contact_info: Optional[dict] = None
+    contact_info: Optional[list[SupplierContact]] = None
     settlement_info: Optional[dict] = None
     qualification_files: Optional[list[dict]] = None
     tags: Optional[list[str]] = None
@@ -100,6 +112,24 @@ class SupplierBase(BaseModel):
     attrs: Optional[dict] = None
     contract_start_date: Optional[date] = None
     contract_end_date: Optional[date] = None
+
+    @field_validator("contact_info", mode="before")
+    @classmethod
+    def normalize_contact_info(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return [
+                {
+                    "name": value.get("name") or value.get("contact_name"),
+                    "phone": value.get("phone") or value.get("contact_phone"),
+                    "email": value.get("email") or value.get("contact_email"),
+                    "position": value.get("position"),
+                }
+            ]
+        if isinstance(value, list):
+            return value
+        return value
 
 
 class SupplierCreate(SupplierBase):

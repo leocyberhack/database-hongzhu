@@ -217,7 +217,7 @@ export default function ProductListPage() {
                                         `/api/products/${record.id}/inventory`
                                     )
                                     setProductInventory(res.items || [])
-                                } catch (err) {
+                                } catch {
                                     message.error('加载库存失败')
                                     setProductInventory([])
                                 } finally {

@@ -10,7 +10,7 @@ from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
 from app.models import AuditLog, Approval, Channel, Price, PriceHistory, Sku, Product
 from app.schemas.common import ListResponse, Pagination
-from app.schemas.price import ChannelCreate, ChannelRead, PriceCreate, PriceDecision, PriceRead
+from app.schemas.price import ChannelCreate, ChannelRead, PriceCreate, PriceDecision, PriceRead, PriceHistoryRead
 from pydantic import BaseModel
 
 class PricingSummaryItem(BaseModel):
@@ -33,21 +33,96 @@ EXPIRED_STATUSES = {"expired", "rejected"}
 # Duplicate channel endpoints removed - use app/api/endpoints/channels.py instead
 
 
+def _overlap_filter(start_at, end_at):
+    return or_(
+        and_(Price.start_at <= start_at, Price.end_at >= start_at),
+        and_(Price.start_at <= end_at, Price.end_at >= end_at),
+        and_(Price.start_at >= start_at, Price.end_at <= end_at),
+    )
+
+
 async def _find_conflicts(db: DbSession, sku_id: int, channel_id: int, start_at, end_at, exclude_id: Optional[int] = None):
     stmt = select(Price).where(
         Price.sku_id == sku_id,
         Price.channel_id == channel_id,
         ~Price.status.in_(EXPIRED_STATUSES),
-        or_(
-            and_(Price.start_at <= start_at, Price.end_at >= start_at),
-            and_(Price.start_at <= end_at, Price.end_at >= end_at),
-            and_(Price.start_at >= start_at, Price.end_at <= end_at),
-        ),
+        _overlap_filter(start_at, end_at),
     )
     if exclude_id:
         stmt = stmt.where(Price.id != exclude_id)
     rows = await db.scalars(stmt)
     return list(rows)
+
+
+async def _has_range_collision(db: DbSession, price: Price, start_at, end_at) -> bool:
+    collision = await db.scalar(
+        select(Price.id).where(
+            Price.sku_id == price.sku_id,
+            Price.channel_id == price.channel_id,
+            Price.start_at == start_at,
+            Price.end_at == end_at,
+            Price.id != price.id,
+        )
+    )
+    return collision is not None
+
+
+async def _resolve_active_overlap(db: DbSession, price: Price, new_start, new_end) -> list[Price]:
+    """
+    Adjust an active price to remove overlap with [new_start, new_end].
+    Returns new Price rows that should be added (e.g., right segment when splitting).
+    """
+    # Case 1: New fully covers old -> expire old
+    if new_start <= price.start_at and new_end >= price.end_at:
+        price.status = "expired"
+        return []
+
+    # Case 2: Old fully covers new -> split into left + right
+    if price.start_at < new_start and price.end_at > new_end:
+        left_end = new_start - timedelta(days=1)
+        right_start = new_end + timedelta(days=1)
+        right_end = price.end_at
+
+        if await _has_range_collision(db, price, price.start_at, left_end):
+            price.status = "expired"
+            return []
+
+        price.end_at = left_end
+        new_rows: list[Price] = []
+        if right_start <= right_end and not await _has_range_collision(db, price, right_start, right_end):
+            new_rows.append(
+                Price(
+                    sku_id=price.sku_id,
+                    channel_id=price.channel_id,
+                    sale_price=price.sale_price,
+                    cost_price=price.cost_price,
+                    start_at=right_start,
+                    end_at=right_end,
+                    status=price.status,
+                    created_by=price.created_by,
+                )
+            )
+        return new_rows
+
+    # Case 3: Overlaps tail -> truncate end
+    if price.start_at < new_start and price.end_at <= new_end:
+        new_end_at = new_start - timedelta(days=1)
+        if await _has_range_collision(db, price, price.start_at, new_end_at):
+            price.status = "expired"
+            return []
+        price.end_at = new_end_at
+        return []
+
+    # Case 4: Overlaps head -> shift start
+    if price.start_at >= new_start and price.start_at <= new_end and price.end_at > new_end:
+        new_start_at = new_end + timedelta(days=1)
+        if await _has_range_collision(db, price, new_start_at, price.end_at):
+            price.status = "expired"
+            return []
+        price.start_at = new_start_at
+        return []
+
+    return []
 
 
 @router.get("/pricing/summary", response_model=PricingSummaryResponse)
@@ -222,7 +297,7 @@ async def list_price_history(
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.order_by(PriceHistory.operated_at.desc()).offset((page - 1) * page_size).limit(page_size))
     return ListResponse(
-        items=[row for row in rows],
+        items=[PriceHistoryRead.model_validate(row) for row in rows],
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
     )
 
@@ -307,42 +382,10 @@ async def create_price(
         
         # If conflict is ACTIVE, we adjust it
         elif c.status == 'active':
-            # Case 1: Exact match or Enclosed (Old inside New) -> Delete (Supersede)
-            if c.start_at >= payload.start_at and c.end_at <= payload.end_at:
-                db.delete(c)
-
-            # Case 2: Overlaps Tail (Starts before New, ends inside/after New) -> TRUNCATE END
-            elif c.start_at < payload.start_at:
-                new_end = payload.start_at - timedelta(days=1)
-                # Check if the truncated form collides with an existing record
-                collision = await db.scalar(select(Price).where(
-                    Price.sku_id == c.sku_id,
-                    Price.channel_id == c.channel_id,
-                    Price.start_at == c.start_at,
-                    Price.end_at == new_end
-                ))
-                # If collision exists and it's not the record itself (unlikely if unique constraint)
-                if collision and collision.id != c.id:
-                    db.delete(c) # Superseded/Redundant
-                else:
-                    c.end_at = new_end
-                    db.add(c)
-            
-            # Case 3: Overlaps Head (Starts inside New, ends after New) -> TRUNCATE START
-            elif c.end_at > payload.end_at:
-                new_start = payload.end_at + timedelta(days=1)
-                # Check for collision
-                collision = await db.scalar(select(Price).where(
-                     Price.sku_id == c.sku_id,
-                     Price.channel_id == c.channel_id,
-                     Price.start_at == new_start,
-                     Price.end_at == c.end_at
-                ))
-                if collision and collision.id != c.id:
-                     db.delete(c)
-                else:
-                     c.start_at = new_start
-                     db.add(c)
+            new_rows = await _resolve_active_overlap(db, c, payload.start_at, payload.end_at)
+            for row in new_rows:
+                db.add(row)
+            db.add(c)
 
     if existing_exact:
         # Reuse/Revive existing record to satisfy unique constraint
@@ -447,27 +490,32 @@ async def decide_price(
 
     if payload.approve:
         price.status = "active"
-        # Expire other active prices for the same SKU and channel
-        active_prices = await db.scalars(
+        # Adjust overlapping active prices for the same SKU and channel
+        overlaps = await db.scalars(
             select(Price).where(
                 Price.sku_id == price.sku_id,
                 Price.channel_id == price.channel_id,
                 Price.id != price.id,
                 Price.status == "active",
+                _overlap_filter(price.start_at, price.end_at),
             )
         )
-        for ap in active_prices:
-            ap.status = "expired"
-            ap.end_at = price.start_at - timedelta(days=1)
-            db.add(
-                PriceHistory(
-                    price_id=ap.id,
-                    before_data={"status": "active"},
-                    after_data={"status": "expired", "end_at": ap.end_at.isoformat()},
-                    operator=user.username,
-                    operated_at=now_china(),
+        for ap in overlaps:
+            before = {"status": ap.status, "start_at": ap.start_at.isoformat(), "end_at": ap.end_at.isoformat()}
+            new_rows = await _resolve_active_overlap(db, ap, price.start_at, price.end_at)
+            after = {"status": ap.status, "start_at": ap.start_at.isoformat(), "end_at": ap.end_at.isoformat()}
+            if before != after:
+                db.add(
+                    PriceHistory(
+                        price_id=ap.id,
+                        before_data=before,
+                        after_data=after,
+                        operator=user.username,
+                        operated_at=now_china(),
+                    )
                 )
-            )
+            for row in new_rows:
+                db.add(row)
         db.add(
             PriceHistory(
                 price_id=price.id,
@@ -544,8 +592,17 @@ async def get_sku_channel_inventory(
     channel_ratio = 0
     if product.allowed_channels:
         for alloc in product.allowed_channels:
-            if isinstance(alloc, dict) and alloc.get('channel_id') == channel_id:
-                channel_ratio = alloc.get('stock_ratio', 0)
+            if isinstance(alloc, dict):
+                if alloc.get('channel_id') == channel_id:
+                    channel_ratio = alloc.get('stock_ratio', 0) or 0
+                    break
+                continue
+            try:
+                cid = int(alloc)
+            except (TypeError, ValueError):
+                continue
+            if cid == channel_id:
+                channel_ratio = 100
                 break
     
     # If ratio is 0, return empty inventory
@@ -558,13 +615,16 @@ async def get_sku_channel_inventory(
     
     if not product_resources:
         return {"items": [], "message": "Product has no linked resources"}
+    required_resources = [pr for pr in product_resources if pr.required_flag]
+    if not required_resources:
+        return {"items": [], "message": "Product has no required resources"}
     
     # Parse date range
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     end = datetime.strptime(end_date, "%Y-%m-%d").date()
     
     # Get all resource IDs needed
-    resource_ids = [pr.resource_id for pr in product_resources]
+    resource_ids = [pr.resource_id for pr in required_resources]
     
     # Fetch all resource inventories in the date range (Join SupplierResource)
     inv_stmt = select(ResourceInventory, SupplierResource.resource_id, SupplierResource.supplier_id).join(SupplierResource).where(
@@ -600,7 +660,7 @@ async def get_sku_channel_inventory(
         
         # First calculate product inventory: MIN(resource_available / resource_quantity)
         product_qty = None
-        for pr in product_resources:
+        for pr in required_resources:
             # Determine which inventory pool to use
             if pr.supplier_id is not None:
                 # Specific supplier bound

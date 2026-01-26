@@ -128,7 +128,7 @@ async def delete_product_category(
         table_name="product_category",
         record_id=cat.id,
         operation="DELETE",
-        diff_data={"name": cat.name, "description": cat.description, "status": cat.status},
+        diff_data={"name": cat.name, "description": cat.description},
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -195,8 +195,8 @@ async def create_product(
         raise HTTPException(status_code=400, detail="产品名称已存在")
     # structure_hash unique
     dup = await db.scalar(select(Product).where(Product.structure_hash == payload.structure_hash))
-    # if dup:
-    #     raise HTTPException(status_code=400, detail="structure_hash already exists, please reuse or confirm")
+    if dup:
+        raise HTTPException(status_code=400, detail="structure_hash already exists")
 
     # Validate resource uniqueness
     if payload.resources:
@@ -278,6 +278,12 @@ async def update_product(
     name_dup = await db.scalar(select(Product).where(Product.product_name == payload.product_name, Product.id != product_id))
     if name_dup:
         raise HTTPException(status_code=400, detail="产品名称已存在")
+    if payload.structure_hash != product.structure_hash:
+        dup_hash = await db.scalar(
+            select(Product).where(Product.structure_hash == payload.structure_hash, Product.id != product_id)
+        )
+        if dup_hash:
+            raise HTTPException(status_code=400, detail="structure_hash already exists")
     if payload.resources:
         resource_ids = [r.resource_id for r in payload.resources]
         if len(resource_ids) != len(set(resource_ids)):
@@ -512,20 +518,32 @@ async def get_product_inventory(
     
     if not product_resources:
         return {"items": [], "message": "产品未关联任何资源"}
+    required_resources = [pr for pr in product_resources if pr.required_flag]
+    if not required_resources:
+        return {"items": [], "message": "产品未配置必选资源"}
     
     # Parse date range or default
     if start_date:
-        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="无效的开始日期格式，应为 YYYY-MM-DD")
     else:
         start = now_china().date()
-        
+
     if end_date:
-        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="无效的结束日期格式，应为 YYYY-MM-DD")
     else:
         end = (now_china() + timedelta(days=365*2)).date()
+
+    if start > end:
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
     
     # Get all resource IDs needed
-    resource_ids = [pr.resource_id for pr in product_resources]
+    resource_ids = [pr.resource_id for pr in required_resources]
     
     # Fetch all resource inventories in the date range (Join SupplierResource to resolve resource_id and supplier_id)
     inv_stmt = select(ResourceInventory, SupplierResource.resource_id, SupplierResource.supplier_id).join(SupplierResource).where(
@@ -562,7 +580,7 @@ async def get_product_inventory(
         
         # For each date, calculate MIN(resource_available / resource_quantity)
         min_qty = None
-        for pr in product_resources:
+        for pr in required_resources:
             # Determine which inventory pool to use
             if pr.supplier_id is not None:
                 # Specific supplier bound

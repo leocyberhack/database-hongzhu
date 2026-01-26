@@ -24,10 +24,6 @@ export default function DiningPoiFields({ prefix = ['attrs'] }: { prefix?: (stri
                 </Col>
             </Row>
 
-            <Form.Item name={[...prefix, 'restaurant_address']} label="餐厅地址">
-                <Input placeholder="餐厅详细地址（若与POI地址一致可不填）" />
-            </Form.Item>
-
             <Form.Item name={[...prefix, 'parking']} label="停车场信息">
                 <Input placeholder="例如：免费停车 / 收费停车场" />
             </Form.Item>

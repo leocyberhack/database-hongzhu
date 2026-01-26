@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { Button, Select, Space, Tooltip } from 'antd';
+import { Button, Space } from 'antd';
 import { LeftOutlined, RightOutlined, DoubleLeftOutlined, DoubleRightOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-
-const { Option } = Select;
 
 interface Props {
     stockData: Record<string, number>;
@@ -75,14 +73,6 @@ const styles = {
 
 const ProductStockPreviewCalendar: React.FC<Props> = ({ stockData }) => {
     const [currentDate, setCurrentDate] = useState<Dayjs>(dayjs());
-
-    const handleMonthChange = (val: number) => {
-        setCurrentDate(currentDate.month(val - 1));
-    };
-
-    const handleYearChange = (val: number) => {
-        setCurrentDate(currentDate.year(val));
-    };
 
     const renderCalendarGrid = () => {
         const startOfMonth = currentDate.startOf('month');

@@ -42,3 +42,13 @@ class OrderRead(ORMBase):
 class OrderDecision(BaseModel):
     action: str  # verify | refund
     comment: Optional[str] = None
+
+
+class OrderStatusHistoryRead(ORMBase):
+    id: int
+    order_id: int
+    before_status: Optional[str] = None
+    after_status: str
+    operator: Optional[str] = None
+    operated_at: datetime
+    reason: Optional[str] = None

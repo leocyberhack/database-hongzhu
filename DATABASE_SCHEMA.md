@@ -48,7 +48,6 @@
 | poi_name | String | 是 | - | POI名称 | (poi_name, city) 唯一组合 |
 | city | String | 是 | - | 所在城市 | |
 | poi_type | String | 是 | - | 类型 | 枚举: 门票, 酒店, 餐饮, 交通 |
-| address | String | 否 | - | 详细地址 | 基础地址 |
 | tags | JSONB | 否 | - | 标签 | 字符串数组 |
 | attrs | JSONB | 否 | - | **扩展属性** | 不同类型的通用属性 |
 | status | String | 是 | 'active' | 状态 | active (启用), inactive (停用) |
@@ -62,7 +61,6 @@
 | 字段名 | 说明 | 示例 |
 | :--- | :--- | :--- |
 | province/city/district | 省市区 | |
-| address | 详细地址 | |
 | entrance_times | 入园次数 | unlimited/1 |
 | earliest/latest_entry_time | 入园时间限制 | 08:00 / 17:00 |
 | entry_method | 入园方式 | 刷身份证/扫码 |
@@ -79,7 +77,6 @@
 | :--- | :--- | :--- |
 | hotel_type | 酒店类型 | 经济型/豪华型 |
 | star_rating | 星级 | 五星/无 |
-| address | 详细地址 | |
 | phone | 联系电话 | |
 | check_in/out_time | 入离时间 | 14:00 / 12:00 |
 | parking | 停车场 | 免费/付费 |
@@ -91,7 +88,6 @@
 | 字段名 | 说明 | 示例 |
 | :--- | :--- | :--- |
 | restaurant_name | 餐厅名称 | |
-| restaurant_address | 餐厅地址 | |
 | phone | 联系电话 | |
 | opening/closing_time | 营业时间 | 10:00 - 22:00 |
 | parking | 停车场信息 | |

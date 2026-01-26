@@ -4,7 +4,6 @@ import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/login'
 import DashboardPage from '@/pages/dashboard'
 import ResourcePOIPage from '@/pages/resources/poi'
-import ResourceListPage from '@/pages/resources/list'
 import SupplierListPage from '@/pages/suppliers/list'
 import ProductListPage from '@/pages/products/list'
 import ProductCategoryPage from '@/pages/products/categories'
@@ -57,7 +56,7 @@ export default function AppRoutes() {
 
                 {/* 资源中心 */}
                 <Route path="resources/poi" element={<ResourcePOIPage />} />
-                <Route path="resources/list" element={<ResourceListPage />} />
+                <Route path="resources/list" element={<Navigate to="/resources/poi" replace />} />
                 <Route path="suppliers/list" element={<SupplierListPage />} />
 
                 {/* Products M3 */}

@@ -228,7 +228,7 @@ export default function OperationLogsPage() {
     }
 
     // 格式化diff_data显示
-    const formatDiffData = (data: any, _tableName: string): string => {
+    const formatDiffData = (data: any): string => {
         if (!data) return '-'
 
         try {
@@ -304,7 +304,7 @@ export default function OperationLogsPage() {
             }
 
             return parts.join('\n')
-        } catch (err) {
+        } catch {
             return JSON.stringify(data, null, 2)
         }
     }
@@ -349,7 +349,7 @@ export default function OperationLogsPage() {
         {
             title: '操作详情',
             dataIndex: 'diff_data',
-            render: (v: any, record: OperationLog) => (
+            render: (v: any) => (
                 <pre style={{
                     margin: 0,
                     whiteSpace: 'pre-wrap',
@@ -357,7 +357,7 @@ export default function OperationLogsPage() {
                     fontFamily: 'inherit',
                     lineHeight: 1.6,
                 }}>
-                    {formatDiffData(v, record.table_name)}
+                    {formatDiffData(v)}
                 </pre>
             ),
         },

@@ -6,13 +6,22 @@ from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 
 
+class PoiBusinessContact(BaseModel):
+    name: Optional[str] = Field(None, description="联系人")
+    phone: Optional[str] = Field(None, description="电话")
+    email: Optional[str] = Field(None, description="邮箱")
+    position: Optional[str] = Field(None, description="职位")
+    remark: Optional[str] = Field(None, description="备注")
+
+
 # ==================== 门票POI通用属性 ====================
 class TicketPoiAttrs(BaseModel):
     """门票POI的通用属性（所有该POI下的门票资源共享）"""
     
-    # 地理位置信息
-    address: Optional[str] = Field(None, description="详细地址")
     
+    # 业务对接人信息
+    business_contacts: Optional[List[PoiBusinessContact]] = Field(None, description="业务对接人信息")
+
     # 入园信息
     entrance_times: Optional[str] = Field(None, description="入园次数：unlimited或具体次数")
     earliest_entry_time: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$", description="最早入园时间 HH:MM")
@@ -52,14 +61,15 @@ class TicketPoiAttrs(BaseModel):
 class HotelPoiAttrs(BaseModel):
     """酒店POI的通用属性（所有该POI下的酒店房型资源共享）"""
     
+    # 业务对接人信息
+    business_contacts: Optional[List[PoiBusinessContact]] = Field(None, description="业务对接人信息")
+
     # 1. 酒店类型
     hotel_type: Optional[Literal["经济型", "舒适型", "高档型", "豪华型"]] = Field(None, description="酒店类型")
     
     # 2. 联系电话
     phone: Optional[str] = Field(None, description="联系电话")
     
-    # 3. 详细地址
-    address: Optional[str] = Field(None, description="详细地址")
     
     # 4. 酒店星级
     star_rating: Optional[Literal["五星", "四星", "三星", "二星", "无"]] = Field(None, description="酒店星级")
@@ -102,11 +112,12 @@ class HotelPoiAttrs(BaseModel):
 class DiningPoiAttrs(BaseModel):
     """餐饮POI的通用属性"""
     
+    # 业务对接人信息
+    business_contacts: Optional[List[PoiBusinessContact]] = Field(None, description="业务对接人信息")
+
     # 1. 餐厅名称
     restaurant_name: Optional[str] = Field(None, description="餐厅名称")
     
-    # 2. 餐厅地址
-    restaurant_address: Optional[str] = Field(None, description="餐厅地址")
     
     # 3. 停车场信息
     parking: Optional[str] = Field(None, description="停车场信息")
@@ -127,7 +138,7 @@ class DiningPoiAttrs(BaseModel):
 # ==================== 交通POI通用属性 ====================
 class TransportPoiAttrs(BaseModel):
     """交通POI的通用属性（暂无特殊通用属性）"""
-    pass
+    business_contacts: Optional[List[PoiBusinessContact]] = Field(None, description="业务对接人信息")
 
 
 # ==================== POI属性的联合类型 ====================

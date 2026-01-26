@@ -34,6 +34,8 @@ class Poi(Base):
     city: Mapped[str] = mapped_column(String, nullable=False)
     district: Mapped[str | None] = mapped_column(String, nullable=True)
     address: Mapped[str | None] = mapped_column(String, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'active'"))
@@ -41,6 +43,35 @@ class Poi(Base):
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
     __table_args__ = (UniqueConstraint("poi_name", "city", name="uq_poi_name_city"),)
+
+
+class RegionProvince(Base):
+    __tablename__ = "region_province"
+
+    code: Mapped[str] = mapped_column(String(6), primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class RegionCity(Base):
+    __tablename__ = "region_city"
+
+    code: Mapped[str] = mapped_column(String(6), primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    province_code: Mapped[str] = mapped_column(ForeignKey("region_province.code", ondelete="CASCADE"), nullable=False)
+
+    province = relationship("RegionProvince")
+
+
+class RegionDistrict(Base):
+    __tablename__ = "region_district"
+
+    code: Mapped[str] = mapped_column(String(6), primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    province_code: Mapped[str] = mapped_column(ForeignKey("region_province.code", ondelete="CASCADE"), nullable=False)
+    city_code: Mapped[str] = mapped_column(ForeignKey("region_city.code", ondelete="CASCADE"), nullable=False)
+
+    province = relationship("RegionProvince")
+    city = relationship("RegionCity")
 
 
 class Resource(Base):
@@ -139,7 +170,7 @@ class Product(Base):
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     poi_id: Mapped[int | None] = mapped_column(ForeignKey("poi.id", ondelete="SET NULL"), nullable=True)
-    allowed_channels: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
+    allowed_channels: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (UniqueConstraint("structure_hash", name="uq_product_structure_hash"),)
 
