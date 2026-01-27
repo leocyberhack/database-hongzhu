@@ -11,6 +11,7 @@ export interface POI {
     address?: string
     longitude?: number
     latitude?: number
+    folder_id?: number  // POI专属文件夹ID
     attrs?: Record<string, unknown>  // POI类型的通用字段
     created_at?: string
     updated_at?: string

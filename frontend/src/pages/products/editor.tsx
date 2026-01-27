@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
     Form, Input, Button, Select, Card, Space, InputNumber, Switch, Table,
-    Modal, Tag, Divider, Row, Col, Statistic, message, Spin
+    Modal, Tag, Divider, Row, Col, Statistic, message, Spin, Radio, Empty
 } from 'antd'
 import { PlusOutlined, DeleteOutlined, SearchOutlined, CheckOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
@@ -70,15 +70,62 @@ interface ResourceSelectorProps {
 function ResourceSelector({ visible, onCancel, onSelect, existingIds }: ResourceSelectorProps) {
     const { data } = useData()
     const poiList = data?.poi ?? []
+    const resourceTypes = ['景区', '酒店', '餐饮', '交通']
+    const poiTypeOptions = ['全部', ...resourceTypes]
 
     const [list, setList] = useState<Resource[]>([])
     const [loading, setLoading] = useState(false)
     const [filterKw, setFilterKw] = useState('')
+    const [poiKw, setPoiKw] = useState('')
+    const [poiTypeFilter, setPoiTypeFilter] = useState<string>('全部')
     const [selectedIds, setSelectedIds] = useState<string[]>([])
+    const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
+    const [selectedType, setSelectedType] = useState<string>(resourceTypes[0])
+
+    const filteredPoiList = useMemo(() => {
+        let list = poiList
+        if (poiTypeFilter !== '全部') {
+            list = list.filter((p) => p.poi_type === poiTypeFilter)
+        }
+        if (!poiKw) return list
+        const kw = poiKw.trim().toLowerCase()
+        return list.filter((p) =>
+            p.poi_name.toLowerCase().includes(kw) ||
+            (p.poi_code || '').toLowerCase().includes(kw)
+        )
+    }, [poiList, poiKw, poiTypeFilter])
+
+    const selectedPoi = useMemo(() => {
+        if (!selectedPoiId) return null
+        return poiList.find(p => String(p.id) === String(selectedPoiId)) || null
+    }, [poiList, selectedPoiId])
+
+    useEffect(() => {
+        if (!visible) return
+        if (filteredPoiList.length === 0) {
+            setSelectedPoiId(null)
+            return
+        }
+        const hasSelected = filteredPoiList.some(p => String(p.id) === String(selectedPoiId))
+        if (!hasSelected) {
+            setSelectedPoiId(String(filteredPoiList[0].id))
+        }
+    }, [visible, filteredPoiList, selectedPoiId])
+
+    useEffect(() => {
+        if (!visible) return
+        if (selectedPoi?.poi_type && selectedPoi.poi_type !== selectedType) {
+            setSelectedType(selectedPoi.poi_type)
+        }
+    }, [visible, selectedPoi, selectedType])
 
     // Debounce search or just search on enter/change
     useEffect(() => {
         if (!visible) return
+        if (!selectedPoiId) {
+            setList([])
+            return
+        }
         const fetchResources = async () => {
             setLoading(true)
             try {
@@ -87,6 +134,8 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
                     page: '1',
                     page_size: '50',
                 })
+                qs.append('poi_id', String(selectedPoiId))
+                if (selectedType) qs.append('resource_type', selectedType)
                 if (filterKw) qs.append('keyword', filterKw)
 
                 const res = await apiRequest<{ items: Resource[] }>(`/api/resources?${qs.toString()}`)
@@ -103,55 +152,126 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
             fetchResources()
         }, 300)
         return () => clearTimeout(timer)
-    }, [visible, filterKw])
+    }, [visible, filterKw, selectedPoiId, selectedType])
+
+    useEffect(() => {
+        if (!visible) return
+        setSelectedIds([])
+    }, [visible, selectedPoiId, selectedType])
 
     const columns = [
         { title: '资源名称', dataIndex: 'resource_name' },
+        { title: '资源编码', dataIndex: 'resource_code' },
         { title: '类型', dataIndex: 'resource_type', render: (v: string) => <Tag>{v}</Tag> },
-        {
-            title: '所属POI',
-            dataIndex: 'poi_id',
-            render: (pid: string) => poiList.find(p => String(p.id) === String(pid))?.poi_name || '-'
-        },
     ]
 
     return (
         <Modal
-            title="选择要添加的资源"
+            title="选择要添加的资源（先选POI，再选资源类型）"
             open={visible}
             onCancel={onCancel}
-            width={800}
+            width={980}
             onOk={() => {
                 onSelect(selectedIds)
                 setSelectedIds([])
             }}
             confirmLoading={loading}
         >
-            <Space style={{ marginBottom: 16 }}>
-                <Input
-                    placeholder="搜索资源名称..."
-                    prefix={<SearchOutlined />}
-                    value={filterKw}
-                    onChange={e => setFilterKw(e.target.value)}
-                    allowClear
-                />
-            </Space>
-            <Table
-                rowKey="id"
-                columns={columns}
-                dataSource={list}
-                loading={loading}
-                rowSelection={{
-                    selectedRowKeys: selectedIds,
-                    onChange: (keys) => setSelectedIds(keys as string[]),
-                    getCheckboxProps: (record) => ({
-                        disabled: existingIds.includes(String(record.id)),
-                    }),
-                }}
-                pagination={false}
-                size="small"
-                scroll={{ y: 400 }}
-            />
+            <Row gutter={16}>
+                <Col span={7}>
+                    <Space style={{ marginBottom: 12 }} size={8}>
+                        <span style={{ fontSize: 12, color: '#666' }}>POI类型</span>
+                        <Select
+                            size="small"
+                            value={poiTypeFilter}
+                            onChange={(v) => setPoiTypeFilter(v)}
+                            options={poiTypeOptions.map(t => ({ value: t, label: t }))}
+                            style={{ width: 120 }}
+                        />
+                    </Space>
+                    <Input
+                        placeholder="搜索POI名称/编码"
+                        prefix={<SearchOutlined />}
+                        value={poiKw}
+                        onChange={e => setPoiKw(e.target.value)}
+                        allowClear
+                        style={{ marginBottom: 12 }}
+                    />
+                    <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                        {filteredPoiList.length === 0 ? (
+                            <Empty description="暂无POI" style={{ margin: '24px 0' }} />
+                        ) : (
+                            filteredPoiList.map((poi) => {
+                                const isActive = String(poi.id) === String(selectedPoiId)
+                                return (
+                                    <div
+                                        key={poi.id}
+                                        onClick={() => setSelectedPoiId(String(poi.id))}
+                                        style={{
+                                            padding: '10px 12px',
+                                            cursor: 'pointer',
+                                            background: isActive ? '#f6ffed' : '#fff',
+                                            borderBottom: '1px solid #f0f0f0',
+                                        }}
+                                    >
+                                        <div style={{ fontWeight: 600 }}>{poi.poi_name}</div>
+                                        <div style={{ fontSize: 12, color: '#999' }}>
+                                            {poi.poi_code || '-'} · {poi.city}
+                                        </div>
+                                    </div>
+                                )
+                            })
+                        )}
+                    </div>
+                </Col>
+                <Col span={17}>
+                    <Space style={{ marginBottom: 12 }} wrap>
+                        <Radio.Group
+                            value={selectedType}
+                            onChange={(e) => setSelectedType(e.target.value)}
+                            optionType="button"
+                            buttonStyle="solid"
+                        >
+                            {resourceTypes.map((t) => (
+                                <Radio.Button
+                                    key={t}
+                                    value={t}
+                                    disabled={selectedPoi?.poi_type ? t !== selectedPoi.poi_type : false}
+                                >
+                                    {t}
+                                </Radio.Button>
+                            ))}
+                        </Radio.Group>
+                        <Input
+                            placeholder="搜索资源名称..."
+                            prefix={<SearchOutlined />}
+                            value={filterKw}
+                            onChange={e => setFilterKw(e.target.value)}
+                            allowClear
+                        />
+                    </Space>
+                    {!selectedPoiId ? (
+                        <Empty description="请先选择POI" style={{ marginTop: 60 }} />
+                    ) : (
+                        <Table
+                            rowKey="id"
+                            columns={columns}
+                            dataSource={list}
+                            loading={loading}
+                            rowSelection={{
+                                selectedRowKeys: selectedIds,
+                                onChange: (keys) => setSelectedIds(keys as string[]),
+                                getCheckboxProps: (record) => ({
+                                    disabled: existingIds.includes(String(record.id)),
+                                }),
+                            }}
+                            pagination={false}
+                            size="small"
+                            scroll={{ y: 360 }}
+                        />
+                    )}
+                </Col>
+            </Row>
         </Modal>
     )
 }

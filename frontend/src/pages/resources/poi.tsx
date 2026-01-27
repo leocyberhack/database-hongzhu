@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Form, Input, Select, Table, Drawer, Modal, Space, Statistic, message, Card, Row, Col, Popconfirm, Tooltip, Divider, Switch, InputNumber, Tag } from 'antd'
-import { EditOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons'
+import { Button, Form, Input, Select, Table, Modal, Space, Statistic, message, Card, Row, Col, Popconfirm, Tooltip, Divider, Switch, InputNumber, Tag } from 'antd'
+import { EditOutlined, SearchOutlined, DeleteOutlined, SettingOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons'
 import { useSearchParams } from 'react-router-dom'
 import { useData } from '@/contexts/DataContext'
 import type { POI } from '@/types'
@@ -13,8 +13,9 @@ import TicketResourceFields from '@/components/TicketResourceFields'
 import HotelResourceFields from '@/components/HotelResourceFields'
 import DiningResourceFields from '@/components/DiningResourceFields'
 import TransportResourceFields from '@/components/TransportResourceFields'
-import ResourceManager from '@/components/ResourceManager'
 import ContactTableEditor from '@/components/ContactTableEditor'
+import POIFileModal from '@/components/POIFileModal'
+import POIDetailDrawer from '@/components/POIDetailDrawer'
 
 const POI_TYPES = ['景区', '酒店', '餐饮', '交通'] // POI类型（不含组合）
 
@@ -38,6 +39,7 @@ export default function ResourcePage() {
     const [selectedPoi, setSelectedPoi] = useState<POI | null>(null)
     const [searchParams] = useSearchParams()
     const [detailAutoOpened, setDetailAutoOpened] = useState(false)
+    const [drawerReadOnly, setDrawerReadOnly] = useState(false)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
@@ -46,6 +48,7 @@ export default function ResourcePage() {
     const [createResourceEnabled, setCreateResourceEnabled] = useState(false)
     const [createdPoi, setCreatedPoi] = useState<POI | null>(null)
     const [creatingPoi, setCreatingPoi] = useState(false)
+    const [fileManagerPoi, setFileManagerPoi] = useState<POI | null>(null)  // 文件管理Modal的目标POI
     const [resourceStatuses, setResourceStatuses] = useState<Record<number, { saving?: boolean; saved?: boolean }>>({})
     const [provinceOptions, setProvinceOptions] = useState<RegionOption[]>([])
     const [createCityOptions, setCreateCityOptions] = useState<RegionOption[]>([])
@@ -239,7 +242,7 @@ export default function ResourcePage() {
         },
         {
             title: '操作',
-            width: 150,
+            width: 220,
             render: (_: any, record: POI) => {
                 const resourceCount = resources.filter(r => r.poi_id === record.id).length
                 const isLocked = resourceCount > 0
@@ -250,7 +253,21 @@ export default function ResourcePage() {
                             type="link"
                             size="small"
                             icon={<EditOutlined />}
-                            onClick={() => setSelectedPoi(record)}
+                            onClick={() => {
+                                setDrawerReadOnly(false)
+                                setSelectedPoi(record)
+                            }}
+                        >
+                            编辑
+                        </Button>
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<EyeOutlined />}
+                            onClick={() => {
+                                setDrawerReadOnly(true)
+                                setSelectedPoi(record)
+                            }}
                         >
                             查看
                         </Button>
@@ -360,8 +377,10 @@ export default function ResourcePage() {
         if (createResourceEnabled) {
             message.success('POI 已创建，请逐条保存资源')
         } else {
-            message.success('POI 已创建')
+            message.success('POI 已创建，可以上传详情图片')
             resetCreateModal()
+            // 打开文件管理Modal
+            setFileManagerPoi(newPoi)
         }
     }
 
@@ -1072,154 +1091,31 @@ export default function ResourcePage() {
             </Modal>
 
             {/* POI 详情 Drawer */}
-            <Drawer
-                title={`POI 详情: ${selectedPoi?.poi_name}`}
-                open={!!selectedPoi}
-                width={560}
-                onClose={() => setSelectedPoi(null)}
-            >
-                {selectedPoi && (
-                    <>
-                        <div className="glass-card" style={{ padding: '16px', marginBottom: 12 }}>
-                            <h4 style={{ marginBottom: '12px' }}>基本信息</h4>
-                            <Form layout="vertical" form={poiEditForm} onFinish={savePoi}>
-                                <Row gutter={16}>
-                                    <Col span={10}>
-                                        <Form.Item name="poi_name" label="名称" rules={[{ required: true }]}>
-                                            <Input />
-                                        </Form.Item>
-                                    </Col>
-                                    <Col span={7}>
-                                        <Form.Item name="poi_code" label="POI 编码">
-                                            <Input />
-                                        </Form.Item>
-                                    </Col>
-                                    <Col span={7}>
-                                        <Form.Item name="poi_type" label="类型">
-                                            <Select disabled>
-                                                {POI_TYPES.map(t => <Select.Option key={t} value={t}>{t}</Select.Option>)}
-                                            </Select>
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-
-                                <Row gutter={16}>
-                                    <Col span={8}>
-                                        <Form.Item
-                                            name="province"
-                                            label="省份"
-                                            rules={[{ required: true, message: '请选择省份' }]}
-                                        >
-                                            <Select
-                                                placeholder="选择省份"
-                                                showSearch
-                                                optionFilterProp="label"
-                                                options={provinceOptions.map((p) => ({ value: p.code, label: p.name }))}
-                                                onChange={(value) => {
-                                                    poiEditForm.setFieldsValue({ city: undefined, district: undefined })
-                                                    setEditCityOptions([])
-                                                    setEditDistrictOptions([])
-                                                    loadCities(value, 'edit')
-                                                }}
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                    <Col span={8}>
-                                        <Form.Item
-                                            name="city"
-                                            label="城市"
-                                            rules={[{ required: true, message: '请选择城市' }]}
-                                        >
-                                            <Select
-                                                placeholder="选择城市"
-                                                showSearch
-                                                optionFilterProp="label"
-                                                disabled={!editProvince}
-                                                options={editCityOptions.map((c) => ({ value: c.code, label: c.name }))}
-                                                onChange={(value) => {
-                                                    poiEditForm.setFieldValue('district', undefined)
-                                                    setEditDistrictOptions([])
-                                                    loadDistricts(value, 'edit')
-                                                }}
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                    <Col span={8}>
-                                        <Form.Item
-                                            name="district"
-                                            label="区/县"
-                                            rules={[{ required: true, message: '请选择区/县' }]}
-                                        >
-                                            <Select
-                                                placeholder="选择区/县"
-                                                showSearch
-                                                optionFilterProp="label"
-                                                disabled={!editCity}
-                                                options={editDistrictOptions.map((d) => ({ value: d.code, label: d.name }))}
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-                                <Row gutter={16}>
-                                    <Col span={24}>
-                                        <Form.Item name="address" label="地址">
-                                            <Input />
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-                                <Row gutter={16}>
-                                    <Col span={12}>
-                                        <Form.Item name="longitude" label="经度">
-                                            <InputNumber
-                                                placeholder="例如 116.397128"
-                                                style={{ width: '100%' }}
-                                                step={0.000001}
-                                                precision={6}
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                    <Col span={12}>
-                                        <Form.Item name="latitude" label="纬度">
-                                            <InputNumber
-                                                placeholder="例如 39.916527"
-                                                style={{ width: '100%' }}
-                                                step={0.000001}
-                                                precision={6}
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-
-                                <div style={{ marginBottom: 16 }}>
-                                    <h4 style={{ marginBottom: 12 }}>业务对接人信息</h4>
-                                    <ContactTableEditor
-                                        name={['attrs', 'business_contacts']}
-                                        showRemark
-                                        addLabel="添加对接人"
-                                        emptyText="暂无对接人信息，点击下方按钮添加"
-                                    />
-                                </div>
-
-                                {/* 动态字段编辑区域 */}
-                                {selectedPoi.poi_type === '景区' && <TicketPoiFields />}
-                                {selectedPoi.poi_type === '酒店' && <HotelPoiFields />}
-                                {selectedPoi.poi_type === '餐饮' && <DiningPoiFields />}
-                                {selectedPoi.poi_type === '交通' && <TransportPoiFields />}
-
-                                <Space style={{ width: '100%', justifyContent: 'flex-end', marginTop: 16 }}>
-                                    <Button onClick={() => setSelectedPoi(null)}>取消</Button>
-                                    <Button type="primary" htmlType="submit">
-                                        保存
-                                    </Button>
-                                </Space>
-                            </Form>
-                        </div>
-
-                        <Divider style={{ margin: '16px 0' }} />
-                        <ResourceManager key={selectedPoi.id} poiId={selectedPoi.id} mode="embedded" />
-                    </>
-                )}
-            </Drawer>
+            {selectedPoi && (
+                <POIDetailDrawer
+                    poi={selectedPoi}
+                    onClose={() => setSelectedPoi(null)}
+                    form={poiEditForm}
+                    onSave={savePoi}
+                    provinceOptions={provinceOptions}
+                    editCityOptions={editCityOptions}
+                    editDistrictOptions={editDistrictOptions}
+                    editProvince={editProvince}
+                    editCity={editCity}
+                    onProvinceChange={(value) => {
+                        poiEditForm.setFieldsValue({ city: undefined, district: undefined })
+                        setEditCityOptions([])
+                        setEditDistrictOptions([])
+                        loadCities(value, 'edit')
+                    }}
+                    onCityChange={(value) => {
+                        poiEditForm.setFieldValue('district', undefined)
+                        setEditDistrictOptions([])
+                        loadDistricts(value, 'edit')
+                    }}
+                    readonly={drawerReadOnly}
+                />
+            )}
 
             {/* 批量更新 Modal */}
             <Modal
@@ -1243,6 +1139,13 @@ export default function ResourcePage() {
                     </Space>
                 </Form>
             </Modal>
+
+            {/* POI 详情图管理 Modal */}
+            <POIFileModal
+                poi={fileManagerPoi}
+                open={!!fileManagerPoi}
+                onClose={() => setFileManagerPoi(null)}
+            />
 
         </div>
     )

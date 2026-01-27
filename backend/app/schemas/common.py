@@ -63,6 +63,7 @@ class PoiUpdate(BaseModel):
 
 class PoiRead(PoiBase, ORMBase):
     id: int
+    folder_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

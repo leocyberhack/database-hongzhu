@@ -539,18 +539,18 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
     return (
         <div className={isEmbedded ? undefined : 'page-container'}>
             {!isEmbedded && (
-            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                    <h1 className="page-title">资源管理</h1>
-                    <p className="page-subtitle">管理所有资源，可按需绑定供应商与结算价</p>
-                </div>
-                <Space>
+                <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                        <h1 className="page-title">资源管理</h1>
+                        <p className="page-subtitle">管理所有资源，可按需绑定供应商与结算价</p>
+                    </div>
+                    <Space>
 
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
-                        新建资源
-                    </Button>
-                </Space>
-            </div>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
+                            新建资源
+                        </Button>
+                    </Space>
+                </div>
             )}
             {isEmbedded && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -563,81 +563,81 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
 
             {/* 高级筛选器 */}
             {!isEmbedded && (
-            <Card size="small" style={{ marginBottom: 16 }} bodyStyle={{ padding: '16px' }}>
-                <Form layout="inline" style={{ width: '100%' }}>
-                    <Row gutter={[16, 16]} style={{ width: '100%' }}>
-                        <Col span={6}>
-                            <Form.Item label="关键词" style={{ marginBottom: 0, width: '100%' }}>
-                                <Input
-                                    placeholder="搜索资源名称"
-                                    prefix={<SearchOutlined style={{ color: '#ccc' }} />}
-                                    value={filters.keyword}
-                                    onChange={e => setFilters({ ...filters, keyword: e.target.value })}
-                                    allowClear
-                                />
-                            </Form.Item>
-                        </Col>
-                        <Col span={6}>
-                            <Form.Item label="关联POI" style={{ marginBottom: 0, width: '100%' }}>
-                                <Select
-                                    placeholder="全部POI"
-                                    showSearch
-                                    allowClear
-                                    optionFilterProp="label"
-                                    options={poiList.map(p => ({ value: p.id, label: p.poi_name }))}
-                                    value={filters.poi_id}
-                                    onChange={v => setFilters({ ...filters, poi_id: v })}
-                                    style={{ width: '100%' }}
-                                />
-                            </Form.Item>
-                        </Col>
-                        <Col span={6}>
-                            <Form.Item label="状态" style={{ marginBottom: 0, width: '100%' }}>
-                                <Select
-                                    placeholder="全部状态"
-                                    allowClear
-                                    options={[
-                                        { value: 'active', label: '启用' },
-                                        { value: 'inactive', label: '停用' },
-                                    ]}
-                                    value={filters.status}
-                                    onChange={v => setFilters({ ...filters, status: v })}
-                                    style={{ width: '100%' }}
-                                />
-                            </Form.Item>
-                        </Col>
-                        <Col span={6} style={{ textAlign: 'right' }}>
-                            {selectedRowKeys.length > 0 && (
-                                <Space>
-                                    <Button onClick={() => setBatchUpdateVisible(true)} icon={<SettingOutlined />}>
-                                        批量修改
-                                    </Button>
-                                    <Popconfirm
-                                        title={`确定删除选中的 ${selectedRowKeys.length} 个资源吗？`}
-                                        onConfirm={handleBatchDelete}
-                                        okText="确定删除"
-                                        cancelText="取消"
-                                        okButtonProps={{ danger: true }}
-                                    >
-                                        <Button danger icon={<DeleteOutlined />}>
-                                            批量删除
+                <Card size="small" style={{ marginBottom: 16 }} bodyStyle={{ padding: '16px' }}>
+                    <Form layout="inline" style={{ width: '100%' }}>
+                        <Row gutter={[16, 16]} style={{ width: '100%' }}>
+                            <Col span={6}>
+                                <Form.Item label="关键词" style={{ marginBottom: 0, width: '100%' }}>
+                                    <Input
+                                        placeholder="搜索资源名称"
+                                        prefix={<SearchOutlined style={{ color: '#ccc' }} />}
+                                        value={filters.keyword}
+                                        onChange={e => setFilters({ ...filters, keyword: e.target.value })}
+                                        allowClear
+                                    />
+                                </Form.Item>
+                            </Col>
+                            <Col span={6}>
+                                <Form.Item label="关联POI" style={{ marginBottom: 0, width: '100%' }}>
+                                    <Select
+                                        placeholder="全部POI"
+                                        showSearch
+                                        allowClear
+                                        optionFilterProp="label"
+                                        options={poiList.map(p => ({ value: p.id, label: p.poi_name }))}
+                                        value={filters.poi_id}
+                                        onChange={v => setFilters({ ...filters, poi_id: v })}
+                                        style={{ width: '100%' }}
+                                    />
+                                </Form.Item>
+                            </Col>
+                            <Col span={6}>
+                                <Form.Item label="状态" style={{ marginBottom: 0, width: '100%' }}>
+                                    <Select
+                                        placeholder="全部状态"
+                                        allowClear
+                                        options={[
+                                            { value: 'active', label: '启用' },
+                                            { value: 'inactive', label: '停用' },
+                                        ]}
+                                        value={filters.status}
+                                        onChange={v => setFilters({ ...filters, status: v })}
+                                        style={{ width: '100%' }}
+                                    />
+                                </Form.Item>
+                            </Col>
+                            <Col span={6} style={{ textAlign: 'right' }}>
+                                {selectedRowKeys.length > 0 && (
+                                    <Space>
+                                        <Button onClick={() => setBatchUpdateVisible(true)} icon={<SettingOutlined />}>
+                                            批量修改
                                         </Button>
-                                    </Popconfirm>
-                                </Space>
-                            )}
-                        </Col>
-                        <Col span={24}>
-                            <Form.Item label="资源类型" style={{ marginBottom: 0 }}>
-                                <Checkbox.Group
-                                    options={RESOURCE_TYPES}
-                                    value={filters.types}
-                                    onChange={v => setFilters({ ...filters, types: v as string[] })}
-                                />
-                            </Form.Item>
-                        </Col>
-                    </Row>
-                </Form>
-            </Card>
+                                        <Popconfirm
+                                            title={`确定删除选中的 ${selectedRowKeys.length} 个资源吗？`}
+                                            onConfirm={handleBatchDelete}
+                                            okText="确定删除"
+                                            cancelText="取消"
+                                            okButtonProps={{ danger: true }}
+                                        >
+                                            <Button danger icon={<DeleteOutlined />}>
+                                                批量删除
+                                            </Button>
+                                        </Popconfirm>
+                                    </Space>
+                                )}
+                            </Col>
+                            <Col span={24}>
+                                <Form.Item label="资源类型" style={{ marginBottom: 0 }}>
+                                    <Checkbox.Group
+                                        options={RESOURCE_TYPES}
+                                        value={filters.types}
+                                        onChange={v => setFilters({ ...filters, types: v as string[] })}
+                                    />
+                                </Form.Item>
+                            </Col>
+                        </Row>
+                    </Form>
+                </Card>
             )}
 
             <div className="glass-card" style={{ padding: '24px' }}>

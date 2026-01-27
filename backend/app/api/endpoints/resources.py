@@ -108,6 +108,8 @@ async def create_poi(
     db: DbSession,
     user: User = Depends(require_roles(["admin", "super_admin", "product"])),
 ):
+    from app.models import Folder
+    
     # poi_type必填校验
     if not payload.poi_type:
         raise HTTPException(status_code=400, detail="poi_type is required")
@@ -125,7 +127,20 @@ async def create_poi(
     if exists:
         raise HTTPException(status_code=400, detail="POI name already exists")
     
-    obj = Poi(**payload.model_dump())
+    # 1. 为新POI创建独立的根级文件夹（parent_id = NULL）
+    # 文件夹名称格式：POI_{poi_name}
+    poi_folder = Folder(
+        name=f"POI_{payload.poi_name}",
+        parent_id=None,  # 根级文件夹，完全独立
+        created_by=user.username,
+    )
+    db.add(poi_folder)
+    await db.flush()
+    
+    # 2. 创建POI并关联文件夹
+    poi_data = payload.model_dump()
+    poi_data['folder_id'] = poi_folder.id
+    obj = Poi(**poi_data)
     db.add(obj)
     await db.flush()
     
@@ -137,6 +152,7 @@ async def create_poi(
         "province": obj.province,
         "city": obj.city,
         "district": obj.district,
+        "folder_id": obj.folder_id,
     }
     if obj.longitude is not None:
         audit_data["longitude"] = obj.longitude
@@ -161,6 +177,8 @@ async def create_poi(
     await db.commit()
     await db.refresh(obj)
     return PoiRead.model_validate(obj)
+
+
 
 
 @router.put("/poi/{poi_id}", response_model=PoiRead)

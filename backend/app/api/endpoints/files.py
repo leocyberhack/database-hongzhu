@@ -140,7 +140,13 @@ async def list_folders(
         _require_folder_password(parent, x_folder_password)
         query = select(Folder).where(Folder.parent_id == parent_id)
     else:
-        query = select(Folder).where(Folder.parent_id.is_(None))
+        # 根目录：排除POI专属文件夹（名称以"POI_"开头的文件夹）
+        query = select(Folder).where(
+            and_(
+                Folder.parent_id.is_(None),
+                ~Folder.name.startswith("POI_")
+            )
+        )
     
     result = await db.execute(query.order_by(Folder.name))
     folders = result.scalars().all()

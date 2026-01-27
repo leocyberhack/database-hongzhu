@@ -40,10 +40,14 @@ class Poi(Base):
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'active'"))
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("folder.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
     __table_args__ = (UniqueConstraint("poi_name", "city", name="uq_poi_name_city"),)
+    
+    # Relationship to folder
+    folder = relationship("Folder")
 
 
 class RegionProvince(Base):
