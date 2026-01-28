@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Poi, Resource
+from app.models import AuditLog, Poi, Resource, ProductResource
 from app.schemas.common import (
     ListResponse,
     Pagination,
@@ -344,18 +344,57 @@ async def batch_update_poi(
     """
     poi_ids = updates.get("ids", [])
     fields = updates.get("fields", {})
+    if not poi_ids or not fields:
+        return {"updated": 0, "pending": 0, "skipped": 0, "errors": []}
+
+    poi_ids = list(dict.fromkeys(poi_ids))
+    pois = list(await db.scalars(select(Poi).where(Poi.id.in_(poi_ids))))
+    if len(pois) != len(poi_ids):
+        found_ids = {p.id for p in pois}
+        missing = [pid for pid in poi_ids if pid not in found_ids]
+        raise HTTPException(status_code=404, detail=f"POI not found: {missing}")
+
+    if "poi_name" in fields:
+        if len(poi_ids) > 1:
+            raise HTTPException(status_code=400, detail="批量更新不支持同时修改多个POI名称")
+        dup = await db.scalar(select(Poi).where(Poi.poi_name == fields["poi_name"], Poi.id != poi_ids[0]))
+        if dup:
+            raise HTTPException(status_code=400, detail="POI name already exists")
+
+    if "poi_type" in fields:
+        valid_types = ["景区", "酒店", "餐饮", "交通"]
+        if fields["poi_type"] not in valid_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid poi_type. Must be one of: {', '.join(valid_types)}",
+            )
+        # Prevent changing type if POI has resources
+        resource_counts = await db.execute(
+            select(Resource.poi_id, func.count()).where(Resource.poi_id.in_(poi_ids)).group_by(Resource.poi_id)
+        )
+        resource_map = {pid: cnt for pid, cnt in resource_counts.all()}
+        blocked = []
+        for poi_id in poi_ids:
+            poi = await db.get(Poi, poi_id)
+            if not poi:
+                continue
+            if poi.poi_type != fields["poi_type"] and resource_map.get(poi_id, 0) > 0:
+                blocked.append(poi_id)
+        if blocked:
+            raise HTTPException(
+                status_code=400,
+                detail=f"无法修改POI类型：以下POI已有资源 {blocked}",
+            )
     
     updated_count = 0
-    for poi_id in poi_ids:
-        poi = await db.get(Poi, poi_id)
-        if poi:
-            for field, value in fields.items():
-                if hasattr(poi, field):
-                    setattr(poi, field, value)
-            updated_count += 1
+    for poi in pois:
+        for field, value in fields.items():
+            if hasattr(poi, field):
+                setattr(poi, field, value)
+        updated_count += 1
     
     await db.commit()
-    return {"updated": updated_count}
+    return {"updated": updated_count, "pending": 0, "skipped": 0, "errors": []}
 
 
 
@@ -590,18 +629,69 @@ async def batch_update_resources(
     """
     resource_ids = updates.get("ids", [])
     fields = updates.get("fields", {})
+    if not resource_ids or not fields:
+        return {"updated": 0, "pending": 0, "skipped": 0, "errors": []}
+
+    resource_ids = list(dict.fromkeys(resource_ids))
+    resources = list(await db.scalars(select(Resource).where(Resource.id.in_(resource_ids))))
+    if len(resources) != len(resource_ids):
+        found_ids = {r.id for r in resources}
+        missing = [rid for rid in resource_ids if rid not in found_ids]
+        raise HTTPException(status_code=404, detail=f"Resource not found: {missing}")
+
+    if "resource_type" in fields:
+        raise HTTPException(status_code=400, detail="批量更新不允许修改资源类型")
+
+    if "resource_name" in fields:
+        if len(resource_ids) > 1:
+            raise HTTPException(status_code=400, detail="批量更新不支持同时修改多个资源名称")
+        dup = await db.scalar(
+            select(Resource).where(Resource.resource_name == fields["resource_name"], Resource.id != resource_ids[0])
+        )
+        if dup:
+            raise HTTPException(status_code=400, detail="Resource name already exists")
+
+    new_poi = None
+    if "poi_id" in fields:
+        new_poi = await db.get(Poi, fields["poi_id"])
+        if not new_poi:
+            raise HTTPException(status_code=404, detail="POI not found")
+
+    # Preload usage counts
+    usage_counts = await db.execute(
+        select(ProductResource.resource_id, func.count())
+        .where(ProductResource.resource_id.in_(resource_ids))
+        .group_by(ProductResource.resource_id)
+    )
+    usage_map = {rid: cnt for rid, cnt in usage_counts.all()}
+
+    if "status" in fields:
+        new_status = fields["status"]
+        blocked = []
+        for resource in resources:
+            if resource.status == "active" and new_status != "active":
+                if usage_map.get(resource.id, 0) > 0:
+                    blocked.append(resource.id)
+        if blocked:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot deactivate resources used by products: {blocked}",
+            )
+
+    if new_poi is not None:
+        for resource in resources:
+            if new_poi.poi_type != resource.resource_type:
+                raise HTTPException(status_code=400, detail="资源类型必须与POI类型一致")
     
     updated_count = 0
-    for resource_id in resource_ids:
-        resource = await db.get(Resource, resource_id)
-        if resource:
-            for field, value in fields.items():
-                if hasattr(resource, field):
-                    setattr(resource, field, value)
-            updated_count += 1
+    for resource in resources:
+        for field, value in fields.items():
+            if hasattr(resource, field):
+                setattr(resource, field, value)
+        updated_count += 1
     
     await db.commit()
-    return {"updated": updated_count}
+    return {"updated": updated_count, "pending": 0, "skipped": 0, "errors": []}
 
 
 

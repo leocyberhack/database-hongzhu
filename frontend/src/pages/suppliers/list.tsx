@@ -4,9 +4,10 @@ import { useSearchParams } from 'react-router-dom'
 import { useData } from '@/contexts/DataContext'
 import type { Supplier, SupplierContact } from '@/types'
 import { apiRequest } from '@/lib/api'
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, FolderOpenOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import ContactTableEditor from '@/components/ContactTableEditor'
+import SupplierFileModal from '@/components/SupplierFileModal'
 
 interface FilterState {
     keyword: string
@@ -96,6 +97,7 @@ export default function SupplierPage() {
     const [searchParams] = useSearchParams()
     const [createModalVisible, setCreateModalVisible] = useState(false)
     const [editModalVisible, setEditModalVisible] = useState(false)
+    const [fileManagerSupplier, setFileManagerSupplier] = useState<Supplier | null>(null)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
@@ -138,10 +140,11 @@ export default function SupplierPage() {
                 contract_start_date: formatDateValue(values.contract_start_date),
                 contract_end_date: formatDateValue(values.contract_end_date),
             }
-            await apiRequest('/api/suppliers', { method: 'POST', body: JSON.stringify(payload) })
-            message.success('供应商已创建')
+            const created = await apiRequest<Supplier>('/api/suppliers', { method: 'POST', body: JSON.stringify(payload) })
+            message.success('供应商已创建，可上传合同文件')
             supplierForm.resetFields()
             setCreateModalVisible(false)
+            setFileManagerSupplier(created)
             await refresh()
         } catch (err: any) {
             message.error(err.message || '创建失败')
@@ -193,6 +196,27 @@ export default function SupplierPage() {
         } catch (err: any) {
             message.error(err.message || '更新失败')
         }
+    }
+
+    const openSupplierFiles = async (supplier: Supplier | null) => {
+        if (!supplier) return
+        try {
+            if (!supplier.folder_id) {
+                const updated = await apiRequest<Supplier>(`/api/suppliers/${supplier.id}/folder`, { method: 'POST' })
+                setFileManagerSupplier(updated)
+                await refresh()
+                return
+            }
+            setFileManagerSupplier(supplier)
+        } catch (err: any) {
+            message.error(err.message || '初始化供应商文件夹失败')
+        }
+    }
+
+    const closeEditModal = () => {
+        setEditModalVisible(false)
+        editForm.resetFields()
+        setSelected(null)
     }
 
     const deleteSupplier = async (id: string) => {
@@ -537,20 +561,24 @@ export default function SupplierPage() {
             <Modal
                 title={`编辑供应商: ${selected?.supplier_name} `}
                 open={editModalVisible}
-                onCancel={() => {
-                    setEditModalVisible(false)
-                    editForm.resetFields()
-                    // Don't clear selected here if we want to return to detail view, 
-                    // BUT since users said "automatically jump out is annoying", 
-                    // we should probably clear selected to close everything or keep logic separate.
-                    // The issue is: on "Edit" click, we set 'selected'. The drawer opens if (selected && !editModalVisible).
-                    // So when editModalVisible becomes false, drawer opens.
-                    // FIX: Don't set 'selected' for Edit. Or use a separate state variable for editing.
-                    // Let's use a separate state or just clear selected when closing edit if it wasn't opened from detail.
-                    // FOR NOW: Simplest fix -> when closing edit, clear selected too so drawer doesn't pop up.
-                    setSelected(null)
-                }}
-                footer={null}
+                onCancel={closeEditModal}
+                footer={(
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Button
+                            icon={<FolderOpenOutlined />}
+                            onClick={() => openSupplierFiles(selected)}
+                            disabled={!selected}
+                        >
+                            文件管理
+                        </Button>
+                        <Space>
+                            <Button onClick={closeEditModal}>取消</Button>
+                            <Button type="primary" onClick={() => editForm.submit()}>
+                                保存
+                            </Button>
+                        </Space>
+                    </div>
+                )}
                 centered
                 width={860}
             >
@@ -596,14 +624,6 @@ export default function SupplierPage() {
                         <DatePicker style={{ width: '100%' }} />
                     </Form.Item>
 
-                    <Space style={{ float: 'right', marginTop: 16 }}>
-                        <Button onClick={() => {
-                            setEditModalVisible(false)
-                            editForm.resetFields()
-                            setSelected(null)
-                        }}>取消</Button>
-                        <Button type="primary" htmlType="submit">保存</Button>
-                    </Space>
                 </Form>
             </Modal>
 
@@ -700,6 +720,12 @@ export default function SupplierPage() {
                     </>
                 )}
             </Drawer>
+
+            <SupplierFileModal
+                supplier={fileManagerSupplier}
+                open={!!fileManagerSupplier}
+                onClose={() => setFileManagerSupplier(null)}
+            />
         </div>
     )
 }

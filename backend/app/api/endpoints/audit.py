@@ -1,4 +1,5 @@
 ﻿from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -32,16 +33,17 @@ async def list_audit_logs(
     if operation:
         stmt = stmt.where(AuditLog.operation == operation)
     if start_date:
-        stmt = stmt.where(AuditLog.operated_at >= start_date)
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid start_date format, expected YYYY-MM-DD")
+        stmt = stmt.where(func.date(AuditLog.operated_at) >= start_dt)
     if end_date:
-        # Assuming end_date logic needs to include the whole day if no time provided,
-        # but if string comparison, '2023-01-01' < '2023-01-01 12:00:00' is False if using '>='.
-        # Let's rely on string format matching or standard SQL behavior.
-        # Ideally, cast to date or append time.
-        # Simple string comparison works for ISO dates.
-        # To include the end date day, we might need end_date + " 23:59:59"
-        stmt = stmt.where(AuditLog.operated_at <= end_date + " 23:59:59")
-
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid end_date format, expected YYYY-MM-DD")
+        stmt = stmt.where(func.date(AuditLog.operated_at) <= end_dt)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.order_by(AuditLog.operated_at.desc()).offset((page - 1) * page_size).limit(page_size))
     return ListResponse(
@@ -74,3 +76,4 @@ async def batch_delete_audit_logs(
             await db.delete(log)
     
     await db.commit()
+

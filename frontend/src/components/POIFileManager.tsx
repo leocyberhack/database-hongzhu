@@ -35,6 +35,7 @@ import { getToken, apiRequest, api } from '@/lib/api'
 interface POIFileManagerProps {
     poiFolderId: number | null
     poiName?: string
+    entityLabel?: string
     /** 是否只读模式 */
     readonly?: boolean
 }
@@ -62,7 +63,7 @@ interface BreadcrumbItem {
     name: string
 }
 
-export default function POIFileManager({ poiFolderId, poiName, readonly = false }: POIFileManagerProps) {
+export default function POIFileManager({ poiFolderId, poiName, entityLabel = 'POI', readonly = false }: POIFileManagerProps) {
     const [files, setFiles] = useState<FileItem[]>([])
     const [folders, setFolders] = useState<FolderItem[]>([])
     const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
@@ -570,7 +571,7 @@ export default function POIFileManager({ poiFolderId, poiName, readonly = false 
             <Card>
                 <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="POI文件夹未初始化，请先保存POI"
+                    description={`${entityLabel}文件夹未初始化，请先保存${entityLabel}`}
                 />
             </Card>
         )

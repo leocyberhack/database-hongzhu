@@ -4,12 +4,26 @@ from app.utils.time import now_china
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Product, ProductResource, ProductStructureSnapshot, Sku, ProductCategory, Resource
+from app.models import (
+    AuditLog,
+    Product,
+    ProductResource,
+    ProductStructureSnapshot,
+    Sku,
+    ProductCategory,
+    Resource,
+    Order,
+    Price,
+    PriceHistory,
+    Inventory,
+    InventoryLog,
+    SkuChannel,
+)
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.product import (
     ProductCreate,
@@ -25,9 +39,38 @@ from app.schemas.inventory_preview import ProductInventoryPreviewRequest
 router = APIRouter()
 
 
-async def _has_order_for_product(db: AsyncSession, product_id: int) -> bool:
-    # Placeholder: to be wired to Order table when exposed
-    return False
+async def _collect_product_sku_ids(db: AsyncSession, product_id: int) -> list[int]:
+    return list(await db.scalars(select(Sku.id).where(Sku.product_id == product_id)))
+
+
+async def _has_orders_for_product(db: AsyncSession, product_id: int, sku_ids: list[int]) -> bool:
+    if not sku_ids:
+        stmt = select(Order.id).where(Order.product_id == product_id).limit(1)
+    else:
+        stmt = (
+            select(Order.id)
+            .where(or_(Order.product_id == product_id, Order.sku_id.in_(sku_ids)))
+            .limit(1)
+        )
+    return await db.scalar(stmt) is not None
+
+
+async def _delete_product_dependencies(db: AsyncSession, product_id: int, sku_ids: list[int]) -> None:
+    # Product-level data
+    await db.execute(delete(ProductStructureSnapshot).where(ProductStructureSnapshot.product_id == product_id))
+    await db.execute(delete(ProductResource).where(ProductResource.product_id == product_id))
+
+    if not sku_ids:
+        return
+
+    # SKU-level data
+    price_ids_subq = select(Price.id).where(Price.sku_id.in_(sku_ids))
+    await db.execute(delete(PriceHistory).where(PriceHistory.price_id.in_(price_ids_subq)))
+    await db.execute(delete(Price).where(Price.sku_id.in_(sku_ids)))
+    await db.execute(delete(InventoryLog).where(InventoryLog.sku_id.in_(sku_ids)))
+    await db.execute(delete(Inventory).where(Inventory.sku_id.in_(sku_ids)))
+    await db.execute(delete(SkuChannel).where(SkuChannel.sku_id.in_(sku_ids)))
+    await db.execute(delete(Sku).where(Sku.id.in_(sku_ids)))
 
 
 # --- Product Categories ---
@@ -397,6 +440,10 @@ async def delete_product(
     product = await db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="未找到该产品")
+
+    sku_ids = await _collect_product_sku_ids(db, product_id)
+    if await _has_orders_for_product(db, product_id, sku_ids):
+        raise HTTPException(status_code=400, detail="该产品存在订单，无法删除")
     
     # Record audit log before deletion
     audit = AuditLog(
@@ -410,9 +457,8 @@ async def delete_product(
     )
     db.add(audit)
     
-    # First delete related SKUs to avoid foreign key constraint violation
-    from sqlalchemy import delete
-    await db.execute(delete(Sku).where(Sku.product_id == product_id))
+    # Delete dependent records first to avoid FK issues
+    await _delete_product_dependencies(db, product_id, sku_ids)
     
     # Then delete the product
     await db.delete(product)
@@ -426,8 +472,25 @@ async def batch_delete_products(
     db: DbSession,
     _: User = Depends(get_current_user),
 ):
-    from sqlalchemy import delete
-    await db.execute(delete(Product).where(Product.id.in_(product_ids)))
+    if not product_ids:
+        return None
+
+    # Block deletion if any product has orders
+    blocked_ids = set(
+        await db.scalars(select(Order.product_id).where(Order.product_id.in_(product_ids)).distinct())
+    )
+    if blocked_ids:
+        sorted_ids = sorted(blocked_ids)
+        preview = ", ".join(str(i) for i in sorted_ids[:10])
+        suffix = f" 等 {len(sorted_ids)} 个产品" if len(sorted_ids) > 10 else ""
+        raise HTTPException(status_code=400, detail=f"以下产品存在订单，无法删除: {preview}{suffix}")
+
+    products = list(await db.scalars(select(Product).where(Product.id.in_(product_ids))))
+    for product in products:
+        sku_ids = await _collect_product_sku_ids(db, product.id)
+        await _delete_product_dependencies(db, product.id, sku_ids)
+        await db.delete(product)
+
     await db.commit()
     return None
 
@@ -440,19 +503,43 @@ async def batch_update_products(
 ):
     product_ids = updates.get("ids", [])
     fields = updates.get("fields", {})
-    
+    if not product_ids or not fields:
+        return {"updated": 0, "pending": 0, "skipped": 0, "errors": []}
+
+    allowed_fields = {"status", "category_id"}
+    invalid_fields = [k for k in fields.keys() if k not in allowed_fields]
+    if invalid_fields:
+        raise HTTPException(status_code=400, detail=f"批量更新仅支持字段: {', '.join(sorted(allowed_fields))}")
+
+    product_ids = list(dict.fromkeys(product_ids))
+    products = list(await db.scalars(select(Product).where(Product.id.in_(product_ids))))
+    if len(products) != len(product_ids):
+        found_ids = {p.id for p in products}
+        missing = [pid for pid in product_ids if pid not in found_ids]
+        raise HTTPException(status_code=404, detail=f"Product not found: {missing}")
+
+    if "status" in fields:
+        new_status = fields["status"]
+        if new_status is not None and new_status != "active":
+            # Block deactivation if product has SKUs
+            sku_counts = await db.execute(
+                select(Sku.product_id, func.count()).where(Sku.product_id.in_(product_ids)).group_by(Sku.product_id)
+            )
+            sku_map = {pid: cnt for pid, cnt in sku_counts.all()}
+            blocked = [pid for pid in product_ids if sku_map.get(pid, 0) > 0]
+            if blocked:
+                raise HTTPException(status_code=400, detail=f"无法下架已关联SKU的产品: {blocked}")
+
     updated_count = 0
-    for pid in product_ids:
-        product = await db.get(Product, pid)
-        if product:
-            for field, value in fields.items():
-                if hasattr(product, field):
-                    setattr(product, field, value)
-            product.updated_at = func.now()
-            updated_count += 1
+    for product in products:
+        for field, value in fields.items():
+            if hasattr(product, field):
+                setattr(product, field, value)
+        product.updated_at = func.now()
+        updated_count += 1
     
     await db.commit()
-    return {"updated": updated_count}
+    return {"updated": updated_count, "pending": 0, "skipped": 0, "errors": []}
 
 
 @router.get("/products/{product_id}", response_model=ProductRead)

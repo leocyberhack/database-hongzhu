@@ -108,10 +108,13 @@ class Supplier(Base):
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     contract_start_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
     contract_end_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("folder.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
     __table_args__ = (UniqueConstraint("supplier_name", name="uq_supplier_name"),)
+
+    folder = relationship("Folder")
 
 
 class SupplierResource(Base):

@@ -167,6 +167,30 @@ async def init_inventory(
     )
     existing_records = await db.scalars(stmt)
     existing_map = {r.inventory_date: r for r in existing_records}
+
+    # Validate: new total cannot be less than sold + frozen
+    invalid_dates = []
+    for d in _date_range(payload.start_date, payload.end_date):
+        if payload.weekdays is not None and d.weekday() not in payload.weekdays:
+            continue
+        inv = existing_map.get(d)
+        if inv and payload.total_qty < (inv.sold_qty + inv.frozen_qty):
+            invalid_dates.append(
+                {
+                    "date": d,
+                    "sold": inv.sold_qty,
+                    "frozen": inv.frozen_qty,
+                }
+            )
+    if invalid_dates:
+        sample = invalid_dates[0]
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"总库存不能小于已售+冻结。冲突日期数: {len(invalid_dates)}，"
+                f"示例: {sample['date']} (已售 {sample['sold']}，冻结 {sample['frozen']})"
+            ),
+        )
     
     before_total_qty = 0
     after_total_qty = 0
@@ -242,6 +266,13 @@ async def adjust_inventory(
     )
     if not inv:
         raise HTTPException(status_code=404, detail="Inventory record not found")
+
+    min_required = inv.sold_qty + inv.frozen_qty
+    if payload.total_qty < min_required:
+        raise HTTPException(
+            status_code=400,
+            detail=f"总库存不能小于已售+冻结 (已售 {inv.sold_qty}，冻结 {inv.frozen_qty})",
+        )
 
     before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
     inv.total_qty = payload.total_qty

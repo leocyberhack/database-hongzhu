@@ -8,11 +8,32 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Product, Sku, Approval
+from app.models import AuditLog, Product, Sku, Approval, SkuChannel
 from app.schemas.common import Pagination
 from app.schemas.sku import SkuCreate, SkuListResponse, SkuResponse, SkuUpdate
 
 router = APIRouter()
+
+
+async def _get_sku_channel_ids(db: DbSession, sku_id: int) -> list[int]:
+    rows = await db.scalars(select(SkuChannel.channel_id).where(SkuChannel.sku_id == sku_id))
+    return list({cid for cid in rows if cid is not None})
+
+
+async def _has_channel_name_conflict(db: DbSession, sku_id: int, sku_name: str, channel_ids: list[int]) -> bool:
+    if not channel_ids:
+        return False
+    stmt = (
+        select(Sku.id)
+        .join(SkuChannel)
+        .where(
+            SkuChannel.channel_id.in_(channel_ids),
+            Sku.sku_name == sku_name,
+            Sku.id != sku_id,
+        )
+        .limit(1)
+    )
+    return await db.scalar(stmt) is not None
 
 
 @router.post("/batch-delete", status_code=204)
@@ -41,7 +62,7 @@ async def batch_delete_skus(
 async def batch_update_skus(
     payload: dict,
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     ids = payload.get("ids", [])
     fields = payload.get("fields", {})
@@ -55,20 +76,132 @@ async def batch_update_skus(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid update fields: {str(e)}")
 
+    ids = list(dict.fromkeys(ids))
     stmt = select(Sku).where(Sku.id.in_(ids))
-    skus = await db.scalars(stmt)
-    
+    skus = list(await db.scalars(stmt))
+    if len(skus) != len(ids):
+        found_ids = {sku.id for sku in skus}
+        missing = [sid for sid in ids if sid not in found_ids]
+        raise HTTPException(status_code=404, detail=f"SKU not found: {missing}")
+
+    if not skus:
+        return {"updated": 0, "pending": 0, "skipped": 0, "errors": []}
+
+    # Validate sku_name uniqueness across channels if sku_name is being updated
+    if "sku_name" in update_data and update_data["sku_name"]:
+        new_name = update_data["sku_name"]
+        affected_skus = [sku for sku in skus if sku.sku_name != new_name]
+        if affected_skus:
+            affected_ids = [sku.id for sku in affected_skus]
+            # Preload channels for affected SKUs
+            bindings = await db.execute(
+                select(SkuChannel.sku_id, SkuChannel.channel_id).where(SkuChannel.sku_id.in_(affected_ids))
+            )
+            channel_map: dict[int, set[int]] = {}
+            for sku_id, channel_id in bindings.all():
+                if channel_id is None:
+                    continue
+                channel_map.setdefault(sku_id, set()).add(channel_id)
+
+            # Check conflicts among the batch itself (same name on same channel)
+            channel_name_map: dict[tuple[int, str], list[int]] = {}
+            for sku in affected_skus:
+                channels = channel_map.get(sku.id, set())
+                for cid in channels:
+                    channel_name_map.setdefault((cid, new_name), []).append(sku.id)
+            for (cid, _), sku_ids in channel_name_map.items():
+                if len(sku_ids) > 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"SKU名称在同渠道下必须唯一，渠道 {cid} 存在重复 SKU",
+                    )
+
+            # Check conflicts against existing SKUs on those channels
+            for sku in affected_skus:
+                channels = list(channel_map.get(sku.id, set()))
+                if await _has_channel_name_conflict(db, sku.id, new_name, channels):
+                    raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
+
+    changed_items: list[tuple[Sku, dict]] = []
+    skipped_count = 0
     for sku in skus:
-        for k, v in update_data.items():
-            setattr(sku, k, v)
-            
+        changes = {k: v for k, v in update_data.items() if getattr(sku, k) != v}
+        if not changes:
+            skipped_count += 1
+            continue
+        changed_items.append((sku, changes))
+
+    if not changed_items:
+        return {"updated": 0, "pending": 0, "skipped": skipped_count, "errors": []}
+
+    approval_flags = set()
+    if user.role not in ["admin", "super_admin"]:
+        for sku, changes in changed_items:
+            needs_approval = False
+            if "status" in changes and changes["status"] != sku.status:
+                needs_approval = True
+            if sku.status == "active":
+                if any(k for k in changes if k != "status"):
+                    needs_approval = True
+            approval_flags.add(needs_approval)
+    else:
+        approval_flags.add(False)
+
+    if len(approval_flags) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="批量操作包含需审批与无需审批的SKU，请拆分后再提交",
+        )
+
+    updated_count = 0
+    pending_count = 0
+    needs_approval_all = approval_flags.pop()
+
+    if needs_approval_all:
+        for sku, _ in changed_items:
+            approval = Approval(
+                object_type="sku",
+                object_id=sku.id,
+                action_type="update",
+                before_data={"sku_name": sku.sku_name, "status": sku.status, "product_id": sku.product_id},
+                after_data=update_data,
+                status="pending",
+                applicant=user.username,
+                approver="admin",
+                applied_at=now_china(),
+            )
+            db.add(approval)
+            pending_count += 1
+    else:
+        for sku, changes in changed_items:
+            before_data = {"sku_name": sku.sku_name, "status": sku.status, "product_id": sku.product_id}
+            for k, v in changes.items():
+                setattr(sku, k, v)
+
+            audit = AuditLog(
+                table_name="sku",
+                record_id=sku.id,
+                operation="UPDATE",
+                diff_data={"before": before_data, "after": changes},
+                operator=user.username,
+                operated_at=now_china(),
+                source="web",
+            )
+            db.add(audit)
+            updated_count += 1
+
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Batch update failed")
-        
-    return {"message": "Success"}
+
+    return {
+        "updated": updated_count,
+        "pending": pending_count,
+        "skipped": skipped_count,
+        "errors": [],
+    }
 
 
 @router.post("", response_model=SkuResponse, status_code=201)
@@ -186,6 +319,12 @@ async def update_sku(
     # Capture before state
     before_data = {"sku_name": sku.sku_name, "status": sku.status, "product_id": sku.product_id}
     update_data = payload.model_dump(exclude_unset=True)
+
+    # Enforce sku_name uniqueness within bound channels
+    if "sku_name" in update_data and update_data["sku_name"] and update_data["sku_name"] != sku.sku_name:
+        channel_ids = await _get_sku_channel_ids(db, sku_id)
+        if await _has_channel_name_conflict(db, sku_id, update_data["sku_name"], channel_ids):
+            raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
 
     # Check for approval requirement
     needs_approval = False

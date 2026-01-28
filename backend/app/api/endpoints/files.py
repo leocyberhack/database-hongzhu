@@ -116,8 +116,18 @@ async def _delete_folders_with_files(db: AsyncSession, folder_ids: List[int], op
                 source="web",
             )
         )
+
+    # Delete from storage first; abort if any deletion fails
+    failed = []
     for f in files:
-        delete_file(f.object_name)
+        if not delete_file(f.object_name):
+            failed.append(f.filename)
+    if failed:
+        preview = failed[:5]
+        raise HTTPException(
+            status_code=502,
+            detail=f"部分文件删除失败，未清理数据库记录: {preview}" + ("..." if len(failed) > 5 else ""),
+        )
 
     await db.execute(delete(FileModel).where(FileModel.folder_id.in_(descendant_ids)))
     await db.execute(delete(Folder).where(Folder.id.in_(descendant_ids)))
@@ -140,11 +150,12 @@ async def list_folders(
         _require_folder_password(parent, x_folder_password)
         query = select(Folder).where(Folder.parent_id == parent_id)
     else:
-        # 根目录：排除POI专属文件夹（名称以"POI_"开头的文件夹）
+        # 根目录：排除POI/供应商专属文件夹（名称以"POI_"/"SUPPLIER_"开头的文件夹）
         query = select(Folder).where(
             and_(
                 Folder.parent_id.is_(None),
-                ~Folder.name.startswith("POI_")
+                ~Folder.name.startswith("POI_"),
+                ~Folder.name.startswith("SUPPLIER_"),
             )
         )
     
@@ -576,6 +587,7 @@ async def batch_delete_files(
     result = await db.execute(select(FileModel).where(FileModel.id.in_(file_ids)))
     files = result.scalars().all()
     operated_at = now_china()
+    failed = []
     for f in files:
         db.add(
             AuditLog(
@@ -595,7 +607,16 @@ async def batch_delete_files(
                 source="web",
             )
         )
-        delete_file(f.object_name)
+
+        if not delete_file(f.object_name):
+            failed.append(f.filename)
+
+    if failed:
+        preview = failed[:5]
+        raise HTTPException(
+            status_code=502,
+            detail=f"部分文件删除失败，未清理数据库记录: {preview}" + ("..." if len(failed) > 5 else ""),
+        )
 
     await db.execute(delete(FileModel).where(FileModel.id.in_(file_ids)))
     await db.commit()
@@ -633,7 +654,8 @@ async def delete_file_by_id(
     )
 
     # 从 MinIO 删除
-    delete_file(file.object_name)
+    if not delete_file(file.object_name):
+        raise HTTPException(status_code=502, detail="文件删除失败，请稍后重试")
     
     # 从数据库删除
     await db.delete(file)

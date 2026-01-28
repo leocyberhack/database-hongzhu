@@ -41,6 +41,7 @@ export interface Supplier {
     remark?: string
     contract_start_date?: string
     contract_end_date?: string
+    folder_id?: number
     created_at?: string
     updated_at?: string
 }

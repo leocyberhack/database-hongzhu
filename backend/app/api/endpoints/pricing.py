@@ -374,11 +374,11 @@ async def create_price(
     for c in conflicts:
         # If conflict is PENDING
         if c.status == 'pending':
-             if user.role in ['admin', 'manager']:
+             if user.role in ['admin', 'super_admin']:
                  c.status = 'expired'
                  db.add(c)
              else:
-                 raise HTTPException(status_code=400, detail="Pending price conflicts exist; only admin or manager can override")
+                 raise HTTPException(status_code=400, detail="Pending price conflicts exist; only admin or super_admin can override")
         
         # If conflict is ACTIVE, we adjust it
         elif c.status == 'active':
