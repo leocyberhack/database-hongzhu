@@ -1,4 +1,4 @@
-﻿from datetime import datetime, date
+﻿from datetime import datetime
 from app.utils.time import now_china
 from decimal import Decimal
 from typing import Optional
@@ -13,6 +13,7 @@ from app.models import (
     AuditLog,
     Approval,
     Folder,
+    Resource,
     Supplier,
     SupplierResource,
     SupplierResourcePriceHistory,
@@ -40,11 +41,14 @@ SUPPLIER_ATTR_KEYS = (
     "license_no",
     "legal_person",
     "credit_code",
+)
+
+REMOVED_SUPPLIER_ATTR_KEYS = {
     "settlement_cycle",
     "settlement_method",
     "invoice_info",
     "contract_no",
-)
+}
 
 
 def _extract_supplier_attrs(attrs: Optional[dict], include_empty: bool = False) -> dict:
@@ -60,12 +64,17 @@ def _extract_supplier_attrs(attrs: Optional[dict], include_empty: bool = False) 
     return data
 
 
+def _sanitize_supplier_attrs(attrs: Optional[dict]) -> Optional[dict]:
+    if not attrs:
+        return attrs
+    cleaned = {k: v for k, v in attrs.items() if k not in REMOVED_SUPPLIER_ATTR_KEYS}
+    return cleaned or None
+
+
 def _supplier_audit_snapshot(supplier: Supplier, include_empty_attrs: bool = False) -> dict:
     payload = {
         "supplier_name": supplier.supplier_name,
         "contact_info": supplier.contact_info,
-        "contract_start_date": supplier.contract_start_date,
-        "contract_end_date": supplier.contract_end_date,
         "folder_id": supplier.folder_id,
     }
     payload.update(_extract_supplier_attrs(supplier.attrs, include_empty=include_empty_attrs))
@@ -113,7 +122,9 @@ async def create_supplier(
     db.add(supplier_folder)
     await db.flush()
 
-    obj = Supplier(**payload.model_dump(), folder_id=supplier_folder.id)
+    payload_data = payload.model_dump()
+    payload_data["attrs"] = _sanitize_supplier_attrs(payload_data.get("attrs"))
+    obj = Supplier(**payload_data, folder_id=supplier_folder.id)
     db.add(obj)
     await db.flush()
     
@@ -209,6 +220,13 @@ async def bind_supplier_resource(
     db: DbSession,
     user: User = Depends(get_current_user),
 ):
+    supplier = await db.get(Supplier, payload.supplier_id)
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    resource = await db.get(Resource, payload.resource_id)
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+
     dup = await db.scalar(
         select(SupplierResource).where(
             SupplierResource.supplier_id == payload.supplier_id,
@@ -304,7 +322,7 @@ async def adjust_supplier_price(
         after_data={"settlement_price": str(sr.settlement_price)},
         status="pending",
         applicant=user.username,
-        approver="manager",  # Placeholder
+        approver="admin",
         applied_at=now_china(),
     )
 
@@ -349,6 +367,8 @@ async def update_supplier(
     before_data = _supplier_audit_snapshot(supplier, include_empty_attrs=True)
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "attrs" in update_data:
+        update_data["attrs"] = _sanitize_supplier_attrs(update_data.get("attrs"))
     for field, value in update_data.items():
         setattr(supplier, field, value)
 
@@ -380,6 +400,12 @@ async def delete_supplier(
     supplier = await db.get(Supplier, supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+
+    binding_count = await db.scalar(
+        select(func.count()).select_from(SupplierResource).where(SupplierResource.supplier_id == supplier_id)
+    )
+    if binding_count and binding_count > 0:
+        raise HTTPException(status_code=400, detail=f"无法删除供应商：已绑定 {binding_count} 个资源")
     
     # Record audit log before deletion
     audit = AuditLog(
@@ -404,6 +430,21 @@ async def batch_delete_suppliers(
     db: DbSession,
     _: User = Depends(get_current_user),
 ):
+    if not supplier_ids:
+        return None
+
+    usage_rows = await db.execute(
+        select(SupplierResource.supplier_id, func.count())
+        .where(SupplierResource.supplier_id.in_(supplier_ids))
+        .group_by(SupplierResource.supplier_id)
+    )
+    usage_map = {sid: cnt for sid, cnt in usage_rows.all()}
+    if usage_map:
+        blocked = sorted(usage_map.keys())
+        preview = ", ".join(str(i) for i in blocked[:10])
+        suffix = f" 等 {len(blocked)} 个供应商" if len(blocked) > 10 else ""
+        raise HTTPException(status_code=400, detail=f"以下供应商仍绑定资源，无法删除: {preview}{suffix}")
+
     for supplier_id in supplier_ids:
         supplier = await db.get(Supplier, supplier_id)
         if supplier:
@@ -437,30 +478,13 @@ async def batch_update_suppliers(
         "tags",
         "remark",
         "attrs",
-        "contract_start_date",
-        "contract_end_date",
     }
     invalid_fields = [k for k in fields.keys() if k not in allowed_fields]
     if invalid_fields:
         raise HTTPException(status_code=400, detail=f"批量更新仅支持字段: {', '.join(sorted(allowed_fields))}")
 
-    # Parse date fields if provided as strings
-    for date_field in ("contract_start_date", "contract_end_date"):
-        if date_field in fields:
-            val = fields[date_field]
-            if val is None:
-                continue
-            if isinstance(val, str):
-                try:
-                    fields[date_field] = datetime.strptime(val, "%Y-%m-%d").date()
-                except ValueError:
-                    raise HTTPException(status_code=400, detail=f"Invalid {date_field} format, expected YYYY-MM-DD")
-            elif isinstance(val, datetime):
-                fields[date_field] = val.date()
-            elif isinstance(val, date):
-                continue
-            else:
-                raise HTTPException(status_code=400, detail=f"Invalid {date_field} value")
+    if "attrs" in fields:
+        fields["attrs"] = _sanitize_supplier_attrs(fields.get("attrs"))
     supplier_ids = list(dict.fromkeys(supplier_ids))
     suppliers = list(await db.scalars(select(Supplier).where(Supplier.id.in_(supplier_ids))))
     if len(suppliers) != len(supplier_ids):

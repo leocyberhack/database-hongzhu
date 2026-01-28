@@ -29,6 +29,13 @@ interface POIDetailDrawerProps {
     onCityChange: (value: string) => void
     /** 是否只读模式 */
     readonly?: boolean
+
+    // Custom options handling
+    typeOptions?: Record<string, string[]>
+    onOptionsChange?: (field: string, newOptions: string[]) => void
+    onOptionAdd?: (field: string, val: string) => void
+    onOptionDelete?: (field: string, val: string) => void
+    onOptionRename?: (field: string, oldVal: string, newVal: string) => void
 }
 
 /**
@@ -47,7 +54,12 @@ const POIDetailDrawer: React.FC<POIDetailDrawerProps> = ({
     editCity,
     onProvinceChange,
     onCityChange,
-    readonly = false
+    readonly = false,
+    typeOptions,
+    onOptionsChange,
+    onOptionAdd,
+    onOptionDelete,
+    onOptionRename
 }) => {
     if (!poi) return null
 
@@ -174,7 +186,16 @@ const POIDetailDrawer: React.FC<POIDetailDrawerProps> = ({
             key: 'resources',
             label: '关联资源',
             children: (
-                <ResourceManager key={poi.id} poiId={poi.id} mode="embedded" />
+                <ResourceManager
+                    key={poi.id}
+                    poiId={poi.id}
+                    mode="embedded"
+                    typeOptions={typeOptions}
+                    onOptionsChange={onOptionsChange}
+                    onOptionAdd={onOptionAdd}
+                    onOptionDelete={onOptionDelete}
+                    onOptionRename={onOptionRename}
+                />
             )
         }
     ]
@@ -183,7 +204,7 @@ const POIDetailDrawer: React.FC<POIDetailDrawerProps> = ({
         <Drawer
             title={`POI 详情: ${poi.poi_name}`}
             open={true}
-            width={800}
+            width={960}
             onClose={onClose}
         >
             <Tabs defaultActiveKey="basic" items={tabItems} />

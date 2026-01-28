@@ -1,4 +1,4 @@
-from contextvars import ContextVar
+﻿from contextvars import ContextVar
 from typing import Any, Dict, Iterable
 
 from datetime import date, datetime
@@ -6,9 +6,8 @@ from decimal import Decimal
 import json
 
 from jose import jwt, JWTError
-from sqlalchemy import event
+from sqlalchemy import event, inspect, String, Text
 from sqlalchemy.orm import Session
-from sqlalchemy import inspect
 
 from app.core.config import get_settings
 from app.models import (
@@ -105,22 +104,30 @@ def before_flush(session: Session, flush_context, instances):
     for obj in _collect_targets(session.deleted):
         snap["deleted"][obj] = _serialize(obj)
     
-    # 自动更新所有被修改对象的 updated_at 字段
-    # 这是一个通用的解决方案，无需逐一修改每个API端点
+    # Auto-update updated_at on dirty objects when real changes exist.
+    # Use ISO string for string/text columns; datetime otherwise.
     for obj in session.dirty:
         if hasattr(obj, 'updated_at'):
-            # 只有当对象确实有变化时才更新时间戳
+            # Only update when there are changes excluding updated_at itself.
             state = inspect(obj)
             has_real_changes = False
             for attr in state.mapper.column_attrs:
                 if attr.key == 'updated_at':
-                    continue  # 跳过 updated_at 本身
+                    continue
                 hist = state.attrs[attr.key].history
                 if hist.has_changes():
                     has_real_changes = True
                     break
             if has_real_changes:
-                obj.updated_at = now_china()
+                now = now_china()
+                try:
+                    col = obj.__table__.columns.get('updated_at')
+                except Exception:
+                    col = None
+                if col is not None and isinstance(col.type, (String, Text)):
+                    obj.updated_at = now.isoformat()
+                else:
+                    obj.updated_at = now
 
 
 def after_flush(session: Session, flush_context):
@@ -214,3 +221,6 @@ def extract_operator_from_headers(headers) -> str:
     if x_user:
         return x_user
     return "unknown"
+
+
+

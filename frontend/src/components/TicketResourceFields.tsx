@@ -1,12 +1,22 @@
-import { Form, Input, InputNumber, Select } from 'antd'
+import { Form, Input, InputNumber } from 'antd'
+import EditableSelect from '@/components/EditableSelect'
 
 const { TextArea } = Input
+
+export interface ResourceFieldsProps {
+    prefix?: (string | number)[]
+    typeOptions?: Record<string, string[]>
+    onOptionsChange?: (field: string, newOptions: string[]) => void
+    onOptionAdd?: (field: string, val: string) => void
+    onOptionDelete?: (field: string, val: string) => void
+    onOptionRename?: (field: string, oldVal: string, newVal: string) => void
+}
 
 /**
  * 景区资源的独属字段组件（POI层已定义通用字段）
  * 只包含资源级别的个性化属性
  */
-export default function TicketResourceFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
+export default function TicketResourceFields({ prefix = ['attrs'], typeOptions, onOptionsChange, onOptionAdd, onOptionDelete, onOptionRename }: ResourceFieldsProps) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#e6f7ff', borderRadius: 8, border: '1px solid #91d5ff' }}>
             <h4 style={{ marginBottom: 16, color: '#1890ff' }}>🎫 景区资源独属信息</h4>
@@ -20,15 +30,15 @@ export default function TicketResourceFields({ prefix = ['attrs'] }: { prefix?: 
                 label="票种"
                 rules={[{ required: true, message: '请选择票种' }]}
             >
-                <Select placeholder="选择票种">
-                    <Select.Option value="成人票">成人票</Select.Option>
-                    <Select.Option value="儿童票">儿童票</Select.Option>
-                    <Select.Option value="学生票">学生票</Select.Option>
-                    <Select.Option value="老人票">老人票</Select.Option>
-                    <Select.Option value="双人票">双人票</Select.Option>
-                    <Select.Option value="家庭票">家庭票</Select.Option>
-                    <Select.Option value="团体票">团体票</Select.Option>
-                </Select>
+                <EditableSelect
+                    placeholder="选择票种"
+                    defaultOptions={['成人票', '儿童票', '学生票', '老人票', '双人票', '家庭票', '团体票']}
+                    customOptions={typeOptions?.['ticket_type']}
+                    onOptionsChange={(opts) => onOptionsChange?.('ticket_type', opts)}
+                    onOptionAdd={(val) => onOptionAdd?.('ticket_type', val)}
+                    onOptionDelete={(val) => onOptionDelete?.('ticket_type', val)}
+                    onOptionRename={(oldVal, newVal) => onOptionRename?.('ticket_type', oldVal, newVal)}
+                />
             </Form.Item>
 
             {/* 年龄限制 */}

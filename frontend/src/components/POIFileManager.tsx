@@ -4,7 +4,7 @@
  * 套用现有的文件系统，使用POI专属文件夹
  */
 import { useState, useEffect, useMemo } from 'react'
-import { Upload, Button, Image, Space, message, Modal, Spin, Empty, Card, Breadcrumb, Input, Checkbox, Tag, Popconfirm, Tree, Dropdown } from 'antd'
+import { Upload, Button, Image, Space, message, Modal, Spin, Empty, Card, Breadcrumb, Input, Checkbox, Popconfirm, Tree, Dropdown } from 'antd'
 import {
     UploadOutlined,
     DeleteOutlined,
@@ -12,7 +12,6 @@ import {
     DownloadOutlined,
     FolderAddOutlined,
     FolderOutlined,
-    FolderOpenOutlined,
     HomeOutlined,
     ArrowLeftOutlined,
     FileOutlined,
@@ -22,14 +21,13 @@ import {
     FilePptOutlined,
     FileTextOutlined,
     VideoCameraOutlined,
-    LockOutlined,
     ScissorOutlined,
     EditOutlined,
     CloudDownloadOutlined,
     MoreOutlined,
     FileZipOutlined
 } from '@ant-design/icons'
-import type { UploadProps, MenuProps, TreeProps } from 'antd'
+import type { UploadProps, TreeProps } from 'antd'
 import { getToken, apiRequest, api } from '@/lib/api'
 
 interface POIFileManagerProps {
@@ -38,6 +36,12 @@ interface POIFileManagerProps {
     entityLabel?: string
     /** 是否只读模式 */
     readonly?: boolean
+    /** 模式：管理(默认) | 选择 */
+    mode?: 'manage' | 'select'
+    /** 选择模式下的回调 */
+    onSelectionChange?: (selectedFiles: FileItem[]) => void
+    /** 初始选中的文件对象 */
+    defaultSelectedFiles?: FileItem[]
 }
 
 interface FileItem {
@@ -63,7 +67,14 @@ interface BreadcrumbItem {
     name: string
 }
 
-export default function POIFileManager({ poiFolderId, poiName, entityLabel = 'POI', readonly = false }: POIFileManagerProps) {
+export default function POIFileManager({
+    poiFolderId,
+    entityLabel = 'POI',
+    readonly = false,
+    mode = 'manage',
+    onSelectionChange,
+    defaultSelectedFiles = []
+}: POIFileManagerProps) {
     const [files, setFiles] = useState<FileItem[]>([])
     const [folders, setFolders] = useState<FolderItem[]>([])
     const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
@@ -84,8 +95,35 @@ export default function POIFileManager({ poiFolderId, poiName, entityLabel = 'PO
     const [treeExpandedKeys, setTreeExpandedKeys] = useState<(string | number)[]>([])
 
     // 选中状态
-    const [selectedFileIds, setSelectedFileIds] = useState<number[]>([])
+    const [selectedFilesMap, setSelectedFilesMap] = useState<Map<number, FileItem>>(() => {
+        const map = new Map<number, FileItem>()
+        defaultSelectedFiles.forEach(f => map.set(f.id, f))
+        return map
+    })
+    const [selectedFileIds, setSelectedFileIds] = useState<number[]>(() => defaultSelectedFiles.map(f => f.id))
     const [selectedFolderIds, setSelectedFolderIds] = useState<number[]>([])
+
+    // 初始化已选文件Map(如果提供了默认ID，我们也只能等加载到文件时才能填充Map，或者让调用方传入完整对象)
+    // 简化起见，我们假设初始只要ID正确，后续用户操作会填充Map
+
+    // 通知父组件选中变化
+    useEffect(() => {
+        if (mode === 'select' && onSelectionChange) {
+            onSelectionChange(Array.from(selectedFilesMap.values()))
+        }
+    }, [selectedFilesMap])
+
+    const toggleFileSelection = (file: FileItem) => {
+        const newMap = new Map(selectedFilesMap)
+        if (newMap.has(file.id)) {
+            newMap.delete(file.id)
+            setSelectedFileIds(prev => prev.filter(id => id !== file.id))
+        } else {
+            newMap.set(file.id, file)
+            setSelectedFileIds(prev => [...prev, file.id])
+        }
+        setSelectedFilesMap(newMap)
+    }
 
     // 初始化当前文件夹ID
     useEffect(() => {
@@ -100,7 +138,9 @@ export default function POIFileManager({ poiFolderId, poiName, entityLabel = 'PO
         if (!folderId) return
 
         setLoading(true)
-        setSelectedFileIds([])
+        if (mode !== 'select') {
+            setSelectedFileIds([])
+        }
         setSelectedFolderIds([])
 
         try {
@@ -489,7 +529,7 @@ export default function POIFileManager({ poiFolderId, poiName, entityLabel = 'PO
                 await api.post('/files/batch-delete', { file_ids: selectedFileIds })
                 message.success(`已删除 ${selectedFileIds.length} 个文件`)
                 setSelectedFileIds([])
-            } catch (error: any) {
+            } catch {
                 message.error('批量删除文件失败')
             }
         }
@@ -498,7 +538,7 @@ export default function POIFileManager({ poiFolderId, poiName, entityLabel = 'PO
                 await api.post('/files/folders/batch-delete', { folder_ids: selectedFolderIds })
                 message.success(`已删除 ${selectedFolderIds.length} 个文件夹`)
                 setSelectedFolderIds([])
-            } catch (error: any) {
+            } catch {
                 message.error('批量删除文件夹失败')
             }
         }
@@ -830,39 +870,50 @@ export default function POIFileManager({ poiFolderId, poiName, entityLabel = 'PO
                                         borderBottom: '1px solid #f0f0f0',
                                         position: 'relative',
                                         overflow: 'hidden'
-                                    }} onClick={() => openPreview(file)}>
+                                    }} onClick={() => {
+                                        if (mode === 'select') {
+                                            toggleFileSelection(file)
+                                        } else {
+                                            openPreview(file)
+                                        }
+                                    }}>
                                         {file.content_type.startsWith('image/') ? (
                                             <Image
                                                 src={file.url}
                                                 alt={file.filename}
                                                 preview={false}
                                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                onClick={(e) => {
+                                                    if (mode === 'select') {
+                                                        e.stopPropagation()
+                                                        toggleFileSelection(file)
+                                                    }
+                                                }}
                                             />
                                         ) : (
                                             <div style={{ fontSize: 40 }}>
                                                 {getFileIcon(file.filename, file.content_type)}
                                             </div>
                                         )}
-                                        {!readonly && (
+                                        {(!readonly || mode === 'select') && (
                                             <div style={{ position: 'absolute', top: 5, left: 5 }} onClick={e => e.stopPropagation()}>
                                                 <Checkbox
                                                     checked={selectedFileIds.includes(file.id)}
                                                     onChange={e => {
-                                                        if (e.target.checked) setSelectedFileIds([...selectedFileIds, file.id])
-                                                        else setSelectedFileIds(selectedFileIds.filter(id => id !== file.id))
+                                                        e.stopPropagation()
+                                                        toggleFileSelection(file)
                                                     }}
                                                 />
                                             </div>
                                         )}
                                     </div>
                                 }
-                                actions={!readonly ? [
+                                actions={(readonly || mode === 'select') ? [] : [
                                     <DownloadOutlined key="download" onClick={() => handleDownload(file)} />,
                                     <Dropdown
                                         key="more"
                                         menu={{
                                             items: [
-                                                // { label: '重命名', icon: <EditOutlined />, key: 'rename', onClick: () => setRenameModal({ open: true, file, name: file.filename }) }, // 暂时不支持文件重命名？
                                                 { label: '移动', icon: <ScissorOutlined />, key: 'move', onClick: () => openMoveModal([file.id]) },
                                                 { type: 'divider' },
                                                 {
@@ -878,8 +929,6 @@ export default function POIFileManager({ poiFolderId, poiName, entityLabel = 'PO
                                             <MoreOutlined />
                                         </div>
                                     </Dropdown>
-                                ] : [
-                                    <DownloadOutlined key="download" onClick={() => handleDownload(file)} />
                                 ]}
                             >
                                 <Card.Meta

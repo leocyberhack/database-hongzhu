@@ -288,6 +288,13 @@ async def delete_poi(
     poi = await db.get(Poi, poi_id)
     if not poi:
         raise HTTPException(status_code=404, detail="POI not found")
+
+    # Block deletion if POI still has resources
+    resource_count = await db.scalar(
+        select(func.count()).select_from(Resource).where(Resource.poi_id == poi_id)
+    )
+    if resource_count and resource_count > 0:
+        raise HTTPException(status_code=400, detail=f"无法删除POI：已关联 {resource_count} 个资源")
     
     # Record audit log before deletion
     audit = AuditLog(
@@ -321,6 +328,22 @@ async def batch_delete_poi(
     db: DbSession,
     _: User = Depends(get_current_user),
 ):
+    if not poi_ids:
+        return None
+
+    # Block deletion if any POI still has resources
+    usage_rows = await db.execute(
+        select(Resource.poi_id, func.count())
+        .where(Resource.poi_id.in_(poi_ids))
+        .group_by(Resource.poi_id)
+    )
+    usage_map = {pid: cnt for pid, cnt in usage_rows.all()}
+    if usage_map:
+        blocked = sorted(usage_map.keys())
+        preview = ", ".join(str(i) for i in blocked[:10])
+        suffix = f" 等 {len(blocked)} 个POI" if len(blocked) > 10 else ""
+        raise HTTPException(status_code=400, detail=f"以下POI仍有关联资源，无法删除: {preview}{suffix}")
+
     for poi_id in poi_ids:
         poi = await db.get(Poi, poi_id)
         if poi:
@@ -550,7 +573,7 @@ async def delete_resource(
         select(func.count()).select_from(ProductResource).where(ProductResource.resource_id == resource_id)
     )
     if product_resource_count and product_resource_count > 0:
-        raise HTTPException(status_code=400, detail=f"鏃犳硶鍒犻櫎锛氳璧勬簮琚?{product_resource_count} 涓骇鍝佸紩鐢紝璇峰厛鍒犻櫎鐩稿叧浜у搧璧勬簮鍏宠仈")
+        raise HTTPException(status_code=400, detail=f"Cannot delete resource: referenced by {product_resource_count} products. Remove product-resource links first.")
     
     # Record audit log before deletion
     audit = AuditLog(

@@ -1,8 +1,10 @@
-import { Form, Input, Select, Checkbox, InputNumber } from 'antd'
+import { Form, Input, Checkbox, InputNumber } from 'antd'
+import EditableSelect from '@/components/EditableSelect'
+import type { ResourceFieldsProps } from './TicketResourceFields'
 
 const { TextArea } = Input
 
-export default function DiningResourceFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
+export default function DiningResourceFields({ prefix = ['attrs'], typeOptions, onOptionsChange, onOptionAdd, onOptionDelete, onOptionRename }: ResourceFieldsProps) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
             <h4 style={{ marginBottom: 16, color: '#52c41a' }}>🍽️ 餐饮资源特定信息</h4>
@@ -26,10 +28,15 @@ export default function DiningResourceFields({ prefix = ['attrs'] }: { prefix?: 
                 label="餐饮分类"
                 rules={[{ required: true, message: '请选择餐饮分类' }]}
             >
-                <Select placeholder="选择餐饮分类">
-                    <Select.Option value="正餐">正餐</Select.Option>
-                    <Select.Option value="小吃">小吃</Select.Option>
-                </Select>
+                <EditableSelect
+                    placeholder="选择餐饮分类"
+                    defaultOptions={['正餐', '小吃']}
+                    customOptions={typeOptions?.['dining_category']}
+                    onOptionsChange={(opts) => onOptionsChange?.('dining_category', opts)}
+                    onOptionAdd={(val) => onOptionAdd?.('dining_category', val)}
+                    onOptionDelete={(val) => onOptionDelete?.('dining_category', val)}
+                    onOptionRename={(oldVal, newVal) => onOptionRename?.('dining_category', oldVal, newVal)}
+                />
             </Form.Item>
 
             {/* 3. 包含内容详情 */}

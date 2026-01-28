@@ -46,11 +46,18 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | id | BigInteger | 是 | Auto Inc | POI ID | 主键 |
 | poi_name | String | 是 | - | POI名称 | (poi_name, city) 唯一组合 |
-| city | String | 是 | - | 所在城市 | |
 | poi_type | String | 是 | - | 类型 | 枚举: 门票, 酒店, 餐饮, 交通 |
+| poi_code | String | 否 | - | POI编码 | |
+| province | String | 否 | - | 省份 | |
+| city | String | 是 | - | 所在城市 | |
+| district | String | 否 | - | 区县 | |
+| address | String | 否 | - | 详细地址 | |
+| longitude | Numeric(10,6) | 否 | - | 经度 | |
+| latitude | Numeric(10,6) | 否 | - | 纬度 | |
 | tags | JSONB | 否 | - | 标签 | 字符串数组 |
 | attrs | JSONB | 否 | - | **扩展属性** | 不同类型的通用属性 |
 | status | String | 是 | 'active' | 状态 | active (启用), inactive (停用) |
+| folder_id | BigInteger | 否 | - | 关联文件夹 | 外键 -> folder.id |
 | created_at | DateTime | 否 | Now | 创建时间 | |
 | updated_at | DateTime | 否 | Now | 更新时间 | |
 
@@ -105,6 +112,7 @@
 | id | BigInteger | 是 | Auto Inc | 资源ID | 主键 |
 | poi_id | BigInteger | 是 | - | 所属POI | 外键 -> poi.id |
 | resource_name | String | 是 | - | 资源名称 | |
+| resource_code | String | 否 | - | 资源编码 | |
 | resource_type | String | 是 | - | 资源类型 | 门票, 酒店, 餐饮, 交通 |
 | attrs | JSONB | 否 | - | **特定属性** | 详见下方结构说明 |
 | status | String | 是 | 'draft' | 状态 | draft, active, archived |
@@ -175,6 +183,12 @@
 | qualification_files | JSONB | 否 | - | 资质文件 | 文件路径列表 |
 | tags | JSONB | 否 | - | 标签 | |
 | remark | Text | 否 | - | 备注 | |
+| attrs | JSONB | 否 | - | 扩展属性 | 供应商业务信息 |
+| contract_start_date | Date | 否 | - | 合同开始日期 | |
+| contract_end_date | Date | 否 | - | 合同结束日期 | |
+| folder_id | BigInteger | 否 | - | 关联文件夹 | 外键 -> folder.id |
+| created_at | DateTime | 否 | Now | 创建时间 | |
+| updated_at | DateTime | 否 | Now | 更新时间 | |
 
 ### 2.4 供应商资源关联表 (Supplier Resource)
 表名: `supplier_resource`
@@ -277,6 +291,7 @@
 | commission_rate | Numeric | 否 | - | 佣金率 | 百分比 (0.05 = 5%) |
 | parent_id | Integer | 否 | - | 父渠道 | 支持层级 |
 | attrs | JSONB | 否 | - | 扩展属性 | API配置等 |
+| created_at | DateTime | 否 | Now | 创建时间 | |
 
 ### 4.2 SKU表 (Sku)
 表名: `sku`
@@ -286,6 +301,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | id | BigInteger | 是 | Auto Inc | SKU ID | 主键 |
 | product_id | BigInteger | 是 | - | 关联产品 | 外键 -> product.id |
+| poi_id | BigInteger | 否 | - | 关联POI | 外键 -> poi.id |
 | sku_name | String | 是 | - | SKU名称 | 通常基于产品名+规格 |
 | sku_type | String | 否 | - | 类型 | Calendar, Package |
 | status | String | 是 | 'draft' | 状态 | draft, active, offline, archived |

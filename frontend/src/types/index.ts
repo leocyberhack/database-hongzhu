@@ -13,6 +13,7 @@ export interface POI {
     latitude?: number
     folder_id?: number  // POI专属文件夹ID
     attrs?: Record<string, unknown>  // POI类型的通用字段
+    type_options?: Record<string, unknown>
     created_at?: string
     updated_at?: string
 }
@@ -32,15 +33,12 @@ export interface Resource {
 export interface Supplier {
     id: string
     supplier_name: string
-    status: 'active' | 'inactive' | 'pending'
     contact_info?: SupplierContact[]
     attrs?: Record<string, unknown>
     settlement_info?: Record<string, unknown>
     qualification_files?: any[]
     tags?: string[]
     remark?: string
-    contract_start_date?: string
-    contract_end_date?: string
     folder_id?: number
     created_at?: string
     updated_at?: string
@@ -62,7 +60,6 @@ export interface SupplierResource {
     currency?: string
     rule?: Record<string, unknown>
     priority?: number
-    status: 'active' | 'inactive'
     created_at?: string
     updated_at?: string
 }
@@ -81,7 +78,6 @@ export interface SupplierResourcePriceHistory {
 export interface ProductCategory {
     id: string
     name: string
-    status: 'active' | 'inactive'
     description?: string
     created_at?: string
 }
@@ -141,7 +137,7 @@ export interface Channel {
     channel_name: string
     channel_type: string
     commission_rate?: number
-    status: 'active' | 'inactive' | 'pending_approval'
+    status?: string
     created_at?: string
     updated_at?: string
 }
@@ -162,7 +158,6 @@ export interface Price {
     start_at: string
     end_at?: string
     status: 'draft' | 'pending' | 'active' | 'expired' | 'rejected'
-    version: number
     created_at?: string
     updated_at?: string
 }
@@ -192,12 +187,15 @@ export interface Inventory {
 
 export interface InventoryLog {
     id: string
-    inventory_id: string
-    action: 'freeze' | 'unfreeze' | 'verify' | 'adjust'
-    quantity: number
-    order_id?: string
-    reason?: string
-    created_at?: string
+    sku_id: string
+    inventory_date: string
+    change_type: string
+    before_qty: Record<string, unknown>
+    after_qty: Record<string, unknown>
+    related_order_id?: string
+    operator?: string
+    operated_at?: string
+    remark?: string
 }
 
 export interface Order {
@@ -245,12 +243,13 @@ export interface Approval {
 
 export interface AuditLog {
     id: string
-    object_type: string
-    object_id: string
-    action: string
-    actor: string
-    diff_json?: string
-    created_at?: string
+    table_name: string
+    record_id: string
+    operation: string
+    diff_data?: Record<string, unknown>
+    operator?: string
+    operated_at?: string
+    source?: string
 }
 
 // Aggregate data container

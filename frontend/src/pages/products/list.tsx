@@ -19,6 +19,7 @@ export default function ProductListPage() {
     const categories = data?.product_categories ?? []
     const poiList = data?.poi ?? []
     const skus = data?.skus ?? []
+    const orders = data?.orders ?? []
     const navigate = useNavigate()
 
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
@@ -193,7 +194,9 @@ export default function ProductListPage() {
             title: '操作',
             width: 150,
             render: (_: any, record: Product) => {
-                const isLocked = skus.some(s => String(s.product_id) === String(record.id))
+                const hasOrders = orders.some(o => String(o.product_id) === String(record.id))
+                const isLocked = skus.some(s => String(s.product_id) === String(record.id)) || hasOrders
+                const lockReason = hasOrders ? '该产品已有订单，无法删除' : '该产品已关联SKU，无法删除'
                 return (
                     <Space>
                         <Button
@@ -236,7 +239,7 @@ export default function ProductListPage() {
                             编辑
                         </Button>
                         {isLocked ? (
-                            <Tooltip title="该产品已关联SKU，不可删除">
+                            <Tooltip title={lockReason}>
                                 <Button type="link" danger disabled size="small" icon={<DeleteOutlined />}>删除</Button>
                             </Tooltip>
                         ) : (

@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Descriptions, Drawer, Form, Input, Space, Table, Tag, message, Card, Row, Col, Popconfirm, Modal, Tooltip, DatePicker } from 'antd'
+import { Button, Descriptions, Drawer, Form, Input, Space, Table, Tag, message, Card, Row, Col, Popconfirm, Modal, Tooltip, Select } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import { useData } from '@/contexts/DataContext'
 import type { Supplier, SupplierContact } from '@/types'
 import { apiRequest } from '@/lib/api'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, FolderOpenOutlined } from '@ant-design/icons'
-import dayjs from 'dayjs'
 import ContactTableEditor from '@/components/ContactTableEditor'
 import SupplierFileModal from '@/components/SupplierFileModal'
 
@@ -19,10 +18,6 @@ const supplierAttrKeys = [
     'license_no',
     'legal_person',
     'credit_code',
-    'settlement_cycle',
-    'settlement_method',
-    'invoice_info',
-    'contract_no',
 ] as const
 
 type SupplierAttrKey = typeof supplierAttrKeys[number]
@@ -69,14 +64,6 @@ const buildSupplierAttrs = (values: Record<string, unknown>, existing?: Supplier
         }
     })
     return base
-}
-
-const formatDateValue = (value: any) => {
-    if (value === null) return null
-    if (value && typeof value.format === 'function') {
-        return value.format('YYYY-MM-DD')
-    }
-    return undefined
 }
 
 const formatAttrDisplay = (value: unknown) => {
@@ -137,8 +124,6 @@ export default function SupplierPage() {
                 supplier_name: values.supplier_name,
                 contact_info: contacts,
                 attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
-                contract_start_date: formatDateValue(values.contract_start_date),
-                contract_end_date: formatDateValue(values.contract_end_date),
             }
             const created = await apiRequest<Supplier>('/api/suppliers', { method: 'POST', body: JSON.stringify(payload) })
             message.success('供应商已创建，可上传合同文件')
@@ -155,15 +140,11 @@ export default function SupplierPage() {
         if (!selected) return
         try {
             const attrs = buildSupplierAttrs(values, selected)
-            const contractStart = formatDateValue(values.contract_start_date)
-            const contractEnd = formatDateValue(values.contract_end_date)
             const contacts = normalizeContacts(values.contacts)
             const payload = {
                 supplier_name: values.supplier_name,
                 contact_info: contacts,
                 attrs,
-                contract_start_date: contractStart,
-                contract_end_date: contractEnd,
             }
             const nameChanged = selected.supplier_name !== payload.supplier_name
             const prevContacts = normalizeContacts(selected.contact_info)
@@ -175,11 +156,7 @@ export default function SupplierPage() {
                 const prevText = prevValue === undefined ? '' : String(prevValue)
                 return nextText !== prevText
             })
-            const contractChanged =
-                (selected.contract_start_date || '') !== (contractStart || '') ||
-                (selected.contract_end_date || '') !== (contractEnd || '')
-
-            if (!nameChanged && !contactChanged && !attrsChanged && !contractChanged) {
+            if (!nameChanged && !contactChanged && !attrsChanged) {
                 message.info('没有变更，无需保存')
                 setEditModalVisible(false)
                 setSelected(null)
@@ -244,12 +221,17 @@ export default function SupplierPage() {
         }
     }
 
-    const handleBatchUpdate = async () => {
+    const handleBatchUpdate = async (values: any) => {
         if (selectedRowKeys.length === 0) return
         try {
             // Remove empty fields
             const fields: any = {}
-
+            if (values.remark && String(values.remark).trim()) {
+                fields.remark = String(values.remark).trim()
+            }
+            if (Array.isArray(values.tags) && values.tags.length > 0) {
+                fields.tags = values.tags
+            }
 
             if (Object.keys(fields).length === 0) {
                 message.warning('请至少输入一个要修改的字段')
@@ -308,18 +290,6 @@ export default function SupplierPage() {
                 record.supplier_name.toLowerCase().includes(value.toLowerCase()),
         },
         {
-            title: '合同开始时间',
-            dataIndex: 'contract_start_date',
-            render: (v: string) => v || '-',
-            sorter: (a: Supplier, b: Supplier) => (a.contract_start_date || '').localeCompare(b.contract_start_date || ''),
-        },
-        {
-            title: '合同结束时间',
-            dataIndex: 'contract_end_date',
-            render: (v: string) => v || '-',
-            sorter: (a: Supplier, b: Supplier) => (a.contract_end_date || '').localeCompare(b.contract_end_date || ''),
-        },
-        {
             title: '绑定资源数',
             render: (_: any, record: Supplier) => supplierResources.filter((sr) => sr.supplier_id === record.id).length,
             sorter: (a: Supplier, b: Supplier) => {
@@ -357,12 +327,6 @@ export default function SupplierPage() {
                                     license_no: record.attrs?.license_no,
                                     legal_person: record.attrs?.legal_person,
                                     credit_code: record.attrs?.credit_code,
-                                    settlement_cycle: record.attrs?.settlement_cycle,
-                                    settlement_method: record.attrs?.settlement_method,
-                                    invoice_info: record.attrs?.invoice_info,
-                                    contract_no: record.attrs?.contract_no,
-                                    contract_start_date: record.contract_start_date ? dayjs(record.contract_start_date) : undefined,
-                                    contract_end_date: record.contract_end_date ? dayjs(record.contract_end_date) : undefined,
                                 })
                                 setEditModalVisible(true)
                             }}
@@ -522,25 +486,6 @@ export default function SupplierPage() {
                     <Form.Item name="credit_code" label="信用代码">
                         <Input placeholder="统一社会信用代码" />
                     </Form.Item>
-                    <Form.Item name="settlement_cycle" label="结算周期">
-                        <Input placeholder="例如：T+7" />
-                    </Form.Item>
-                    <Form.Item name="settlement_method" label="结算方式">
-                        <Input placeholder="例如：对公转账" />
-                    </Form.Item>
-                    <Form.Item name="invoice_info" label="发票信息">
-                        <Input.TextArea placeholder="发票抬头、税号等" rows={3} />
-                    </Form.Item>
-                    <Form.Item name="contract_no" label="合同编号">
-                        <Input placeholder="合同编号" />
-                    </Form.Item>
-                    <Form.Item name="contract_start_date" label="合同开始时间">
-                        <DatePicker style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item name="contract_end_date" label="合同结束时间">
-                        <DatePicker style={{ width: '100%' }} />
-                    </Form.Item>
-
                     <Form.Item style={{ marginTop: 24 }}>
                         <Space style={{ width: '100%' }}>
                             <Button onClick={() => {
@@ -605,25 +550,6 @@ export default function SupplierPage() {
                     <Form.Item name="credit_code" label="信用代码">
                         <Input />
                     </Form.Item>
-                    <Form.Item name="settlement_cycle" label="结算周期">
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="settlement_method" label="结算方式">
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="invoice_info" label="发票信息">
-                        <Input.TextArea rows={3} />
-                    </Form.Item>
-                    <Form.Item name="contract_no" label="合同编号">
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="contract_start_date" label="合同开始时间">
-                        <DatePicker style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item name="contract_end_date" label="合同结束时间">
-                        <DatePicker style={{ width: '100%' }} />
-                    </Form.Item>
-
                 </Form>
             </Modal>
 
@@ -638,7 +564,12 @@ export default function SupplierPage() {
                     <p style={{ color: '#999', marginBottom: 16 }}>
                         请填写需要修改的字段，留空则不修改
                     </p>
-
+                    <Form.Item name="remark" label="备注">
+                        <Input.TextArea rows={3} placeholder="批量更新备注" />
+                    </Form.Item>
+                    <Form.Item name="tags" label="标签">
+                        <Select mode="tags" placeholder="输入标签后回车" />
+                    </Form.Item>
                     <Space style={{ float: 'right', marginTop: 16 }}>
                         <Button onClick={() => setBatchUpdateVisible(false)}>取消</Button>
                         <Button type="primary" htmlType="submit">
@@ -683,13 +614,7 @@ export default function SupplierPage() {
                             <Descriptions.Item label="营业执照号">{formatAttrDisplay(selected.attrs?.license_no)}</Descriptions.Item>
                             <Descriptions.Item label="法人信息">{formatAttrDisplay(selected.attrs?.legal_person)}</Descriptions.Item>
                             <Descriptions.Item label="信用代码">{formatAttrDisplay(selected.attrs?.credit_code)}</Descriptions.Item>
-                            <Descriptions.Item label="结算周期">{formatAttrDisplay(selected.attrs?.settlement_cycle)}</Descriptions.Item>
-                            <Descriptions.Item label="结算方式">{formatAttrDisplay(selected.attrs?.settlement_method)}</Descriptions.Item>
-                            <Descriptions.Item label="合同编号">{formatAttrDisplay(selected.attrs?.contract_no)}</Descriptions.Item>
-                            <Descriptions.Item label="合同开始时间">{selected.contract_start_date || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="合同结束时间">{selected.contract_end_date || '-'}</Descriptions.Item>
                             <Descriptions.Item label="业务范围" span={2}>{formatAttrDisplay(selected.attrs?.business_scope)}</Descriptions.Item>
-                            <Descriptions.Item label="发票信息" span={2}>{formatAttrDisplay(selected.attrs?.invoice_info)}</Descriptions.Item>
                         </Descriptions>
 
                         <h4 style={{ margin: '16px 0' }}>已绑定的资源</h4>

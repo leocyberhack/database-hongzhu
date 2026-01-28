@@ -16,6 +16,7 @@ import TransportResourceFields from '@/components/TransportResourceFields'
 import ContactTableEditor from '@/components/ContactTableEditor'
 import POIFileModal from '@/components/POIFileModal'
 import POIDetailDrawer from '@/components/POIDetailDrawer'
+import PresetAgreementEditor from '@/components/PresetAgreementEditor'
 
 const POI_TYPES = ['景区', '酒店', '餐饮', '交通'] // POI类型（不含组合）
 
@@ -33,6 +34,32 @@ interface RegionOption {
 
 export default function ResourcePage() {
     const { data, refresh } = useData()
+    const [currentTypeOptions, setCurrentTypeOptions] = useState<Record<string, string[]>>({})
+
+    const handleTypeOptionsChange = (fieldKey: string, newOptions: string[]) => {
+        setCurrentTypeOptions(prev => ({
+            ...prev,
+            [fieldKey]: newOptions
+        }))
+    }
+    const handleTypeOptionAdd = (fieldKey: string, option: string) => {
+        setCurrentTypeOptions(prev => ({
+            ...prev,
+            [fieldKey]: [...(prev[fieldKey] || []), option]
+        }))
+    }
+    const handleTypeOptionDelete = (fieldKey: string, option: string) => {
+        setCurrentTypeOptions(prev => ({
+            ...prev,
+            [fieldKey]: (prev[fieldKey] || []).filter(o => o !== option)
+        }))
+    }
+    const handleTypeOptionRename = (fieldKey: string, oldVal: string, newVal: string) => {
+        setCurrentTypeOptions(prev => ({
+            ...prev,
+            [fieldKey]: (prev[fieldKey] || []).map(o => o === oldVal ? newVal : o)
+        }))
+    }
     const [poiForm] = Form.useForm()
     const [poiEditForm] = Form.useForm()
     const [batchUpdateForm] = Form.useForm()
@@ -46,6 +73,14 @@ export default function ResourcePage() {
     const [createModalVisible, setCreateModalVisible] = useState(false) // 新建POI Modal
     const [poiType, setPoiType] = useState<string | null>(null) // 新建POI时选择的类型
     const [createResourceEnabled, setCreateResourceEnabled] = useState(false)
+    const [pendingAgreements, setPendingAgreements] = useState<Record<string, any[]>>({})
+    const [presetAgreementModal, setPresetAgreementModal] = useState<{
+        visible: boolean
+        resourceIndex: number
+        supplierIndex: number
+        supplierName: string
+        supplierFolderId: number | null
+    }>({ visible: false, resourceIndex: -1, supplierIndex: -1, supplierName: '', supplierFolderId: null })
     const [createdPoi, setCreatedPoi] = useState<POI | null>(null)
     const [creatingPoi, setCreatingPoi] = useState(false)
     const [fileManagerPoi, setFileManagerPoi] = useState<POI | null>(null)  // 文件管理Modal的目标POI
@@ -318,6 +353,9 @@ export default function ResourcePage() {
         setCreatingPoi(false)
         setCreateCityOptions([])
         setCreateDistrictOptions([])
+        setCurrentTypeOptions({})
+        setPendingAgreements({})
+        setPresetAgreementModal({ visible: false, resourceIndex: -1, supplierIndex: -1, supplierName: '', supplierFolderId: null })
     }
 
     const updateResourceStatus = (key: number, next: { saving?: boolean; saved?: boolean }) => {
@@ -329,12 +367,13 @@ export default function ResourcePage() {
             },
         }))
     }
+    const getPresetKey = (resourceIndex: number, supplierIndex: number) => `${resourceIndex}:${supplierIndex}`
 
     const createPoi = async () => {
         setCreatingPoi(true)
         try {
             await poiForm.validateFields(['poi_name', 'poi_type', 'province', 'city', 'district', 'address', 'attrs'])
-            const { resources: _resources, ...rawPayload } = poiForm.getFieldsValue(true)
+            const rawPayload = poiForm.getFieldsValue(true)
             const provinceName = provinceOptions.find((p) => p.code === rawPayload.province)?.name
             const cityName = createCityOptions.find((c) => c.code === rawPayload.city)?.name
             const districtName = createDistrictOptions.find((d) => d.code === rawPayload.district)?.name
@@ -347,7 +386,9 @@ export default function ResourcePage() {
                 province: provinceName,
                 city: cityName,
                 district: districtName,
+                type_options: currentTypeOptions,
             }
+            delete (poiPayload as { resources?: unknown }).resources
             const newPoi = await apiRequest<POI>('/api/poi', { method: 'POST', body: JSON.stringify(poiPayload) })
             setCreatedPoi(newPoi)
             await refresh()
@@ -376,6 +417,9 @@ export default function ResourcePage() {
         if (!newPoi) return
         if (createResourceEnabled) {
             message.success('POI 已创建，请逐条保存资源')
+            if (agreementErrors.length > 0) {
+                message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
+            }
         } else {
             message.success('POI 已创建，可以上传详情图片')
             resetCreateModal()
@@ -401,6 +445,7 @@ export default function ResourcePage() {
 
             const resource = poiForm.getFieldValue(['resources', resourceIndex]) || {}
             const resourceId = resource.id || resource.resource_id
+            const agreementErrors: string[] = []
             const resourcePayload: any = {
                 poi_id: targetPoi.id,
                 resource_name: resource.resource_name,
@@ -433,7 +478,8 @@ export default function ResourcePage() {
                     }
                 }
 
-                for (const binding of newBindings) {
+                for (let bindingIndex = 0; bindingIndex < newBindings.length; bindingIndex += 1) {
+                    const binding = newBindings[bindingIndex]
                     const existingBinding = existingBindings.find(
                         (eb) => Number(eb.supplier_id) === Number(binding.supplier_id)
                     )
@@ -448,7 +494,7 @@ export default function ResourcePage() {
                             })
                         }
                     } else {
-                        await apiRequest('/api/supplier-resources', {
+                        const createdBinding = await apiRequest<{ id: number }>('/api/supplier-resources', {
                             method: 'POST',
                             body: JSON.stringify({
                                 supplier_id: binding.supplier_id,
@@ -457,31 +503,83 @@ export default function ResourcePage() {
                                 supply_status: 'active',
                             })
                         })
+                        const presetKey = getPresetKey(resourceIndex, bindingIndex)
+                        const presetList = pendingAgreements[presetKey] || []
+                        for (const preset of presetList) {
+                            try {
+                                await apiRequest('/api/supplier-resource-agreements', {
+                                    method: 'POST',
+                                    body: JSON.stringify({
+                                        supplier_resource_id: createdBinding.id,
+                                        ...preset,
+                                    }),
+                                })
+                            } catch (err: any) {
+                            agreementErrors.push(err?.message || '协议创建失败')
+                            }
+                        }
+                        if (presetList.length > 0) {
+                            setPendingAgreements(prev => {
+                                const next = { ...prev }
+                                delete next[presetKey]
+                                return next
+                            })
+                        }
                     }
                 }
 
                 message.success('资源已更新')
+                if (agreementErrors.length > 0) {
+                message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
+                }
             } else {
                 const newResource = await apiRequest<{ id: string }>('/api/resources', {
                     method: 'POST',
                     body: JSON.stringify(resourcePayload),
                 })
 
-                for (const binding of resource.supplier_bindings || []) {
+                const newBindings = resource.supplier_bindings || []
+                for (let bindingIndex = 0; bindingIndex < newBindings.length; bindingIndex += 1) {
+                    const binding = newBindings[bindingIndex]
                     const bindingPayload = {
                         supplier_id: binding.supplier_id,
                         resource_id: newResource.id,
                         settlement_price: binding.settlement_price,
                         supply_status: 'active',
                     }
-                    await apiRequest('/api/supplier-resources', {
+                    const createdBinding = await apiRequest('/api/supplier-resources', {
                         method: 'POST',
                         body: JSON.stringify(bindingPayload),
                     })
+                    const presetKey = getPresetKey(resourceIndex, bindingIndex)
+                    const presetList = pendingAgreements[presetKey] || []
+                    for (const preset of presetList) {
+                        try {
+                            await apiRequest('/api/supplier-resource-agreements', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    supplier_resource_id: createdBinding.id,
+                                    ...preset,
+                                }),
+                            })
+                        } catch (err: any) {
+                            agreementErrors.push(err?.message || '协议创建失败')
+                        }
+                    }
+                    if (presetList.length > 0) {
+                        setPendingAgreements(prev => {
+                            const next = { ...prev }
+                            delete next[presetKey]
+                            return next
+                        })
+                    }
                 }
 
                 poiForm.setFieldValue(['resources', resourceIndex, 'id'], newResource.id)
                 message.success(hadPoi ? '资源已保存' : 'POI 已创建，资源已保存')
+                if (agreementErrors.length > 0) {
+                message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
+                }
             }
 
             updateResourceStatus(fieldKey, { saved: true })
@@ -501,6 +599,20 @@ export default function ResourcePage() {
             delete next[fieldKey]
             return next
         })
+        setPendingAgreements((prev) => {
+            const next: Record<string, any[]> = {}
+            Object.entries(prev).forEach(([k, v]) => {
+                const parts = k.split(':')
+                const rIdx = Number(parts[0])
+                const sIdx = Number(parts[1])
+                if (rIdx < index) {
+                    next[k] = v
+                } else if (rIdx > index) {
+                    next[`${rIdx - 1}:${sIdx}`] = v
+                }
+            })
+            return next
+        })
         remove(index)
     }
     const savePoi = async (values: any) => {
@@ -518,8 +630,10 @@ export default function ResourcePage() {
                 province: provinceName,
                 city: cityName,
                 district: districtName,
+                type_options: currentTypeOptions,
             }
             const attrsChanged = JSON.stringify(selectedPoi.attrs || {}) !== JSON.stringify(values.attrs || {})
+            const typeOptionsChanged = JSON.stringify(selectedPoi.type_options || {}) !== JSON.stringify(currentTypeOptions || {})
             if (
                 selectedPoi.poi_name === payload.poi_name &&
                 (selectedPoi.poi_code || '') === (payload.poi_code || '') &&
@@ -529,7 +643,8 @@ export default function ResourcePage() {
                 selectedPoi.address === payload.address &&
                 (selectedPoi.longitude ?? null) === (payload.longitude ?? null) &&
                 (selectedPoi.latitude ?? null) === (payload.latitude ?? null) &&
-                !attrsChanged
+                !attrsChanged &&
+                !typeOptionsChanged
             ) {
                 message.info('没有变更，无需保存')
                 setSelectedPoi(null)
@@ -620,6 +735,9 @@ export default function ResourcePage() {
             return
         }
         const attrs = selectedPoi.attrs || {}
+        // Initialize type options from selected POI
+        setCurrentTypeOptions((selectedPoi.type_options as Record<string, string[]>) || {})
+
         poiEditForm.setFieldsValue({
             poi_name: selectedPoi.poi_name,
             poi_type: selectedPoi.poi_type,
@@ -1000,10 +1118,10 @@ export default function ResourcePage() {
                                                                 </Col>
                                                             </Row>
 
-                                                            {poiType === '景区' && <TicketResourceFields prefix={[field.name, 'attrs']} />}
-                                                            {poiType === '酒店' && <HotelResourceFields prefix={[field.name, 'attrs']} />}
-                                                            {poiType === '餐饮' && <DiningResourceFields prefix={[field.name, 'attrs']} />}
-                                                            {poiType === '交通' && <TransportResourceFields prefix={[field.name, 'attrs']} />}
+                                                            {poiType === '景区' && <TicketResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
+                                                            {poiType === '酒店' && <HotelResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
+                                                            {poiType === '餐饮' && <DiningResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
+                                                            {poiType === '交通' && <TransportResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
                                                         </Col>
                                                         <Col span={10}>
                                                             <div style={{ padding: 12, background: '#fff', borderRadius: 8, border: '1px solid #f0f0f0' }}>
@@ -1015,7 +1133,7 @@ export default function ResourcePage() {
                                                                     {(supplierFields, { add: addSupplier, remove: removeSupplier }, { errors }) => (
                                                                         <>
                                                                             {supplierFields.map(({ key, name, ...restField }) => (
-                                                                                <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                                                                                <Space key={key} style={{ display: 'flex', marginBottom: 8, flexWrap: 'wrap', rowGap: 4 }} align="baseline">
                                                                                     <Form.Item
                                                                                         {...restField}
                                                                                         name={[name, 'supplier_id']}
@@ -1037,7 +1155,61 @@ export default function ResourcePage() {
                                                                                     >
                                                                                         <InputNumber placeholder="结算价" min={0} style={{ width: '100%' }} prefix="¥" />
                                                                                     </Form.Item>
-                                                                                    <Button type="link" danger onClick={() => removeSupplier(name)}>
+                                                                                    <Form.Item
+                                                                                        shouldUpdate={() => true}
+                                                                                        noStyle
+                                                                                    >
+                                                                                        {({ getFieldValue }) => {
+                                                                                            const supplierId = getFieldValue(['resources', field.name, 'supplier_bindings', name, 'supplier_id'])
+                                                                                            const supplier = suppliers.find(s => String(s.id) === String(supplierId))
+                                                                                            const presetKey = getPresetKey(field.name, name)
+                                                                                            const agreementCount = pendingAgreements[presetKey]?.length || 0
+                                                                                            const disabled = !supplierId
+                                                                                            return (
+                                                                                                <Tooltip title={disabled ? '请先选择供应商' : '预设协议'}>
+                                                                                                    <Button
+                                                                                                        type="link"
+                                                                                                        size="small"
+                                                                                                        disabled={disabled}
+                                                                                                        onClick={() => {
+                                                                                                            if (disabled) return
+                                                                                                            setPresetAgreementModal({
+                                                                                                                visible: true,
+                                                                                                                resourceIndex: field.name,
+                                                                                                                supplierIndex: name,
+                                                                                                                supplierName: supplier?.supplier_name || '未知供应商',
+                                                                                                                supplierFolderId: supplier?.folder_id || null
+                                                                                                            })
+                                                                                                        }}
+                                                                                                    >
+                                                                                                        预设协议{agreementCount > 0 ? ` (${agreementCount})` : ''}
+                                                                                                    </Button>
+                                                                                                </Tooltip>
+                                                                                            )
+                                                                                        }}
+                                                                                    </Form.Item>
+                                                                                    <Button
+                                                                                        type="link"
+                                                                                        danger
+                                                                                        onClick={() => {
+                                                                                            removeSupplier(name)
+                                                                                            setPendingAgreements(prev => {
+                                                                                                const next: Record<string, any[]> = {}
+                                                                                                Object.entries(prev).forEach(([k, v]) => {
+                                                                                                    const parts = k.split(":")
+                                                                                                    const rIdx = Number(parts[0])
+                                                                                                    const sIdx = Number(parts[1])
+                                                                                                    if (rIdx !== field.name) {
+                                                                                                        next[k] = v
+                                                                                                        return
+                                                                                                    }
+                                                                                                    if (sIdx < name) next[k] = v
+                                                                                                    if (sIdx > name) next[`${rIdx}:${sIdx - 1}`] = v
+                                                                                                })
+                                                                                                return next
+                                                                                            })
+                                                                                        }}
+                                                                                    >
                                                                                         删除
                                                                                     </Button>
                                                                                 </Space>
@@ -1102,6 +1274,11 @@ export default function ResourcePage() {
                     editDistrictOptions={editDistrictOptions}
                     editProvince={editProvince}
                     editCity={editCity}
+                    typeOptions={currentTypeOptions}
+                    onOptionsChange={handleTypeOptionsChange}
+                    onOptionAdd={handleTypeOptionAdd}
+                    onOptionDelete={handleTypeOptionDelete}
+                    onOptionRename={handleTypeOptionRename}
                     onProvinceChange={(value) => {
                         poiEditForm.setFieldsValue({ city: undefined, district: undefined })
                         setEditCityOptions([])
@@ -1145,6 +1322,21 @@ export default function ResourcePage() {
                 poi={fileManagerPoi}
                 open={!!fileManagerPoi}
                 onClose={() => setFileManagerPoi(null)}
+            />
+
+            <PresetAgreementEditor
+                visible={presetAgreementModal.visible}
+                onCancel={() => setPresetAgreementModal(prev => ({ ...prev, visible: false }))}
+                onSave={(agreements) => {
+                    const key = getPresetKey(presetAgreementModal.resourceIndex, presetAgreementModal.supplierIndex)
+                    setPendingAgreements(prev => ({
+                        ...prev,
+                        [key]: agreements
+                    }))
+                }}
+                supplierName={presetAgreementModal.supplierName}
+                supplierFolderId={presetAgreementModal.supplierFolderId}
+                initialAgreements={pendingAgreements[getPresetKey(presetAgreementModal.resourceIndex, presetAgreementModal.supplierIndex)] || []}
             />
 
         </div>

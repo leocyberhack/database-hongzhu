@@ -1,8 +1,10 @@
-import { Form, Input, Select, InputNumber } from 'antd'
+import { Form, Input, InputNumber } from 'antd'
+import EditableSelect from '@/components/EditableSelect'
+import type { ResourceFieldsProps } from './TicketResourceFields'
 
 const { TextArea } = Input
 
-export default function TransportResourceFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
+export default function TransportResourceFields({ prefix = ['attrs'], typeOptions, onOptionsChange, onOptionAdd, onOptionDelete, onOptionRename }: ResourceFieldsProps) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#e6f7ff', borderRadius: 8, border: '1px solid #91d5ff' }}>
             <h4 style={{ marginBottom: 16, color: '#1890ff' }}>🚌 交通特定信息</h4>
@@ -13,11 +15,15 @@ export default function TransportResourceFields({ prefix = ['attrs'] }: { prefix
                 label="交通类型"
                 rules={[{ required: true, message: '请选择交通类型' }]}
             >
-                <Select placeholder="选择交通类型">
-                    <Select.Option value="大巴">大巴</Select.Option>
-                    <Select.Option value="商务车">商务车</Select.Option>
-                    <Select.Option value="轿车">轿车</Select.Option>
-                </Select>
+                <EditableSelect
+                    placeholder="选择交通类型"
+                    defaultOptions={['大巴', '商务车', '轿车']}
+                    customOptions={typeOptions?.['transport_type']}
+                    onOptionsChange={(opts) => onOptionsChange?.('transport_type', opts)}
+                    onOptionAdd={(val) => onOptionAdd?.('transport_type', val)}
+                    onOptionDelete={(val) => onOptionDelete?.('transport_type', val)}
+                    onOptionRename={(oldVal, newVal) => onOptionRename?.('transport_type', oldVal, newVal)}
+                />
             </Form.Item>
 
             {/* 2. 起点 */}

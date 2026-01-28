@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Channel, Approval
+from app.models import AuditLog, Channel, Approval, Order
 from app.schemas.channel import ChannelCreate, ChannelListResponse, ChannelResponse, ChannelUpdate
 from app.schemas.common import Pagination
 
@@ -221,6 +221,10 @@ async def delete_channel(
     sub_count = await db.scalar(select(func.count()).where(Channel.parent_id == channel_id))
     if sub_count and sub_count > 0:
          raise HTTPException(status_code=400, detail="Cannot delete channel with sub-channels")
+
+    order_count = await db.scalar(select(func.count()).select_from(Order).where(Order.channel_id == channel_id))
+    if order_count and order_count > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete channel with orders: {order_count}")
 
     # Record audit log before deletion
     audit = AuditLog(

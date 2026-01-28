@@ -38,6 +38,7 @@ class PoiBase(BaseModel):
     latitude: Optional[float] = None
     tags: Optional[list[str]] = None
     attrs: Optional[dict] = Field(None, description="POI类型的通用属性 (JSONB)")
+    type_options: Optional[dict] = Field(None, description="自定义资源字段选项 (JSONB)")
     status: Optional[str] = None
 
 
@@ -58,6 +59,7 @@ class PoiUpdate(BaseModel):
     latitude: Optional[float] = None
     tags: Optional[list[str]] = None
     attrs: Optional[dict] = None
+    type_options: Optional[dict] = None
     status: Optional[str] = None
 
 
@@ -115,8 +117,6 @@ class SupplierBase(BaseModel):
     tags: Optional[list[str]] = None
     remark: Optional[str] = None
     attrs: Optional[dict] = None
-    contract_start_date: Optional[date] = None
-    contract_end_date: Optional[date] = None
 
     @field_validator("contact_info", mode="before")
     @classmethod
@@ -182,3 +182,44 @@ class SupplierResourcePriceHistoryRead(ORMBase):
     operator: Optional[str] = None
     operated_at: Optional[datetime] = None
     approval_id: Optional[int] = None
+
+
+class SupplierResourceAgreementBase(BaseModel):
+    supplier_resource_id: int
+    agreement_name: str
+    start_date: date
+    end_date: date
+    signing_date: Optional[date] = None
+    status: str = "active"
+    settlement_cycle: Optional[str] = None
+    payment_method: Optional[str] = None
+    requires_invoice: bool = False
+    invoice_type: Optional[str] = None
+    discount_methods: Optional[dict] = None  # {"满减": true, "满送": false}
+    discount_policy: Optional[dict] = None  # {"x": 100, "y": 10, "a": 200, "b": 1}
+    attached_files: Optional[list[dict]] = None  # [{"file_id": 1, "filename": "合同.pdf", "file_name": "合同.pdf"}]
+
+
+class SupplierResourceAgreementCreate(SupplierResourceAgreementBase):
+    pass
+
+
+class SupplierResourceAgreementUpdate(BaseModel):
+    agreement_name: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    signing_date: Optional[date] = None
+    status: Optional[str] = None
+    settlement_cycle: Optional[str] = None
+    payment_method: Optional[str] = None
+    requires_invoice: Optional[bool] = None
+    invoice_type: Optional[str] = None
+    discount_methods: Optional[dict] = None
+    discount_policy: Optional[dict] = None
+    attached_files: Optional[list[dict]] = None
+
+
+class SupplierResourceAgreementRead(SupplierResourceAgreementBase, ORMBase):
+    id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

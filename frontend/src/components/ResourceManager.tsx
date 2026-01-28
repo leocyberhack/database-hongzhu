@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+﻿import { useState, useMemo, useRef, useEffect } from 'react'
 import { Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tag, Drawer, Descriptions, Card, Checkbox, Row, Col, Popconfirm, Tooltip } from 'antd'
 import { CalendarOutlined, PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
@@ -10,6 +10,8 @@ import TicketResourceFields from '@/components/TicketResourceFields'
 import HotelResourceFields from '@/components/HotelResourceFields'
 import DiningResourceFields from '@/components/DiningResourceFields'
 import TransportResourceFields from '@/components/TransportResourceFields'
+import AgreementModal from './AgreementModal'
+import PresetAgreementEditor from './PresetAgreementEditor'
 
 
 
@@ -25,9 +27,22 @@ interface FilterState {
 interface ResourceManagerProps {
     poiId?: string | number
     mode?: 'page' | 'embedded'
+    typeOptions?: Record<string, string[]>
+    onOptionsChange?: (field: string, newOptions: string[]) => void
+    onOptionAdd?: (field: string, val: string) => void
+    onOptionDelete?: (field: string, val: string) => void
+    onOptionRename?: (field: string, oldVal: string, newVal: string) => void
 }
 
-export default function ResourceManager({ poiId, mode = 'page' }: ResourceManagerProps) {
+export default function ResourceManager({
+    poiId,
+    mode = 'page',
+    typeOptions,
+    onOptionsChange,
+    onOptionAdd,
+    onOptionDelete,
+    onOptionRename
+}: ResourceManagerProps) {
     const { data, refresh } = useData()
     const resources = data?.resources ?? []
     const poiList = data?.poi ?? []
@@ -44,6 +59,67 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
     const [form] = Form.useForm()
     const [editForm] = Form.useForm()
     const [batchUpdateForm] = Form.useForm()
+    const createFormPoiId = Form.useWatch('poi_id', form)
+    const editFormPoiId = Form.useWatch('poi_id', editForm)
+
+    const updatePoiOptionsChange = async (targetPoiId: any, field: string, newOptions: string[]) => {
+        if (isEmbedded) {
+            onOptionsChange?.(field, newOptions)
+            return
+        }
+
+        const targetPoi = poiList.find((p) => p.id === targetPoiId)
+        if (!targetPoi) return
+
+        const newTypeOptions = { ...(targetPoi.type_options || {}), [field]: newOptions }
+        try {
+            await apiRequest(`/api/poi/${targetPoi.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ type_options: newTypeOptions })
+            })
+            message.success('已更新资源字段选项')
+            await refresh()
+        } catch {
+            message.error('更新资源字段选项失败')
+        }
+    }
+
+    const updatePoiOptions = async (targetPoiId: any, field: string, action: 'add' | 'delete' | 'rename', val1: string, val2?: string) => {
+        if (isEmbedded) {
+            if (action === 'add') onOptionAdd?.(field, val1)
+            if (action === 'delete') onOptionDelete?.(field, val1)
+            if (action === 'rename' && val2) onOptionRename?.(field, val1, val2)
+            return
+        }
+
+        const targetPoi = poiList.find((p) => p.id === targetPoiId)
+        if (!targetPoi) return
+
+        let nextFieldOptions = [...((targetPoi.type_options?.[field] as string[]) || [])]
+        if (action === 'add') {
+            if (!nextFieldOptions.includes(val1)) nextFieldOptions.push(val1)
+        }
+        if (action === 'delete') nextFieldOptions = nextFieldOptions.filter((v) => v !== val1)
+        if (action === 'rename' && val2) nextFieldOptions = nextFieldOptions.map((v) => (v === val1 ? val2 : v))
+
+        const newTypeOptions = { ...(targetPoi.type_options || {}), [field]: nextFieldOptions }
+        try {
+            await apiRequest(`/api/poi/${targetPoi.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ type_options: newTypeOptions })
+            })
+            message.success('已更新资源字段选项')
+            await refresh()
+        } catch {
+            message.error('更新资源字段选项失败')
+        }
+    }
+
+    const getFormOptions = (formPoiId: any) => {
+        if (isEmbedded && typeOptions) return typeOptions
+        const poi = poiList.find((p) => p.id === formPoiId)
+        return (poi?.type_options as Record<string, string[]>) || {}
+    }
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
     const [selectedSupplierId, setSelectedSupplierId] = useState<number | undefined>(undefined)
@@ -74,6 +150,29 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
             poi_id: poiId,
         }))
     }, [poiId])
+
+    // Agreement Modal State
+    const [agreementModalState, setAgreementModalState] = useState<{
+        visible: boolean
+        supplierResourceId: number
+        supplierName: string
+        supplierFolderId: number | null
+    }>({
+        visible: false,
+        supplierResourceId: 0,
+        supplierName: '',
+        supplierFolderId: null
+    })
+
+    // Pending Agreements for Create Mode
+    const [pendingAgreements, setPendingAgreements] = useState<Record<number, any[]>>({})
+    const [presetAgreementModal, setPresetAgreementModal] = useState<{
+        visible: boolean
+        fieldIndex: number
+        supplierId: number
+        supplierName: string
+        supplierFolderId: number | null
+    }>({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
 
     // 过滤逻辑
     const filteredResources = useMemo(() => {
@@ -137,24 +236,47 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
             })
 
             // 3. 再创建供应商-资源绑定关系（可选）
-            for (const binding of values.supplier_bindings || []) {
+            const agreementErrors: string[] = []
+            const bindings = values.supplier_bindings || []
+            for (let i = 0; i < bindings.length; i += 1) {
+                const binding = bindings[i]
                 const bindingPayload = {
                     supplier_id: binding.supplier_id,
                     resource_id: newResource.id,
                     settlement_price: binding.settlement_price,
                     supply_status: 'active',
                 }
-                await apiRequest('/api/supplier-resources', {
+                const createdBinding = await apiRequest<{ id: number }>('/api/supplier-resources', {
                     method: 'POST',
                     body: JSON.stringify(bindingPayload),
                 })
+
+                const presetList = pendingAgreements[i] || []
+                for (const preset of presetList) {
+                    try {
+                        await apiRequest('/api/supplier-resource-agreements', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                supplier_resource_id: createdBinding.id,
+                                ...preset,
+                            }),
+                        })
+                    } catch (err: any) {
+                        agreementErrors.push(err?.message || '协议创建失败')
+                    }
+                }
             }
 
             message.success('资源创建成功')
+            if (agreementErrors.length > 0) {
+                message.warning(`资源已创建，但有 ${agreementErrors.length} 份协议创建失败`)
+            }
             setCreateModalVisible(false)
             form.resetFields()
             setResourceType(null) // 重置资源类型
             setIsTypeLocked(false)
+            setPendingAgreements({})
+            setPresetAgreementModal({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
             await refresh()
         } catch (err: any) {
             if (err.message?.includes('duplicate')) {
@@ -173,7 +295,6 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                 poi_id: poiId ?? values.poi_id,
                 resource_name: values.resource_name,
                 resource_code: values.resource_code,
-                resource_type: values.resource_type,
                 status: values.status,
             }
 
@@ -187,7 +308,6 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                 selectedResource.poi_id !== resourcePayload.poi_id ||
                 selectedResource.resource_name !== resourcePayload.resource_name ||
                 selectedResource.resource_code !== resourcePayload.resource_code ||
-                selectedResource.resource_type !== resourcePayload.resource_type ||
                 selectedResource.status !== resourcePayload.status ||
                 JSON.stringify(selectedResource.attrs) !== JSON.stringify(resourcePayload.attrs)
 
@@ -287,7 +407,6 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
             // Remove empty fields
             const fields: any = {}
             if (values.status) fields.status = values.status
-            if (values.resource_type) fields.resource_type = values.resource_type
 
             if (Object.keys(fields).length === 0) {
                 message.warning('请至少输入一个要修改的字段')
@@ -497,7 +616,8 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                                 // 获取现有供应商绑定信息
                                 const existingBindings = getResourceSuppliers(record.id).map(sr => ({
                                     supplier_id: sr.supplier_id,
-                                    settlement_price: sr.settlement_price
+                                    settlement_price: sr.settlement_price,
+                                    binding_id: sr.id
                                 }))
                                 editForm.setFieldsValue({
                                     ...record,
@@ -671,6 +791,8 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                     form.resetFields()
                     setResourceType(null) // 重置资源类型
                     setIsTypeLocked(false)
+                    setPendingAgreements({})
+                    setPresetAgreementModal({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
                 }}
                 footer={null}
                 width={720}
@@ -726,10 +848,42 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                         />
                     </Form.Item>
 
-                    {resourceType === '景区' && <TicketResourceFields />}
-                    {resourceType === '酒店' && <HotelResourceFields />}
-                    {resourceType === '餐饮' && <DiningResourceFields />}
-                    {resourceType === '交通' && <TransportResourceFields />}
+                    {resourceType === '景区' && (
+                        <TicketResourceFields
+                            typeOptions={getFormOptions(createFormPoiId)}
+                            onOptionsChange={(field, opts) => updatePoiOptionsChange(createFormPoiId, field, opts)}
+                            onOptionAdd={(field, val) => updatePoiOptions(createFormPoiId, field, 'add', val)}
+                            onOptionDelete={(field, val) => updatePoiOptions(createFormPoiId, field, 'delete', val)}
+                            onOptionRename={(field, oldVal, newVal) => updatePoiOptions(createFormPoiId, field, 'rename', oldVal, newVal)}
+                        />
+                    )}
+                    {resourceType === '酒店' && (
+                        <HotelResourceFields
+                            typeOptions={getFormOptions(createFormPoiId)}
+                            onOptionsChange={(field, opts) => updatePoiOptionsChange(createFormPoiId, field, opts)}
+                            onOptionAdd={(field, val) => updatePoiOptions(createFormPoiId, field, 'add', val)}
+                            onOptionDelete={(field, val) => updatePoiOptions(createFormPoiId, field, 'delete', val)}
+                            onOptionRename={(field, oldVal, newVal) => updatePoiOptions(createFormPoiId, field, 'rename', oldVal, newVal)}
+                        />
+                    )}
+                    {resourceType === '餐饮' && (
+                        <DiningResourceFields
+                            typeOptions={getFormOptions(createFormPoiId)}
+                            onOptionsChange={(field, opts) => updatePoiOptionsChange(createFormPoiId, field, opts)}
+                            onOptionAdd={(field, val) => updatePoiOptions(createFormPoiId, field, 'add', val)}
+                            onOptionDelete={(field, val) => updatePoiOptions(createFormPoiId, field, 'delete', val)}
+                            onOptionRename={(field, oldVal, newVal) => updatePoiOptions(createFormPoiId, field, 'rename', oldVal, newVal)}
+                        />
+                    )}
+                    {resourceType === '交通' && (
+                        <TransportResourceFields
+                            typeOptions={getFormOptions(createFormPoiId)}
+                            onOptionsChange={(field, opts) => updatePoiOptionsChange(createFormPoiId, field, opts)}
+                            onOptionAdd={(field, val) => updatePoiOptions(createFormPoiId, field, 'add', val)}
+                            onOptionDelete={(field, val) => updatePoiOptions(createFormPoiId, field, 'delete', val)}
+                            onOptionRename={(field, oldVal, newVal) => updatePoiOptions(createFormPoiId, field, 'rename', oldVal, newVal)}
+                        />
+                    )}
 
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定（可选）</h4>
@@ -762,7 +916,56 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                                             >
                                                 <InputNumber placeholder="结算价" min={0} style={{ width: '100%' }} prefix="¥" />
                                             </Form.Item>
-                                            <Button type="link" danger onClick={() => remove(name)}>
+
+                                            <Form.Item
+                                                shouldUpdate={() => true}
+                                                noStyle
+                                            >
+                                                {({ getFieldValue }) => {
+                                                    const supplierId = getFieldValue(['supplier_bindings', name, 'supplier_id'])
+                                                    const supplier = suppliers.find(s => String(s.id) === String(supplierId))
+                                                    const agreementCount = pendingAgreements[name]?.length || 0
+                                                    const disabled = !supplierId
+                                                    return (
+                                                        <Tooltip title={disabled ? '请先选择供应商' : '预设协议'}>
+                                                            <Button
+                                                                type="link"
+                                                                size="small"
+                                                                disabled={disabled}
+                                                                onClick={() => {
+                                                                    if (disabled) return
+                                                                    setPresetAgreementModal({
+                                                                        visible: true,
+                                                                        fieldIndex: name,
+                                                                        supplierId: supplierId,
+                                                                        supplierName: supplier?.supplier_name || '未知供应商',
+                                                                        supplierFolderId: supplier?.folder_id || null
+                                                                    })
+                                                                }}
+                                                            >
+                                                                预设协议{agreementCount > 0 ? ` (${agreementCount})` : ''}
+                                                            </Button>
+                                                        </Tooltip>
+                                                    )
+                                                }}
+                                            </Form.Item>
+
+                                            <Button
+                                                type="link"
+                                                danger
+                                                onClick={() => {
+                                                    remove(name)
+                                                    setPendingAgreements(prev => {
+                                                        const next: Record<number, any[]> = {}
+                                                        Object.entries(prev).forEach(([k, v]) => {
+                                                            const idx = Number(k)
+                                                            if (idx < name) next[idx] = v
+                                                            if (idx > name) next[idx - 1] = v
+                                                        })
+                                                        return next
+                                                    })
+                                                }}
+                                            >
                                                 删除
                                             </Button>
                                         </Space>
@@ -828,13 +1031,8 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                     <Form.Item name="resource_type" label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
                         <Select
                             placeholder="选择类型"
-                            disabled={Boolean(poiId)}
+                            disabled
                             options={RESOURCE_TYPES.map((t) => ({ value: t, label: t }))}
-                            onChange={(value) => {
-                                setResourceType(value)
-                                // 清除之前的attrs字段
-                                editForm.setFieldValue('attrs', undefined)
-                            }}
                         />
                     </Form.Item>
                     <Form.Item name="status" label="状态" rules={[{ required: true }]}>
@@ -842,10 +1040,42 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                     </Form.Item>
 
                     {/* 根据资源类型动态显示特定字段 */}
-                    {resourceType === '景区' && <TicketResourceFields />}
-                    {resourceType === '酒店' && <HotelResourceFields />}
-                    {resourceType === '餐饮' && <DiningResourceFields />}
-                    {resourceType === '交通' && <TransportResourceFields />}
+                    {resourceType === '景区' && (
+                        <TicketResourceFields
+                            typeOptions={getFormOptions(editFormPoiId)}
+                            onOptionsChange={(field, opts) => updatePoiOptionsChange(editFormPoiId, field, opts)}
+                            onOptionAdd={(field, val) => updatePoiOptions(editFormPoiId, field, 'add', val)}
+                            onOptionDelete={(field, val) => updatePoiOptions(editFormPoiId, field, 'delete', val)}
+                            onOptionRename={(field, oldVal, newVal) => updatePoiOptions(editFormPoiId, field, 'rename', oldVal, newVal)}
+                        />
+                    )}
+                    {resourceType === '酒店' && (
+                        <HotelResourceFields
+                            typeOptions={getFormOptions(editFormPoiId)}
+                            onOptionsChange={(field, opts) => updatePoiOptionsChange(editFormPoiId, field, opts)}
+                            onOptionAdd={(field, val) => updatePoiOptions(editFormPoiId, field, 'add', val)}
+                            onOptionDelete={(field, val) => updatePoiOptions(editFormPoiId, field, 'delete', val)}
+                            onOptionRename={(field, oldVal, newVal) => updatePoiOptions(editFormPoiId, field, 'rename', oldVal, newVal)}
+                        />
+                    )}
+                    {resourceType === '餐饮' && (
+                        <DiningResourceFields
+                            typeOptions={getFormOptions(editFormPoiId)}
+                            onOptionsChange={(field, opts) => updatePoiOptionsChange(editFormPoiId, field, opts)}
+                            onOptionAdd={(field, val) => updatePoiOptions(editFormPoiId, field, 'add', val)}
+                            onOptionDelete={(field, val) => updatePoiOptions(editFormPoiId, field, 'delete', val)}
+                            onOptionRename={(field, oldVal, newVal) => updatePoiOptions(editFormPoiId, field, 'rename', oldVal, newVal)}
+                        />
+                    )}
+                    {resourceType === '交通' && (
+                        <TransportResourceFields
+                            typeOptions={getFormOptions(editFormPoiId)}
+                            onOptionsChange={(field, opts) => updatePoiOptionsChange(editFormPoiId, field, opts)}
+                            onOptionAdd={(field, val) => updatePoiOptions(editFormPoiId, field, 'add', val)}
+                            onOptionDelete={(field, val) => updatePoiOptions(editFormPoiId, field, 'delete', val)}
+                            onOptionRename={(field, oldVal, newVal) => updatePoiOptions(editFormPoiId, field, 'rename', oldVal, newVal)}
+                        />
+                    )}
 
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定（可选）</h4>
@@ -878,6 +1108,44 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                                             >
                                                 <InputNumber placeholder="结算价" min={0} style={{ width: '100%' }} prefix="¥" />
                                             </Form.Item>
+                                            <Form.Item
+                                                shouldUpdate={() => true}
+                                                noStyle
+                                            >
+                                                {({ getFieldValue }) => {
+                                                    const supplierId = getFieldValue(['supplier_bindings', name, 'supplier_id'])
+                                                    const bindingIdFromForm = getFieldValue(['supplier_bindings', name, 'binding_id'])
+                                                    const resolvedBindingId = bindingIdFromForm || supplierResources.find(
+                                                        sr => Number(sr.resource_id) === Number(selectedResource?.id) && Number(sr.supplier_id) === Number(supplierId)
+                                                    )?.id
+
+                                                    if (resolvedBindingId && supplierId) {
+                                                        return (
+                                                            <Button
+                                                                type="link"
+                                                                size="small"
+                                                                onClick={() => {
+                                                                    const supplier = suppliers.find(s => s.id === supplierId)
+                                                                    setAgreementModalState({
+                                                                        visible: true,
+                                                                        supplierResourceId: resolvedBindingId,
+                                                                        supplierName: supplier?.supplier_name || '未知供应商',
+                                                                        supplierFolderId: supplier?.folder_id || null
+                                                                    })
+                                                                }}
+                                                            >
+                                                                协议
+                                                            </Button>
+                                                        )
+                                                    }
+                                                    return null
+                                                }}
+                                            </Form.Item>
+
+                                            <Form.Item name={[name, 'binding_id']} hidden>
+                                                <Input />
+                                            </Form.Item>
+
                                             <Button type="link" danger onClick={() => remove(name)}>
                                                 删除
                                             </Button>
@@ -926,9 +1194,6 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                             { value: 'active', label: '启用' },
                             { value: 'inactive', label: '停用' },
                         ]} allowClear placeholder="批量修改状态" />
-                    </Form.Item>
-                    <Form.Item name="resource_type" label="资源类型">
-                        <Select options={RESOURCE_TYPES.map(t => ({ value: t, label: t }))} allowClear placeholder="批量修改类型" />
                     </Form.Item>
                     <Space style={{ float: 'right', marginTop: 16 }}>
                         <Button onClick={() => setBatchUpdateVisible(false)}>取消</Button>
@@ -1051,6 +1316,28 @@ export default function ResourceManager({ poiId, mode = 'page' }: ResourceManage
                     </>
                 )}
             </Drawer>
+
+            <AgreementModal
+                visible={agreementModalState.visible}
+                onCancel={() => setAgreementModalState(prev => ({ ...prev, visible: false }))}
+                supplierResourceId={agreementModalState.supplierResourceId}
+                supplierName={agreementModalState.supplierName}
+                supplierFolderId={agreementModalState.supplierFolderId}
+            />
+
+            <PresetAgreementEditor
+                visible={presetAgreementModal.visible}
+                onCancel={() => setPresetAgreementModal(prev => ({ ...prev, visible: false }))}
+                onSave={(agreements) => {
+                    setPendingAgreements(prev => ({
+                        ...prev,
+                        [presetAgreementModal.fieldIndex]: agreements
+                    }))
+                }}
+                supplierName={presetAgreementModal.supplierName}
+                supplierFolderId={presetAgreementModal.supplierFolderId}
+                initialAgreements={pendingAgreements[presetAgreementModal.fieldIndex] || []}
+            />
         </div >
     )
 }

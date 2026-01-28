@@ -39,6 +39,7 @@ class Poi(Base):
     latitude: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    type_options: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'active'"))
     folder_id: Mapped[int | None] = mapped_column(ForeignKey("folder.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
@@ -106,8 +107,6 @@ class Supplier(Base):
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     remark: Mapped[str | None] = mapped_column(Text, nullable=True)
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    contract_start_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
-    contract_end_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
     folder_id: Mapped[int | None] = mapped_column(ForeignKey("folder.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
@@ -150,6 +149,30 @@ class SupplierResourcePriceHistory(Base):
     operator: Mapped[str | None] = mapped_column(String, nullable=True)
     operated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     approval_id: Mapped[int | None] = mapped_column(ForeignKey("approval.id", ondelete="SET NULL"), nullable=True)
+
+
+class SupplierResourceAgreement(Base):
+    """供应商资源协议表"""
+    __tablename__ = "supplier_resource_agreements"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    supplier_resource_id: Mapped[int] = mapped_column(ForeignKey("supplier_resource.id", ondelete="CASCADE"), nullable=False)
+    agreement_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    start_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    signing_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'active'"))
+    settlement_cycle: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    payment_method: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    requires_invoice: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    invoice_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    discount_methods: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {"满减": true, "满送": false}
+    discount_policy: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {"x": 100, "y": 10, "a": 200, "b": 1}
+    attached_files: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # [{"file_id": 1, "filename": "合同.pdf"}]
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+
+    supplier_resource = relationship("SupplierResource")
 
 
 
@@ -403,6 +426,7 @@ __all__ = [
     "Supplier",
     "SupplierResource",
     "SupplierResourcePriceHistory",
+    "SupplierResourceAgreement",
     "ProductCategory",
     "Product",
     "ProductResource",

@@ -620,8 +620,13 @@ async def get_sku_channel_inventory(
         return {"items": [], "message": "Product has no required resources"}
     
     # Parse date range
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+    if start > end:
+        raise HTTPException(status_code=400, detail="start_date cannot be later than end_date")
     
     # Get all resource IDs needed
     resource_ids = [pr.resource_id for pr in required_resources]
