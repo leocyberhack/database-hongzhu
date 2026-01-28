@@ -35,6 +35,11 @@ const TABLE_NAME_MAP: Record<string, string> = {
     'approval': '审批',
     'file': '文件',
     'folder': '文件夹',
+    'supplier_resource_agreements': 'Supplier Agreements',
+    'supplier_resource_price_history': 'Supplier Price History',
+    'price_history': 'SKU Price History',
+    'order_status_history': 'Order Status History',
+    'inventory_log': 'Inventory Log',
 }
 
 // 操作类型翻译和颜色
@@ -124,13 +129,39 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'parking': '停车场信息',
     'reservation_required': '需要预定',
     'filename': '文件名',
-    'folder_id': '所属文件夹',
+    'folder_id': 'Folder',
     'object_name': '对象路径',
     'content_type': '类型',
     'size': '大小',
     'url': '链接',
     'parent_id': '父文件夹',
     'has_password': '密码状态',
+    'poi_code': 'POI Code',
+    'resource_code': 'Resource Code',
+    'poi_type': 'POI Type',
+    'tags': 'Tags',
+    'type_options': 'Type Options',
+    'longitude': 'Longitude',
+    'latitude': 'Latitude',
+    'supply_status': 'Supply Status',
+    'currency': 'Currency',
+    'rule': 'Rule',
+    'priority': 'Priority',
+    'supplier_resource_id': 'Supplier Resource ID',
+    'inventory_date': 'Inventory Date',
+    'frozen_qty': 'Frozen Qty',
+    'sold_qty': 'Sold Qty',
+    'agreement_name': 'Agreement Name',
+    'start_date': 'Start Date',
+    'end_date': 'End Date',
+    'signing_date': 'Signing Date',
+    'payment_method': 'Payment Method',
+    'requires_invoice': 'Requires Invoice',
+    'invoice_type': 'Invoice Type',
+    'discount_methods': 'Discount Methods',
+    'discount_policy': 'Discount Policy',
+    'attached_files': 'Attachments',
+    'settlement_cycle': 'Settlement Cycle',
 }
 
 const FIELD_ORDER = Object.keys(FIELD_NAME_MAP)
@@ -227,6 +258,25 @@ export default function OperationLogsPage() {
 
         try {
             const parts: string[] = []
+            const formatValue = (key: string, value: any) => {
+                if (key === 'status' && typeof value === 'string') {
+                    return STATUS_MAP[value] || value
+                }
+                if (key === 'requires_invoice' && typeof value === 'boolean') {
+                    return value ? '是' : '否'
+                }
+                if (typeof value === 'object' && value !== null) {
+                    return JSON.stringify(value, null, 2)
+                }
+                return value
+            }
+            const pushFields = (label: string, payload: Record<string, any>) => {
+                parts.push(label)
+                sortFieldKeys(Object.keys(payload)).forEach((key) => {
+                    const fieldName = FIELD_NAME_MAP[key] || key
+                    parts.push(`${fieldName}: ${formatValue(key, payload[key])}`)
+                })
+            }
 
             // 特殊处理不同类型的diff_data
             if (data.date_range) {
@@ -251,49 +301,26 @@ export default function OperationLogsPage() {
                 // and explicitly excludes 'stats' if we add check.
             }
 
-            if (data.before && data.after) {
-                // UPDATE操作，显示before/after
-                parts.push('【修改前】')
-                sortFieldKeys(Object.keys(data.before)).forEach((key) => {
-                    const value = data.before[key]
-                    const fieldName = FIELD_NAME_MAP[key] || key
-                    let displayValue: any = value
-
-                    if (key === 'status' && typeof value === 'string') {
-                        displayValue = STATUS_MAP[value] || value
-                    } else if (typeof value === 'object' && value !== null) {
-                        displayValue = JSON.stringify(value, null, 2)
-                    }
-                    parts.push(`${fieldName}: ${displayValue}`)
-                })
-                parts.push('【修改后】')
-                sortFieldKeys(Object.keys(data.after)).forEach((key) => {
-                    const value = data.after[key]
-                    const fieldName = FIELD_NAME_MAP[key] || key
-                    let displayValue: any = value
-
-                    if (key === 'status' && typeof value === 'string') {
-                        displayValue = STATUS_MAP[value] || value
-                    } else if (typeof value === 'object' && value !== null) {
-                        displayValue = JSON.stringify(value, null, 2)
-                    }
-                    parts.push(`${fieldName}: ${displayValue}`)
-                })
+            const hasBefore = data.before !== undefined && data.before !== null
+            const hasAfter = data.after !== undefined && data.after !== null
+            if (hasBefore || hasAfter) {
+                if (hasBefore && hasAfter) {
+                    // UPDATE操作，显示before/after
+                    pushFields('【修改前】', data.before)
+                    pushFields('【修改后】', data.after)
+                } else if (hasAfter) {
+                    // CREATE from oplog (before = null, after = data)
+                    pushFields('【创建内容】', data.after)
+                } else {
+                    // DELETE from oplog (after = null, before = data)
+                    pushFields('【删除前】', data.before)
+                }
             } else {
                 // CREATE/DELETE操作，直接显示数据
                 const keys = Object.keys(data).filter((key) => !['before', 'after', 'date_range', 'type', 'stats'].includes(key))
                 sortFieldKeys(keys).forEach((key) => {
-                    const value = data[key]
                     const fieldName = FIELD_NAME_MAP[key] || key
-                    let displayValue: any = value
-
-                    if (key === 'status' && typeof value === 'string') {
-                        displayValue = STATUS_MAP[value] || value
-                    } else if (typeof value === 'object' && value !== null) {
-                        displayValue = JSON.stringify(value, null, 2)
-                    }
-
-                    parts.push(`${fieldName}: ${displayValue}`)
+                    parts.push(`${fieldName}: ${formatValue(key, data[key])}`)
                 })
             }
 

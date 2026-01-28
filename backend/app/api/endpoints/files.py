@@ -138,11 +138,12 @@ async def _delete_folders_with_files(db: AsyncSession, folder_ids: List[int], op
 @router.get("/folders")
 async def list_folders(
     parent_id: Optional[int] = Query(None, description="父文件夹ID，为空表示根目录"),
+    include_private: bool = Query(default=False, description="Include POI/SUPPLIER folders"),
     x_folder_password: Optional[str] = Header(default=None, alias="X-Folder-Password"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles(["admin", "super_admin", "product", "operator"]))
 ):
-    """获取文件夹列表"""
+    """List folders"""
     if parent_id:
         parent = await db.get(Folder, parent_id)
         if not parent:
@@ -150,15 +151,19 @@ async def list_folders(
         _require_folder_password(parent, x_folder_password)
         query = select(Folder).where(Folder.parent_id == parent_id)
     else:
-        # 根目录：排除POI/供应商专属文件夹（名称以"POI_"/"SUPPLIER_"开头的文件夹）
-        query = select(Folder).where(
-            and_(
-                Folder.parent_id.is_(None),
-                ~Folder.name.startswith("POI_"),
-                ~Folder.name.startswith("SUPPLIER_"),
+        if include_private and user.role != "super_admin":
+            raise HTTPException(status_code=403, detail="Permission denied")
+        if include_private and user.role == "super_admin":
+            query = select(Folder).where(Folder.parent_id.is_(None))
+        else:
+            # Root: hide POI_/SUPPLIER_ folders in general view
+            query = select(Folder).where(
+                and_(
+                    Folder.parent_id.is_(None),
+                    ~Folder.name.startswith("POI_"),
+                    ~Folder.name.startswith("SUPPLIER_"),
+                )
             )
-        )
-    
     result = await db.execute(query.order_by(Folder.name))
     folders = result.scalars().all()
     
@@ -174,11 +179,13 @@ async def list_folders(
 
 @router.get("/folders/all")
 async def list_all_folders(
-    include_private: bool = Query(default=False, description="????POI/????????"),
+    include_private: bool = Query(default=False, description="Include POI/SUPPLIER folders"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles(["admin", "super_admin", "product", "operator"]))
 ):
-    """?????????????"""
+    """List all folders (flat)"""
+    if include_private and user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="Permission denied")
     result = await db.execute(select(Folder).order_by(Folder.name))
     folders = result.scalars().all()
     if not include_private and folders:

@@ -70,8 +70,11 @@ export default function FilesPage() {
         try {
             const password = folderId ? folderPasswords[folderId] : undefined
             const headers = password ? { 'X-Folder-Password': password } : undefined
+            const folderQuery = folderId
+                ? `?parent_id=${folderId}`
+                : (isSuperAdmin ? '?include_private=true' : '')
             const [foldersRes, filesRes] = await Promise.all([
-                apiRequest<FolderItem[]>(`/api/files/folders${folderId ? `?parent_id=${folderId}` : ''}`, { headers }),
+                apiRequest<FolderItem[]>(`/api/files/folders${folderQuery}`, { headers }),
                 apiRequest<FileItem[]>(`/api/files/list${folderId ? `?folder_id=${folderId}` : ''}`, { headers })
             ])
             setFolders(foldersRes)
@@ -99,7 +102,7 @@ export default function FilesPage() {
     // 加载所有文件夹（用于移动文件/文件夹）
     const loadAllFolders = async () => {
         try {
-            const res = await api.get('/files/folders/all')
+            const res = await api.get(`/files/folders/all${isSuperAdmin ? '?include_private=true' : ''}`)
             setAllFolders(res.data)
         } catch (error) {
             console.error(error)

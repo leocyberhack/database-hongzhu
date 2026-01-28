@@ -15,8 +15,8 @@ from app.models import (
     Poi,
     Resource,
     Supplier,
-    SupplierResource,
     SupplierResourcePriceHistory,
+    SupplierResourceAgreement,
     ProductCategory,
     Product,
     ProductResource,
@@ -27,7 +27,6 @@ from app.models import (
     Price,
     PriceHistory,
     Inventory,
-    ResourceInventory,
     InventoryLog,
 )
 
@@ -39,8 +38,8 @@ TARGET_MODELS = (
     # Poi,              # Handled manually
     # Resource,         # Handled manually
     # Supplier,         # Handled manually
-    SupplierResource,
     SupplierResourcePriceHistory,
+    SupplierResourceAgreement,
     # ProductCategory,  # Handled manually or low priority
     # Product,          # Handled manually
     ProductResource,
@@ -51,7 +50,6 @@ TARGET_MODELS = (
     # Price,            # Handled manually in pricing.py
     PriceHistory,
     # Inventory,        # Handled manually in inventory.py
-    ResourceInventory,
     # InventoryLog,     # No need to audit the audit log itself
 )
 
