@@ -174,12 +174,22 @@ async def list_folders(
 
 @router.get("/folders/all")
 async def list_all_folders(
+    include_private: bool = Query(default=False, description="????POI/????????"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles(["admin", "super_admin", "product", "operator"]))
 ):
-    """获取所有文件夹（扁平列表）"""
+    """?????????????"""
     result = await db.execute(select(Folder).order_by(Folder.name))
     folders = result.scalars().all()
+    if not include_private and folders:
+        private_roots = [
+            f for f in folders
+            if f.name.startswith("POI_") or f.name.startswith("SUPPLIER_")
+        ]
+        if private_roots:
+            children_map = _build_children_map(folders)
+            private_ids = set(_collect_descendant_ids([f.id for f in private_roots], children_map))
+            folders = [f for f in folders if f.id not in private_ids]
     return [{
         "id": f.id,
         "name": f.name,
@@ -188,7 +198,6 @@ async def list_all_folders(
         "created_at": f.created_at.isoformat() if f.created_at else None,
         "has_password": bool(f.password_hash),
     } for f in folders]
-
 
 @router.post("/folders")
 async def create_folder(

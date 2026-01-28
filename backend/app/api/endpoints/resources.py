@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
+from app.api.endpoints.files import _delete_folders_with_files
 from app.models import AuditLog, Poi, Resource, ProductResource
 from app.schemas.common import (
     ListResponse,
@@ -316,7 +317,10 @@ async def delete_poi(
         source="web",
     )
     db.add(audit)
-    
+
+    if poi.folder_id:
+        await _delete_folders_with_files(db, [poi.folder_id], user.username)
+
     await db.delete(poi)
     await db.commit()
     return None
@@ -326,7 +330,7 @@ async def delete_poi(
 async def batch_delete_poi(
     poi_ids: list[int],
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     if not poi_ids:
         return None
@@ -341,16 +345,25 @@ async def batch_delete_poi(
     if usage_map:
         blocked = sorted(usage_map.keys())
         preview = ", ".join(str(i) for i in blocked[:10])
-        suffix = f" 等 {len(blocked)} 个POI" if len(blocked) > 10 else ""
-        raise HTTPException(status_code=400, detail=f"以下POI仍有关联资源，无法删除: {preview}{suffix}")
+        suffix = f" ? {len(blocked)} ?POI" if len(blocked) > 10 else ""
+        raise HTTPException(status_code=400, detail=f"??POI???????????: {preview}{suffix}")
 
+    pois = []
+    folder_ids: set[int] = set()
     for poi_id in poi_ids:
         poi = await db.get(Poi, poi_id)
         if poi:
-            await db.delete(poi)
+            pois.append(poi)
+            if poi.folder_id:
+                folder_ids.add(poi.folder_id)
+
+    if folder_ids:
+        await _delete_folders_with_files(db, list(folder_ids), user.username)
+
+    for poi in pois:
+        await db.delete(poi)
     await db.commit()
     return None
-
 
 @router.post("/poi/batch-update")
 async def batch_update_poi(

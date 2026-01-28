@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.api.auth import User, get_current_user
 from app.api.deps import DbSession
+from app.api.endpoints.files import _delete_folders_with_files
 from app.models import (
     AuditLog,
     Approval,
@@ -418,7 +419,10 @@ async def delete_supplier(
         source="web",
     )
     db.add(audit)
-    
+
+    if supplier.folder_id:
+        await _delete_folders_with_files(db, [supplier.folder_id], user.username)
+
     await db.delete(supplier)
     await db.commit()
     return None
@@ -428,7 +432,7 @@ async def delete_supplier(
 async def batch_delete_suppliers(
     supplier_ids: list[int],
     db: DbSession,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     if not supplier_ids:
         return None
@@ -442,16 +446,25 @@ async def batch_delete_suppliers(
     if usage_map:
         blocked = sorted(usage_map.keys())
         preview = ", ".join(str(i) for i in blocked[:10])
-        suffix = f" 等 {len(blocked)} 个供应商" if len(blocked) > 10 else ""
-        raise HTTPException(status_code=400, detail=f"以下供应商仍绑定资源，无法删除: {preview}{suffix}")
+        suffix = f" ? {len(blocked)} ????" if len(blocked) > 10 else ""
+        raise HTTPException(status_code=400, detail=f"???????????????: {preview}{suffix}")
 
+    suppliers = []
+    folder_ids: set[int] = set()
     for supplier_id in supplier_ids:
         supplier = await db.get(Supplier, supplier_id)
         if supplier:
-            await db.delete(supplier)
+            suppliers.append(supplier)
+            if supplier.folder_id:
+                folder_ids.add(supplier.folder_id)
+
+    if folder_ids:
+        await _delete_folders_with_files(db, list(folder_ids), user.username)
+
+    for supplier in suppliers:
+        await db.delete(supplier)
     await db.commit()
     return None
-
 
 @router.post("/suppliers/batch-update")
 async def batch_update_suppliers(
