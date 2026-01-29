@@ -1,4 +1,4 @@
-import { BrowserRouter } from 'react-router-dom'
+import { HashRouter } from 'react-router-dom'
 import { ConfigProvider } from 'antd'
 import AppRoutes from './AppRoutes'
 import { AuthProvider } from './contexts/AuthContext'
@@ -26,11 +26,11 @@ function App() {
         }
       }}
     >
-      <BrowserRouter>
+      <HashRouter>
         <AuthProvider>
           <AppRoutes />
         </AuthProvider>
-      </BrowserRouter>
+      </HashRouter>
     </ConfigProvider>
   )
 }
