@@ -10,7 +10,7 @@ from app.schemas.spu import SpuCreate, SpuUpdate, SpuResponse, SpuListResponse
 
 router = APIRouter()
 
-@router.get("/", response_model=SpuListResponse)
+@router.get("", response_model=SpuListResponse)
 async def list_spus(
     db: DbSession,
     page: int = 1,
@@ -33,7 +33,7 @@ async def list_spus(
 
     return {"items": items, "pagination": {"total": total, "page": page, "page_size": page_size}}
 
-@router.post("/", response_model=SpuResponse)
+@router.post("", response_model=SpuResponse)
 async def create_spu(
     spu_in: SpuCreate,
     db: DbSession,
