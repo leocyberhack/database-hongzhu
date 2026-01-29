@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Table, Tag, Button, Space, Card, Form, Select, Typography, Modal, Row, Col, Input } from 'antd'
 import { CalendarOutlined, HistoryOutlined, SearchOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
@@ -20,41 +20,46 @@ interface PricingSummaryItem {
 }
 
 export default function PricingPage() {
-    const { data } = useData()
-    const channels = data?.channels ?? []
-    const skus = data?.skus ?? []
-    const products = data?.products ?? []
-    const spus = data?.spus ?? []
+    const { data, loadData } = useData()
+    const channels = data.channels ?? []
+    const skus = data.skus ?? []
+    const products = data.products ?? []
+    const spus = data.spus ?? []
 
     const [loading, setLoading] = useState(false)
     const [stockLimitMap, setStockLimitMap] = useState<Record<string, number>>({})
     const [items, setItems] = useState<PricingSummaryItem[]>([])
-    const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
 
-    // Filters
     const [filterSku, setFilterSku] = useState<number | null>(null)
     const [filterChannel, setFilterChannel] = useState<number | null>(null)
     const [filterStatus, setFilterStatus] = useState<string | null>(null)
 
-    // Modal / Drawer State
     const [calendarVisible, setCalendarVisible] = useState(false)
     const [historyVisible, setHistoryVisible] = useState(false)
     const [currentRecord, setCurrentRecord] = useState<PricingSummaryItem | null>(null)
 
     const calendarRef = useRef<SKUCalendarEditorRef>(null)
 
-    const fetchSummary = async () => {
+    useEffect(() => {
+        loadData(['channels', 'skus', 'products', 'spus'])
+    }, [loadData])
+
+    const fetchSummary = useCallback(async () => {
         setLoading(true)
         try {
-            const qs = new URLSearchParams()
+            const qs = new URLSearchParams({
+                page: String(pagination.current),
+                page_size: String(pagination.pageSize),
+            })
             if (filterSku) qs.append('sku_id', String(filterSku))
             if (filterChannel) qs.append('channel_id', String(filterChannel))
-            qs.append('page', '1')
-            qs.append('page_size', '1000') // 拉全量，前端分页
+            if (filterStatus) qs.append('status', filterStatus)
 
-            const res = await apiRequest<{ items: PricingSummaryItem[] }>(`/api/pricing/summary?${qs.toString()}`)
+            const res = await apiRequest<{ items: PricingSummaryItem[]; pagination: { total: number } }>(
+                `/api/pricing/summary?${qs.toString()}`
+            )
             const list = res.items || []
-            // Enrich with SPU info
             const enriched = list.map(item => {
                 const sku = skus.find(s => String(s.id) === String(item.sku_id))
                 const spu = sku ? spus.find(s => String(s.id) === String(sku.spu_id)) : null
@@ -64,26 +69,24 @@ export default function PricingPage() {
                     spu_name: spu?.name || '-',
                 }
             })
-            // Default sort by SPU
             enriched.sort((a, b) => {
                 const na = a.spu_name || ''
                 const nb = b.spu_name || ''
                 return na.localeCompare(nb)
             })
 
-            const filtered = filterStatus ? enriched.filter((r) => r.status === filterStatus) : enriched
-            setItems(filtered)
-            setPagination((prev) => ({ ...prev, current: 1 }))
+            setItems(enriched)
+            setPagination((prev) => ({ ...prev, total: res.pagination?.total || 0 }))
         } catch (err) {
             console.error(err)
         } finally {
             setLoading(false)
         }
-    }
+    }, [filterChannel, filterSku, filterStatus, pagination.current, pagination.pageSize, skus, spus])
 
     useEffect(() => {
         fetchSummary()
-    }, [filterSku, filterChannel, filterStatus])
+    }, [fetchSummary])
 
     const fetchStockLimits = async (skuId: number, channelId: number) => {
         try {
@@ -98,7 +101,6 @@ export default function PricingPage() {
                 return
             }
 
-            // 计算渠道占比（allowed_channels 支持对象/纯ID）
             let ratio = 100
             const allowed = (product as any).allowed_channels || []
             if (Array.isArray(allowed) && allowed.length > 0) {
@@ -111,7 +113,6 @@ export default function PricingPage() {
                 if (alloc && typeof alloc === 'object' && alloc.stock_ratio !== undefined && alloc.stock_ratio !== null) {
                     ratio = Number(alloc.stock_ratio)
                 } else if (!alloc) {
-                    // 不在允许列表则视为 0
                     ratio = 0
                 }
             }
@@ -142,57 +143,25 @@ export default function PricingPage() {
         setHistoryVisible(true)
     }
 
-
     const columns: any = [
         {
-            title: '所属 SPU',
+            title: '所属SPU',
             dataIndex: 'spu_name',
             key: 'spu_name',
             render: (text: string) => <Tag color="geekblue">{text}</Tag>,
-            sorter: (a: any, b: any) => (a.spu_name || '').localeCompare(b.spu_name || ''),
         },
         {
             title: 'SKU 名称',
             dataIndex: 'sku_name',
             key: 'sku_name',
             render: (text: string) => <b>{text}</b>,
-            filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
-                <div style={{ padding: 8 }}>
-                    <Input
-                        placeholder="搜索姓名"
-                        value={selectedKeys[0]}
-                        onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-                        onPressEnter={() => confirm()}
-                        style={{ width: 188, marginBottom: 8, display: 'block' }}
-                    />
-                    <Space>
-                        <Button
-                            type="primary"
-                            onClick={() => confirm()}
-                            icon={<SearchOutlined />}
-                            size="small"
-                            style={{ width: 90 }}
-                        >
-                            搜索
-                        </Button>
-                        <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
-                            重置
-                        </Button>
-                    </Space>
-                </div>
-            ),
-            filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-            onFilter: (value: string, record: PricingSummaryItem) =>
-                record.sku_name.toLowerCase().includes(value.toLowerCase()),
-            sorter: (a: PricingSummaryItem, b: PricingSummaryItem) => a.sku_name.localeCompare(b.sku_name),
+            sorter: true,
         },
         {
             title: '销售渠道',
             dataIndex: 'channel_name',
             key: 'channel_name',
             render: (text: string) => <Tag color="blue">{text}</Tag>,
-            filters: channels.map(c => ({ text: c.channel_name, value: c.channel_name })),
-            onFilter: (value: string, record: PricingSummaryItem) => record.channel_name === value,
         },
         {
             title: '当前价格区间',
@@ -222,11 +191,6 @@ export default function PricingPage() {
                     {status === 'active' ? '生效中' : '未上架'}
                 </Tag>
             ),
-            filters: [
-                { text: '生效中', value: 'active' },
-                { text: '未上架', value: 'empty' },
-            ],
-            onFilter: (value: string, record: PricingSummaryItem) => record.status === value,
         },
         {
             title: '操作',
@@ -260,7 +224,6 @@ export default function PricingPage() {
                 <p className="page-subtitle">SKU 价格策略与日历管理</p>
             </div>
 
-            {/* Filters */}
             <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 16 } }}>
                 <Row gutter={16}>
                     <Col span={6}>
@@ -271,7 +234,10 @@ export default function PricingPage() {
                                 placeholder="选择 SKU"
                                 optionFilterProp="label"
                                 options={skus.map(s => ({ value: Number(s.id), label: s.sku_name }))}
-                                onChange={setFilterSku}
+                                onChange={(v) => {
+                                    setFilterSku(v || null)
+                                    setPagination(prev => ({ ...prev, current: 1 }))
+                                }}
                             />
                         </Form.Item>
                     </Col>
@@ -283,7 +249,10 @@ export default function PricingPage() {
                                 placeholder="选择渠道"
                                 optionFilterProp="label"
                                 options={channels.map(c => ({ value: Number(c.id), label: c.channel_name }))}
-                                onChange={setFilterChannel}
+                                onChange={(v) => {
+                                    setFilterChannel(v || null)
+                                    setPagination(prev => ({ ...prev, current: 1 }))
+                                }}
                             />
                         </Form.Item>
                     </Col>
@@ -297,12 +266,15 @@ export default function PricingPage() {
                                     { value: 'empty', label: '未上架' },
                                 ]}
                                 value={filterStatus}
-                                onChange={(v) => setFilterStatus(v)}
+                                onChange={(v) => {
+                                    setFilterStatus(v || null)
+                                    setPagination(prev => ({ ...prev, current: 1 }))
+                                }}
                             />
                         </Form.Item>
                     </Col>
                     <Col span={12} style={{ textAlign: 'right' }}>
-                        <Button icon={<SearchOutlined />} onClick={fetchSummary}>刷新数据</Button>
+                        <Button icon={<SearchOutlined />} onClick={() => fetchSummary()}>刷新数据</Button>
                     </Col>
                 </Row>
             </Card>
@@ -316,15 +288,14 @@ export default function PricingPage() {
                     pagination={{
                         current: pagination.current,
                         pageSize: pagination.pageSize,
-                        total: items.length,
+                        total: pagination.total,
                         showSizeChanger: true,
                         showTotal: (total) => `共 ${total} 条记录`,
+                        onChange: (page, pageSize) => setPagination(prev => ({ ...prev, current: page, pageSize: pageSize || prev.pageSize })),
                     }}
-                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
                 />
             </div>
 
-            {/* Calendar Modal */}
             <Modal
                 title={`价格日历查看(只读) - ${currentRecord?.sku_name} @ ${currentRecord?.channel_name}`}
                 open={calendarVisible}
@@ -348,7 +319,6 @@ export default function PricingPage() {
                 )}
             </Modal>
 
-            {/* History Drawer */}
             <PriceHistoryDrawer
                 open={historyVisible}
                 onClose={() => setHistoryVisible(false)}

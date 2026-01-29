@@ -1,8 +1,7 @@
-import { useState, useMemo, useEffect } from 'react'
+﻿import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Button, Descriptions, Drawer, Form, Input, Space, Table, Tag, message, Card, Row, Col, Popconfirm, Modal, Tooltip, Select } from 'antd'
 import { useSearchParams } from 'react-router-dom'
-import { useData } from '@/contexts/DataContext'
-import type { Supplier, SupplierContact } from '@/types'
+import type { Supplier, SupplierContact, SupplierResource, Resource } from '@/types'
 import { apiRequest } from '@/lib/api'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, FolderOpenOutlined } from '@ant-design/icons'
 import ContactTableEditor from '@/components/ContactTableEditor'
@@ -52,7 +51,6 @@ const normalizeContacts = (value: unknown): SupplierContact[] => {
     return []
 }
 
-
 const buildSupplierAttrs = (values: Record<string, unknown>, existing?: Supplier) => {
     const base: Record<string, unknown> = { ...(existing?.attrs ?? {}) }
     supplierAttrKeys.forEach((key) => {
@@ -72,49 +70,84 @@ const formatAttrDisplay = (value: unknown) => {
 }
 
 export default function SupplierPage() {
-    const { data, refresh } = useData()
     const [supplierForm] = Form.useForm()
     const [editForm] = Form.useForm()
     const [batchUpdateForm] = Form.useForm()
     const [selected, setSelected] = useState<Supplier | null>(null)
     const [detailAutoOpened, setDetailAutoOpened] = useState(false)
-    const suppliers = data?.suppliers ?? []
-    const resources = data?.resources ?? []
-    const supplierResources = data?.supplier_resources ?? []
     const [searchParams] = useSearchParams()
     const [createModalVisible, setCreateModalVisible] = useState(false)
     const [editModalVisible, setEditModalVisible] = useState(false)
     const [fileManagerSupplier, setFileManagerSupplier] = useState<Supplier | null>(null)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
-    const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
+    const [loading, setLoading] = useState(false)
 
-    // 筛选器状态
-    const [filters, setFilters] = useState<FilterState>({
-        keyword: '',
-    })
+    const [filters, setFilters] = useState<FilterState>({ keyword: '' })
+    const [debouncedKeyword, setDebouncedKeyword] = useState(filters.keyword)
 
-    // 过滤逻辑
-    const filteredSuppliers = useMemo(() => {
-        return suppliers.filter((s) => {
-            // 关键词搜索（名称或联系人或电话）
-            if (filters.keyword) {
-                const kw = filters.keyword.toLowerCase()
-                const nameMatch = s.supplier_name.toLowerCase().includes(kw)
-                const contacts = normalizeContacts(s.contact_info)
-                const contactMatch = contacts.some((c) =>
-                    [c.name, c.phone, c.email, c.position].some((value) =>
-                        value ? String(value).toLowerCase().includes(kw) : false
-                    )
-                )
-                if (!nameMatch && !contactMatch) {
-                    return false
-                }
+    const [rows, setRows] = useState<Supplier[]>([])
+
+    const [supplyRows, setSupplyRows] = useState<SupplierResource[]>([])
+    const [resourceMap, setResourceMap] = useState<Map<string, Resource>>(new Map())
+
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedKeyword(filters.keyword), 300)
+        return () => clearTimeout(t)
+    }, [filters.keyword])
+
+    const fetchSuppliers = useCallback(async () => {
+        setLoading(true)
+        try {
+            const params = new URLSearchParams({
+                page: String(pagination.current),
+                page_size: String(pagination.pageSize),
+            })
+            if (debouncedKeyword.trim()) params.append('keyword', debouncedKeyword.trim())
+            const res = await apiRequest<{ items: Supplier[]; pagination: { total: number } }>(`/api/suppliers?${params.toString()}`)
+            setRows(res.items || [])
+            setPagination(prev => ({ ...prev, total: res.pagination?.total || 0 }))
+        } catch (err: any) {
+            message.error(err.message || '加载供应商失败')
+            setRows([])
+        } finally {
+            setLoading(false)
+        }
+    }, [debouncedKeyword, pagination.current, pagination.pageSize])
+
+    useEffect(() => {
+        fetchSuppliers()
+    }, [fetchSuppliers])
+
+    useEffect(() => {
+        if (searchParams.get('detail') && !detailAutoOpened && rows.length) {
+            setSelected(rows[0])
+            setDetailAutoOpened(true)
+        }
+    }, [searchParams, rows, detailAutoOpened])
+
+    const fetchSupplierResources = useCallback(async (supplierId: string) => {
+        try {
+            const params = new URLSearchParams({ supplier_id: supplierId, page: '1', page_size: '1000' })
+            const res = await apiRequest<{ items: SupplierResource[] }>(`/api/supplier-resources?${params.toString()}`)
+            const items = res.items || []
+            setSupplyRows(items)
+            const resourceIds = Array.from(new Set(items.map(item => item.resource_id)))
+            if (resourceIds.length > 0) {
+                const rParams = new URLSearchParams({ page: '1', page_size: String(resourceIds.length) })
+                resourceIds.forEach((id) => rParams.append('ids', String(id)))
+                const rRes = await apiRequest<{ items: Resource[] }>(`/api/resources?${rParams.toString()}`)
+                setResourceMap(new Map((rRes.items || []).map(r => [String(r.id), r])))
+            } else {
+                setResourceMap(new Map())
             }
-
-            return true
-        })
-    }, [suppliers, filters])
+        } catch (err) {
+            console.error(err)
+            setSupplyRows([])
+            setResourceMap(new Map())
+        }
+    }, [])
 
     const createSupplier = async (values: any) => {
         try {
@@ -130,7 +163,7 @@ export default function SupplierPage() {
             supplierForm.resetFields()
             setCreateModalVisible(false)
             setFileManagerSupplier(created)
-            await refresh()
+            await fetchSuppliers()
         } catch (err: any) {
             message.error(err.message || '创建失败')
         }
@@ -169,7 +202,7 @@ export default function SupplierPage() {
             message.success('供应商已更新')
             setEditModalVisible(false)
             setSelected(null)
-            await refresh()
+            await fetchSuppliers()
         } catch (err: any) {
             message.error(err.message || '更新失败')
         }
@@ -181,7 +214,7 @@ export default function SupplierPage() {
             if (!supplier.folder_id) {
                 const updated = await apiRequest<Supplier>(`/api/suppliers/${supplier.id}/folder`, { method: 'POST' })
                 setFileManagerSupplier(updated)
-                await refresh()
+                await fetchSuppliers()
                 return
             }
             setFileManagerSupplier(supplier)
@@ -200,7 +233,7 @@ export default function SupplierPage() {
         try {
             await apiRequest(`/api/suppliers/${id}`, { method: 'DELETE' })
             message.success('供应商已删除')
-            await refresh()
+            await fetchSuppliers()
         } catch (err: any) {
             message.error(err.message || '删除失败')
         }
@@ -215,7 +248,7 @@ export default function SupplierPage() {
             })
             message.success(`已删除 ${selectedRowKeys.length} 个供应商`)
             setSelectedRowKeys([])
-            await refresh()
+            await fetchSuppliers()
         } catch (err: any) {
             message.error(err.message || '批量删除失败')
         }
@@ -224,7 +257,6 @@ export default function SupplierPage() {
     const handleBatchUpdate = async (values: any) => {
         if (selectedRowKeys.length === 0) return
         try {
-            // Remove empty fields
             const fields: any = {}
             if (values.remark && String(values.remark).trim()) {
                 fields.remark = String(values.remark).trim()
@@ -249,7 +281,7 @@ export default function SupplierPage() {
             setBatchUpdateVisible(false)
             batchUpdateForm.resetFields()
             setSelectedRowKeys([])
-            await refresh()
+            await fetchSuppliers()
         } catch (err: any) {
             message.error(err.message || '批量更新失败')
         }
@@ -259,56 +291,24 @@ export default function SupplierPage() {
         {
             title: '供应商名称',
             dataIndex: 'supplier_name',
-            sorter: (a: Supplier, b: Supplier) => a.supplier_name.localeCompare(b.supplier_name),
-            filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
-                <div style={{ padding: 8 }}>
-                    <Input
-                        placeholder="搜索名称"
-                        value={selectedKeys[0]}
-                        onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-                        onPressEnter={() => confirm()}
-                        style={{ width: 188, marginBottom: 8, display: 'block' }}
-                    />
-                    <Space>
-                        <Button
-                            type="primary"
-                            onClick={() => confirm()}
-                            icon={<SearchOutlined />}
-                            size="small"
-                            style={{ width: 90 }}
-                        >
-                            搜索
-                        </Button>
-                        <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
-                            重置
-                        </Button>
-                    </Space>
-                </div>
-            ),
-            filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-            onFilter: (value: string, record: Supplier) =>
-                record.supplier_name.toLowerCase().includes(value.toLowerCase()),
         },
         {
             title: '绑定资源数',
-            render: (_: any, record: Supplier) => supplierResources.filter((sr) => sr.supplier_id === record.id).length,
-            sorter: (a: Supplier, b: Supplier) => {
-                const countA = supplierResources.filter(sr => sr.supplier_id === a.id).length
-                const countB = supplierResources.filter(sr => sr.supplier_id === b.id).length
-                return countA - countB
-            }
+            render: (_: any, record: Supplier) => record.resource_count ?? 0,
         },
-
         {
             title: '操作',
             width: 200,
             render: (_: any, record: Supplier) => {
-                const bindingCount = supplierResources.filter(sr => sr.supplier_id === record.id).length
+                const bindingCount = record.resource_count ?? 0
                 const isLocked = bindingCount > 0
 
                 return (
                     <Space>
-                        <Button type="link" size="small" onClick={() => setSelected(record)}>
+                        <Button type="link" size="small" onClick={() => {
+                            setSelected(record)
+                            fetchSupplierResources(record.id)
+                        }}>
                             查看详情
                         </Button>
                         <Button
@@ -359,23 +359,11 @@ export default function SupplierPage() {
         },
     ]
 
-
-    // 获取供应商绑定的资源列表
-    const supplyList = useMemo(
-        () =>
-            supplierResources
-                .filter((sr) => sr.supplier_id === selected?.id)
-                .map((sr) => ({ ...sr, resource: resources.find((r) => r.id === sr.resource_id) })),
-        [resources, selected?.id, supplierResources]
-    )
-
-    useEffect(() => {
-        if (searchParams.get('detail') && !detailAutoOpened && suppliers.length) {
-            setSelected(suppliers[0])
-            setDetailAutoOpened(true)
-        }
-    }, [searchParams, suppliers, detailAutoOpened])
-
+    const supplyList = useMemo(() =>
+        supplyRows.map((sr) => ({
+            ...sr,
+            resource: resourceMap.get(String(sr.resource_id)),
+        })), [supplyRows, resourceMap])
 
     return (
         <div className="page-container">
@@ -389,7 +377,6 @@ export default function SupplierPage() {
                 </Button>
             </div>
 
-            {/* 高级筛选器 */}
             <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: '16px' } }}>
                 <Form layout="inline" style={{ width: '100%' }}>
                     <Row gutter={[16, 16]} style={{ width: '100%' }}>
@@ -399,7 +386,10 @@ export default function SupplierPage() {
                                     placeholder="搜索供应商名称、联系人、电话或邮箱"
                                     prefix={<SearchOutlined style={{ color: '#ccc' }} />}
                                     value={filters.keyword}
-                                    onChange={e => setFilters({ ...filters, keyword: e.target.value })}
+                                    onChange={e => {
+                                        setFilters({ ...filters, keyword: e.target.value })
+                                        setPagination(prev => ({ ...prev, current: 1 }))
+                                    }}
                                     allowClear
                                 />
                             </Form.Item>
@@ -433,7 +423,8 @@ export default function SupplierPage() {
                 <Table<Supplier>
                     rowKey="id"
                     columns={columns}
-                    dataSource={filteredSuppliers}
+                    dataSource={rows}
+                    loading={loading}
                     rowSelection={{
                         selectedRowKeys,
                         onChange: setSelectedRowKeys,
@@ -441,17 +432,14 @@ export default function SupplierPage() {
                     pagination={{
                         current: pagination.current,
                         pageSize: pagination.pageSize,
-                        total: filteredSuppliers.length,
+                        total: pagination.total,
                         showSizeChanger: true,
                         showTotal: (total) => `共 ${total} 条记录`,
-                        onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
-                        onShowSizeChange: (current, size) => setPagination({ current, pageSize: size })
+                        onChange: (page, pageSize) => setPagination(prev => ({ ...prev, current: page, pageSize: pageSize || prev.pageSize })),
                     }}
-                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
                 />
             </div>
 
-            {/* 新建供应商Modal */}
             <Modal
                 title="新建供应商"
                 open={createModalVisible}
@@ -502,9 +490,8 @@ export default function SupplierPage() {
                 </Form>
             </Modal>
 
-            {/* 编辑供应商Modal */}
             <Modal
-                title={`编辑供应商: ${selected?.supplier_name} `}
+                title={`编辑供应商 ${selected?.supplier_name} `}
                 open={editModalVisible}
                 onCancel={closeEditModal}
                 footer={(
@@ -553,7 +540,6 @@ export default function SupplierPage() {
                 </Form>
             </Modal>
 
-            {/* 批量更新 Modal */}
             <Modal
                 title={`批量修改已选的 ${selectedRowKeys.length} 个供应商`}
                 open={batchUpdateVisible}
@@ -579,7 +565,6 @@ export default function SupplierPage() {
                 </Form>
             </Modal>
 
-            {/* 供应商详情Drawer */}
             <Drawer
                 title={selected?.supplier_name}
                 open={!!selected && !editModalVisible}
@@ -640,7 +625,7 @@ export default function SupplierPage() {
                         />
 
                         <p style={{ marginTop: 16, color: '#666', fontSize: 12 }}>
-                            💡 供应商与资源的绑定关系在资源管理中维护。创建资源时必须选择至少一个供应商。
+                            📌 供应商与资源的绑定关系在资源管理中维护。创建资源时必须选择至少一个供应商。
                         </p>
                     </>
                 )}

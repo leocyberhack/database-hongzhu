@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Card, Table, Tag, Space, Button, Select, Input, DatePicker, message, Popconfirm } from 'antd'
+import { useEffect, useState } from 'react'
+import { Card, Table, Tag, Space, Button, Select, Input, DatePicker, message, Popconfirm, Modal } from 'antd'
 import { ReloadOutlined, SearchOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useData } from '@/contexts/DataContext'
 
 const { RangePicker } = DatePicker
 
@@ -19,12 +18,11 @@ interface OperationLog {
     source: string
 }
 
-// 表名翻译
 const TABLE_NAME_MAP: Record<string, string> = {
     'poi': 'POI',
     'resource': '资源',
     'supplier': '供应商',
-    'supplier_resource': '供应商-资源绑定',
+    'supplier_resource': '供应商资源绑定',
     'resource_inventory': '资源库存',
     'product': '产品',
     'product_category': '产品分类',
@@ -43,7 +41,6 @@ const TABLE_NAME_MAP: Record<string, string> = {
     'inventory_log': 'Inventory Log',
 }
 
-// 操作类型翻译和颜色
 const OPERATION_MAP: Record<string, { label: string; color: string }> = {
     'CREATE': { label: '新增', color: 'green' },
     'UPDATE': { label: '修改', color: 'blue' },
@@ -53,7 +50,6 @@ const OPERATION_MAP: Record<string, { label: string; color: string }> = {
     'STATUS_CHANGE': { label: '状态变更', color: 'orange' },
 }
 
-// 字段名翻译
 const FIELD_NAME_MAP: Record<string, string> = {
     'poi_name': 'POI名称',
     'province': '省份',
@@ -128,7 +124,7 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'includes_details': '包含内容',
     'suitable_for_people': '适配人数',
     'parking': '停车场信息',
-    'reservation_required': '需要预定',
+    'reservation_required': '需要预约',
     'filename': '文件名',
     'folder_id': 'Folder',
     'object_name': '对象路径',
@@ -179,11 +175,10 @@ const sortFieldKeys = (keys: string[]) => {
     })
 }
 
-// 状态值翻译
 const STATUS_MAP: Record<string, string> = {
     'active': '启用',
     'inactive': '停用',
-    'pending': '待审核',
+    'pending': '待审批',
     'approved': '已通过',
     'rejected': '已拒绝',
     'expired': '已过期',
@@ -191,7 +186,6 @@ const STATUS_MAP: Record<string, string> = {
 
 export default function OperationLogsPage() {
     const { user } = useAuth()
-    const { data } = useData()
     const [logs, setLogs] = useState<OperationLog[]>([])
     const [loading, setLoading] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 })
@@ -202,19 +196,10 @@ export default function OperationLogsPage() {
         operation: null as string | null,
         dateRange: null as [Dayjs, Dayjs] | null,
     })
+    const [detailLog, setDetailLog] = useState<OperationLog | null>(null)
+    const [detailLoading, setDetailLoading] = useState(false)
 
     const isAdmin = user?.username === 'admin'
-
-    const poiMap = useMemo(() => new Map((data?.poi ?? []).map((item: any) => [String(item.id), item])), [data])
-    const resourceMap = useMemo(() => new Map((data?.resources ?? []).map((item: any) => [String(item.id), item])), [data])
-    const supplierMap = useMemo(() => new Map((data?.suppliers ?? []).map((item: any) => [String(item.id), item])), [data])
-    const supplierResourceMap = useMemo(() => new Map((data?.supplier_resources ?? []).map((item: any) => [String(item.id), item])), [data])
-    const productMap = useMemo(() => new Map((data?.products ?? []).map((item: any) => [String(item.id), item])), [data])
-    const productResourceMap = useMemo(() => new Map((data?.product_resources ?? []).map((item: any) => [String(item.id), item])), [data])
-    const skuMap = useMemo(() => new Map((data?.skus ?? []).map((item: any) => [String(item.id), item])), [data])
-    const channelMap = useMemo(() => new Map((data?.channels ?? []).map((item: any) => [String(item.id), item])), [data])
-    const priceMap = useMemo(() => new Map((data?.prices ?? []).map((item: any) => [String(item.id), item])), [data])
-    const orderMap = useMemo(() => new Map((data?.orders ?? []).map((item: any) => [String(item.id), item])), [data])
 
     const fetchLogs = async () => {
         setLoading(true)
@@ -222,6 +207,7 @@ export default function OperationLogsPage() {
             const params = new URLSearchParams({
                 page: String(pagination.current),
                 page_size: String(pagination.pageSize),
+                include_diff: 'false',
             })
             if (filters.table_name) params.append('table_name', filters.table_name)
             if (filters.operator) params.append('operator', filters.operator)
@@ -265,122 +251,18 @@ export default function OperationLogsPage() {
         }
     }
 
-    const getMapItem = (map: Map<string, any>, id: any) => {
-        if (id === undefined || id === null) return undefined
-        return map.get(String(id))
-    }
-
-    const pickFromDiff = (data: any, key: string) => {
-        if (!data) return undefined
-        if (data[key] !== undefined && data[key] !== null) return data[key]
-        if (data.after && data.after[key] !== undefined && data.after[key] !== null) return data.after[key]
-        if (data.before && data.before[key] !== undefined && data.before[key] !== null) return data.before[key]
-        return undefined
-    }
-
-    const formatResourceLabel = (resource: any, fallbackId?: any) => {
-        if (!resource) {
-            return fallbackId !== undefined ? `#${fallbackId}` : undefined
-        }
-        const poiName = getMapItem(poiMap, resource.poi_id)?.poi_name
-        if (poiName) {
-            return `${resource.resource_name} (${poiName})`
-        }
-        return resource.resource_name || (fallbackId !== undefined ? `#${fallbackId}` : undefined)
-    }
-
-    const getSupplierResourceLabel = (
-        supplierResourceId?: any,
-        supplierId?: any,
-        resourceId?: any
-    ) => {
-        const supplierResource = getMapItem(supplierResourceMap, supplierResourceId)
-        const resolvedSupplierId = supplierId ?? supplierResource?.supplier_id
-        const resolvedResourceId = resourceId ?? supplierResource?.resource_id
-        const supplierName = getMapItem(supplierMap, resolvedSupplierId)?.supplier_name
-        const resourceLabel = formatResourceLabel(getMapItem(resourceMap, resolvedResourceId), resolvedResourceId)
-        const supplierLabel = supplierName || (resolvedSupplierId !== undefined ? `#${resolvedSupplierId}` : undefined)
-        if (!supplierLabel && !resourceLabel) return undefined
-        return [supplierLabel, resourceLabel].filter(Boolean).join(' / ')
-    }
-
-    const getRecordLabel = (log: OperationLog) => {
-        const diff = log.diff_data
-        switch (log.table_name) {
-            case 'poi':
-                return getMapItem(poiMap, log.record_id)?.poi_name
-            case 'resource':
-                return formatResourceLabel(getMapItem(resourceMap, log.record_id), log.record_id)
-            case 'supplier':
-                return getMapItem(supplierMap, log.record_id)?.supplier_name
-            case 'supplier_resource': {
-                const supplierId = pickFromDiff(diff, 'supplier_id')
-                const resourceId = pickFromDiff(diff, 'resource_id')
-                return getSupplierResourceLabel(log.record_id, supplierId, resourceId)
-            }
-            case 'resource_inventory': {
-                const supplierResourceId = pickFromDiff(diff, 'supplier_resource_id') ?? log.record_id
-                const supplierId = pickFromDiff(diff, 'supplier_id')
-                const resourceId = pickFromDiff(diff, 'resource_id')
-                return getSupplierResourceLabel(supplierResourceId, supplierId, resourceId)
-            }
-            case 'supplier_resource_agreements': {
-                const supplierResourceId = pickFromDiff(diff, 'supplier_resource_id')
-                const supplierId = pickFromDiff(diff, 'supplier_id')
-                const resourceId = pickFromDiff(diff, 'resource_id')
-                const agreementName = pickFromDiff(diff, 'agreement_name')
-                const srLabel = getSupplierResourceLabel(supplierResourceId, supplierId, resourceId)
-                return [agreementName, srLabel].filter(Boolean).join(' / ') || undefined
-            }
-            case 'supplier_resource_price_history': {
-                const supplierResourceId = pickFromDiff(diff, 'supplier_resource_id')
-                const supplierId = pickFromDiff(diff, 'supplier_id')
-                const resourceId = pickFromDiff(diff, 'resource_id')
-                return getSupplierResourceLabel(supplierResourceId, supplierId, resourceId)
-            }
-            case 'product':
-                return getMapItem(productMap, log.record_id)?.product_name
-            case 'product_resource': {
-                const productResource = getMapItem(productResourceMap, log.record_id)
-                const productName = productResource ? getMapItem(productMap, productResource.product_id)?.product_name : undefined
-                const resourceLabel = productResource ? formatResourceLabel(getMapItem(resourceMap, productResource.resource_id), productResource.resource_id) : undefined
-                return [productName, resourceLabel].filter(Boolean).join(' / ') || undefined
-            }
-            case 'sku':
-                return getMapItem(skuMap, log.record_id)?.sku_name
-            case 'channel':
-                return getMapItem(channelMap, log.record_id)?.channel_name
-            case 'price': {
-                const price = getMapItem(priceMap, log.record_id)
-                if (!price) return undefined
-                const skuName = getMapItem(skuMap, price.sku_id)?.sku_name
-                const channelName = getMapItem(channelMap, price.channel_id)?.channel_name
-                return [skuName, channelName].filter(Boolean).join(' / ') || undefined
-            }
-            case 'price_history': {
-                const priceId = pickFromDiff(diff, 'price_id')
-                const price = getMapItem(priceMap, priceId)
-                if (!price) return undefined
-                const skuName = getMapItem(skuMap, price.sku_id)?.sku_name
-                const channelName = getMapItem(channelMap, price.channel_id)?.channel_name
-                return [skuName, channelName].filter(Boolean).join(' / ') || undefined
-            }
-            case 'order':
-                return getMapItem(orderMap, log.record_id)?.order_no
-            case 'order_status_history': {
-                const orderId = pickFromDiff(diff, 'order_id')
-                return getMapItem(orderMap, orderId)?.order_no
-            }
-            case 'inventory_log': {
-                const skuId = pickFromDiff(diff, 'sku_id')
-                return getMapItem(skuMap, skuId)?.sku_name
-            }
-            default:
-                return undefined
+    const openDetail = async (logId: number) => {
+        setDetailLoading(true)
+        try {
+            const res = await apiRequest<OperationLog>(`/api/audit-log/${logId}`)
+            setDetailLog(res)
+        } catch (err: any) {
+            message.error(err.message || '加载日志详情失败')
+        } finally {
+            setDetailLoading(false)
         }
     }
 
-    // 格式化diff_data显示
     const formatDiffData = (data: any): string => {
         if (!data) return '-'
 
@@ -406,7 +288,6 @@ export default function OperationLogsPage() {
                 })
             }
 
-            // 特殊处理不同类型的diff_data
             if (data.date_range) {
                 parts.push(`${FIELD_NAME_MAP['date_range'] || '日期范围'}: ${data.date_range}`)
             }
@@ -415,7 +296,6 @@ export default function OperationLogsPage() {
                 parts.push(`${FIELD_NAME_MAP['type'] || '类型'}: ${data.type}`)
             }
 
-            // Stats object special handling
             if (data.stats) {
                 parts.push('【统计信息】')
                 sortFieldKeys(Object.keys(data.stats)).forEach((key) => {
@@ -423,28 +303,20 @@ export default function OperationLogsPage() {
                     const fieldName = FIELD_NAME_MAP[key] || key
                     parts.push(`${fieldName}: ${value}`)
                 })
-                // We don't delete data.stats here because we want to preserve original data, 
-                // but we should avoid iterating it again. 
-                // However, the logic below iterates entries of `data` *only if not update*, 
-                // and explicitly excludes 'stats' if we add check.
             }
 
             const hasBefore = data.before !== undefined && data.before !== null
             const hasAfter = data.after !== undefined && data.after !== null
             if (hasBefore || hasAfter) {
                 if (hasBefore && hasAfter) {
-                    // UPDATE操作，显示before/after
                     pushFields('【修改前】', data.before)
                     pushFields('【修改后】', data.after)
                 } else if (hasAfter) {
-                    // CREATE from oplog (before = null, after = data)
                     pushFields('【创建内容】', data.after)
                 } else {
-                    // DELETE from oplog (after = null, before = data)
                     pushFields('【删除前】', data.before)
                 }
             } else {
-                // CREATE/DELETE操作，直接显示数据
                 const keys = Object.keys(data).filter((key) => !['before', 'after', 'date_range', 'type', 'stats'].includes(key))
                 sortFieldKeys(keys).forEach((key) => {
                     const fieldName = FIELD_NAME_MAP[key] || key
@@ -496,18 +368,15 @@ export default function OperationLogsPage() {
             },
         },
         {
-            title: '操作详情',
-            dataIndex: 'diff_data',
-            render: (v: any) => (
-                <pre style={{
-                    margin: 0,
-                    whiteSpace: 'pre-wrap',
-                    fontSize: 12,
-                    fontFamily: 'inherit',
-                    lineHeight: 1.6,
-                }}>
-                    {formatDiffData(v)}
-                </pre>
+            title: '详情',
+            render: (_: any, record: OperationLog) => (
+                <Button
+                    type="link"
+                    size="small"
+                    onClick={() => openDetail(record.id)}
+                >
+                    查看
+                </Button>
             ),
         },
     ]
@@ -565,7 +434,7 @@ export default function OperationLogsPage() {
                             onChange={(e) => setFilters({ ...filters, operator: e.target.value || null })}
                         />
                         <RangePicker
-                            placeholder={['起始时间', '终止时间']}
+                            placeholder={['起始时间', '结束时间']}
                             showTime
                             format="YYYY-MM-DD HH:mm:ss"
                             style={{ width: 400 }}
@@ -610,6 +479,28 @@ export default function OperationLogsPage() {
                     }}
                 />
             </div>
+
+            <Modal
+                title="操作详情"
+                open={!!detailLog}
+                onCancel={() => setDetailLog(null)}
+                footer={null}
+                width={720}
+            >
+                {detailLoading ? (
+                    <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
+                ) : (
+                    <pre style={{
+                        margin: 0,
+                        whiteSpace: 'pre-wrap',
+                        fontSize: 12,
+                        fontFamily: 'inherit',
+                        lineHeight: 1.6,
+                    }}>
+                        {formatDiffData(detailLog?.diff_data)}
+                    </pre>
+                )}
+            </Modal>
         </div>
     )
 }

@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Table, Button, Space, Modal, Form, Input, Popconfirm, Tag, message, Tooltip } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
 
 export default function ProductCategoryPage() {
-    const { data, refresh } = useData()
+    const { data, loadData } = useData()
     const categories = data?.product_categories ?? []
     const products = data?.products ?? []
 
@@ -13,6 +13,10 @@ export default function ProductCategoryPage() {
     const [editingCategory, setEditingCategory] = useState<any>(null)
     const [form] = Form.useForm()
     const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        loadData(['product_categories', 'products'])
+    }, [loadData])
 
     const handleSave = async (values: any) => {
         setLoading(true)
@@ -33,7 +37,7 @@ export default function ProductCategoryPage() {
             setIsModalVisible(false)
             setEditingCategory(null)
             form.resetFields()
-            await refresh()
+            await loadData(['product_categories', 'products'], { force: true })
         } catch (err: any) {
             message.error(err.message || '操作失败')
         } finally {
@@ -45,7 +49,7 @@ export default function ProductCategoryPage() {
         try {
             await apiRequest(`/api/product-categories/${id}`, { method: 'DELETE' })
             message.success('分类已删除')
-            await refresh()
+            await loadData(['product_categories', 'products'], { force: true })
         } catch (err: any) {
             message.error(err.message || '删除失败')
         }

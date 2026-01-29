@@ -1,6 +1,11 @@
 // API client for backend communication
 const API_BASE_RAW = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000'
-const API_BASE = API_BASE_RAW.trim().replace(/\/$/, '') || 'http://127.0.0.1:8000'
+let API_BASE = API_BASE_RAW.trim().replace(/\/$/, '') || 'http://127.0.0.1:8000'
+
+// Auto-upgrade to HTTPS if current page is HTTPS to avoid Mixed Content errors
+if (typeof window !== 'undefined' && window.location.protocol === 'https:' && API_BASE.startsWith('http://')) {
+    API_BASE = API_BASE.replace('http://', 'https://')
+}
 const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
 

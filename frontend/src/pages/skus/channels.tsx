@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Table, Button, Space, Modal, Form, Input, Select, message, Popconfirm, InputNumber, Tooltip } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
@@ -7,10 +7,13 @@ import { useAuth } from '@/contexts/AuthContext'
 import type { Channel } from '@/types'
 
 export default function ChannelsPage() {
-    const { data, refresh } = useData()
-    const channels = data?.channels ?? []
-    const skus = data?.skus ?? []
-    const skuChannels = data?.sku_channels ?? []
+    const { data, loadData } = useData()
+    useEffect(() => {
+        loadData(['channels', 'skus', 'sku_channels', 'approvals'])
+    }, [loadData])
+    const channels = data.channels ?? []
+    const skus = data.skus ?? []
+    const skuChannels = data.sku_channels ?? []
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
     const [modalVisible, setModalVisible] = useState(false)
     const [editingChannel, setEditingChannel] = useState<Channel | null>(null)
@@ -35,7 +38,7 @@ export default function ChannelsPage() {
             setModalVisible(false)
             setEditingChannel(null)
             form.resetFields()
-            await refresh()
+            await loadData(['channels', 'skus', 'sku_channels', 'approvals'], { force: true })
         } catch (err: any) {
             message.error(err.message || (editingChannel ? '更新失败' : '创建失败'))
         }
@@ -47,7 +50,7 @@ export default function ChannelsPage() {
                 method: 'DELETE',
             })
             message.success('渠道删除成功')
-            await refresh()
+            await loadData(['channels', 'skus', 'sku_channels', 'approvals'], { force: true })
         } catch (err: any) {
             message.error(err.message || '删除失败')
         }
@@ -136,7 +139,7 @@ export default function ChannelsPage() {
     ]
 
     // Mix in pending creations from approvals
-    const pendingChannels: Channel[] = (data?.approvals || [])
+    const pendingChannels: Channel[] = (data.approvals || [])
         .filter(a => a.object_type === 'channel' && a.action_type === 'create' && a.status === 'pending')
         .map((a) => ({
             id: `pending_${a.id}`, // Virtual ID

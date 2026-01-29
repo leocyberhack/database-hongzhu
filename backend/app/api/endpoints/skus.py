@@ -263,6 +263,7 @@ async def list_skus(
     spu_id: Optional[int] = Query(default=None, description="Filter by SPU ID"),
     keyword: Optional[str] = Query(default=None, description="Search by sku name"),
     status: Optional[str] = Query(default=None, description="Filter by status"),
+    poi_id: Optional[int] = Query(default=None, description="Filter by POI ID"),
     sort_field: Optional[str] = Query(default=None),
     sort_order: Optional[str] = Query(default=None),
 ):
@@ -276,6 +277,8 @@ async def list_skus(
         stmt = stmt.where(Sku.sku_name.ilike(f"%{keyword}%"))
     if status:
         stmt = stmt.where(Sku.status == status)
+    if poi_id is not None:
+        stmt = stmt.where(Sku.poi_id == poi_id)
     
     # Sorting logic
     if sort_field and hasattr(Sku, sort_field):

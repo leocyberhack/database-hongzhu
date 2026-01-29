@@ -24,6 +24,7 @@ async def list_audit_logs(
     operation: Optional[str] = Query(default=None),
     start_date: Optional[str] = Query(default=None),  # Format: YYYY-MM-DD
     end_date: Optional[str] = Query(default=None),    # Format: YYYY-MM-DD
+    include_diff: bool = Query(default=True),
 ):
     stmt = select(AuditLog)
     if table_name:
@@ -46,10 +47,28 @@ async def list_audit_logs(
         stmt = stmt.where(func.date(AuditLog.operated_at) <= end_dt)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.order_by(AuditLog.operated_at.desc()).offset((page - 1) * page_size).limit(page_size))
+    items = []
+    for row in rows:
+        payload = AuditLogRead.model_validate(row).model_dump()
+        if not include_diff:
+            payload["diff_data"] = None
+        items.append(payload)
     return ListResponse(
-        items=[AuditLogRead.model_validate(row) for row in rows],
+        items=items,
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
     )
+
+
+@router.get("/audit-log/{log_id}", response_model=AuditLogRead)
+async def get_audit_log(
+    log_id: int,
+    db: DbSession,
+    _: User = Depends(get_current_user),
+):
+    log = await db.get(AuditLog, log_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Audit log not found")
+    return AuditLogRead.model_validate(log)
 
 
 @router.post("/audit-log/batch-delete", status_code=status.HTTP_204_NO_CONTENT)

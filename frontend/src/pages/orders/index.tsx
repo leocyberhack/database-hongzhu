@@ -1,18 +1,79 @@
-import { useState } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { Table, Tag, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
 import type { Order } from '@/types'
 
+interface OptionItem {
+    value: string
+    label: string
+}
+
 export default function OrdersPage() {
-    const { data, refresh } = useData()
-    const orders = data?.orders ?? []
-    const channels = data?.channels ?? []
-    const skus = data?.skus ?? []
-    const products = data?.products ?? []
+    const { data, loadData } = useData()
+    const channels = data.channels ?? []
+
+    const [rows, setRows] = useState<Order[]>([])
+    const [loading, setLoading] = useState(false)
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
     const [createModalVisible, setCreateModalVisible] = useState(false)
     const [form] = Form.useForm()
+
+    const [skuOptions, setSkuOptions] = useState<OptionItem[]>([])
+    const [productOptions, setProductOptions] = useState<OptionItem[]>([])
+    const [skuLoading, setSkuLoading] = useState(false)
+    const [productLoading, setProductLoading] = useState(false)
+
+    useEffect(() => {
+        loadData(['channels'])
+    }, [loadData])
+
+    const fetchOrders = useCallback(async () => {
+        setLoading(true)
+        try {
+            const params = new URLSearchParams({
+                page: String(pagination.current),
+                page_size: String(pagination.pageSize),
+            })
+            const res = await apiRequest<{ items: Order[]; pagination: { total: number } }>(`/api/orders?${params.toString()}`)
+            setRows(res.items || [])
+            setPagination(prev => ({ ...prev, total: res.pagination?.total || 0 }))
+        } catch (err: any) {
+            message.error(err.message || '加载订单失败')
+            setRows([])
+        } finally {
+            setLoading(false)
+        }
+    }, [pagination.current, pagination.pageSize])
+
+    useEffect(() => {
+        fetchOrders()
+    }, [fetchOrders])
+
+    const fetchSkuOptions = useCallback(async (keyword?: string) => {
+        setSkuLoading(true)
+        try {
+            const params = new URLSearchParams({ page: '1', page_size: '20' })
+            if (keyword && keyword.trim()) params.append('keyword', keyword.trim())
+            const res = await apiRequest<{ items: { id: string; sku_name: string }[] }>(`/api/skus?${params.toString()}`)
+            setSkuOptions((res.items || []).map(item => ({ value: String(item.id), label: item.sku_name })))
+        } finally {
+            setSkuLoading(false)
+        }
+    }, [])
+
+    const fetchProductOptions = useCallback(async (keyword?: string) => {
+        setProductLoading(true)
+        try {
+            const params = new URLSearchParams({ page: '1', page_size: '20' })
+            if (keyword && keyword.trim()) params.append('keyword', keyword.trim())
+            const res = await apiRequest<{ items: { id: string; product_name: string }[] }>(`/api/products?${params.toString()}`)
+            setProductOptions((res.items || []).map(item => ({ value: String(item.id), label: item.product_name })))
+        } finally {
+            setProductLoading(false)
+        }
+    }, [])
 
     const handleCreateOrder = async (values: any) => {
         try {
@@ -27,7 +88,7 @@ export default function OrdersPage() {
             message.success('订单创建成功')
             setCreateModalVisible(false)
             form.resetFields()
-            await refresh()
+            await fetchOrders()
         } catch (err: any) {
             message.error(err.message || '创建失败')
         }
@@ -37,13 +98,13 @@ export default function OrdersPage() {
         { title: '订单号', dataIndex: 'order_no', render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span> },
         {
             title: '渠道',
-            dataIndex: 'channel_id',
-            render: (v: string) => channels.find((c) => c.id === v)?.channel_name || '-',
+            dataIndex: 'channel_name',
+            render: (_: string, record: Order) => record.channel_name || '-'
         },
         {
             title: 'SKU',
-            dataIndex: 'sku_id',
-            render: (v: string) => skus.find((s) => s.id === v)?.sku_name || '-',
+            dataIndex: 'sku_name',
+            render: (_: string, record: Order) => record.sku_name || '-'
         },
         { title: '数量', dataIndex: 'quantity' },
         { title: '售价', dataIndex: 'sale_price', render: (v: number) => `¥${v}` },
@@ -80,7 +141,20 @@ export default function OrdersPage() {
             </div>
 
             <div className="glass-card" style={{ padding: '24px' }}>
-                <Table<Order> rowKey="id" columns={columns} dataSource={orders} pagination={{ pageSize: 10 }} />
+                <Table<Order>
+                    rowKey="id"
+                    columns={columns}
+                    dataSource={rows}
+                    loading={loading}
+                    pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: pagination.total,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条记录`,
+                        onChange: (page, pageSize) => setPagination(prev => ({ ...prev, current: page, pageSize: pageSize || prev.pageSize })),
+                    }}
+                />
             </div>
 
             <Modal
@@ -107,18 +181,24 @@ export default function OrdersPage() {
                     </Form.Item>
                     <Form.Item name="sku_id" label="SKU" rules={[{ required: true, message: '请选择SKU' }]}>
                         <Select
-                            placeholder="选择SKU"
+                            placeholder="搜索 SKU"
                             showSearch
-                            optionFilterProp="label"
-                            options={skus.map((s) => ({ value: s.id, label: s.sku_name }))}
+                            filterOption={false}
+                            onSearch={fetchSkuOptions}
+                            onFocus={() => fetchSkuOptions()}
+                            options={skuOptions}
+                            loading={skuLoading}
                         />
                     </Form.Item>
                     <Form.Item name="product_id" label="产品" rules={[{ required: true, message: '请选择产品' }]}>
                         <Select
-                            placeholder="选择产品"
+                            placeholder="搜索产品"
                             showSearch
-                            optionFilterProp="label"
-                            options={products.map((p) => ({ value: p.id, label: p.product_name }))}
+                            filterOption={false}
+                            onSearch={fetchProductOptions}
+                            onFocus={() => fetchProductOptions()}
+                            options={productOptions}
+                            loading={productLoading}
                         />
                     </Form.Item>
                     <Form.Item name="quantity" label="数量" rules={[{ required: true, message: '请输入数量' }]} initialValue={1}>

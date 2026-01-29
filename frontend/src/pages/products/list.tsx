@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Button, Table, Tag, Space, Modal, Form, Input, Select, message, Card, Row, Col, Popconfirm, Tooltip } from 'antd'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, EyeOutlined, CalendarOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
@@ -11,62 +11,109 @@ interface FilterState {
     keyword: string
     category_id: string | null
     status: string | null
+    poi_id: string | null
+}
+
+interface PoiOption {
+    value: string
+    label: string
 }
 
 export default function ProductListPage() {
-    const { data, refresh } = useData()
-    const products = data?.products ?? []
-    const categories = data?.product_categories ?? []
-    const poiList = data?.poi ?? []
-    const skus = data?.skus ?? []
-    const orders = data?.orders ?? []
+    const { data, loadData } = useData()
+    const categories = data.product_categories ?? []
     const navigate = useNavigate()
 
+    const [rows, setRows] = useState<Product[]>([])
+    const [loading, setLoading] = useState(false)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
-    const [pagination, setPagination] = useState({ current: 1, pageSize: 20 })
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 })
     const [batchUpdateForm] = Form.useForm()
     const [inventoryModalVisible, setInventoryModalVisible] = useState(false)
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
     const [productInventory, setProductInventory] = useState<{ date: string, available_qty: number }[]>([])
     const [loadingInventory, setLoadingInventory] = useState(false)
+    const [inventoryDays, setInventoryDays] = useState(30)
 
-    // 筛选器状态
-    const [filters, setFilters] = useState<FilterState & { poi_id: string | null }>({
+    const [filters, setFilters] = useState<FilterState>({
         keyword: '',
         category_id: null,
         poi_id: null,
         status: null,
     })
 
-    // 过滤逻辑
-    const filteredProducts = useMemo(() => {
-        return products.filter((p) => {
-            // 关键词搜索
-            if (filters.keyword && !p.product_name.toLowerCase().includes(filters.keyword.toLowerCase())) {
-                return false
+    const [sorter, setSorter] = useState<{ field?: string; order?: string }>({})
+
+    const [poiOptions, setPoiOptions] = useState<PoiOption[]>([])
+    const [poiLoading, setPoiLoading] = useState(false)
+
+    const [keywordDebounced, setKeywordDebounced] = useState(filters.keyword)
+
+    useEffect(() => {
+        loadData(['product_categories'])
+    }, [loadData])
+
+    useEffect(() => {
+        const t = setTimeout(() => {
+            setKeywordDebounced(filters.keyword)
+        }, 300)
+        return () => clearTimeout(t)
+    }, [filters.keyword])
+
+    const fetchPoiOptions = useCallback(async (keyword?: string) => {
+        setPoiLoading(true)
+        try {
+            const params = new URLSearchParams({ page: '1', page_size: '20' })
+            if (keyword && keyword.trim()) {
+                params.append('keyword', keyword.trim())
             }
-            // 分类筛选
-            if (filters.category_id && String(p.category_id) !== String(filters.category_id)) {
-                return false
-            }
-            // POI筛选
-            if (filters.poi_id && String(p.poi_id) !== String(filters.poi_id)) {
-                return false
-            }
-            // 状态筛选
-            if (filters.status && p.status !== filters.status) {
-                return false
-            }
-            return true
-        })
-    }, [products, filters])
+            const res = await apiRequest<{ items: { id: number; poi_name: string }[] }>(`/api/poi?${params.toString()}`)
+            const next = (res.items || []).map((p) => ({ value: String(p.id), label: p.poi_name }))
+            setPoiOptions(next)
+        } catch {
+            setPoiOptions([])
+        } finally {
+            setPoiLoading(false)
+        }
+    }, [])
+
+    const fetchProducts = useCallback(async () => {
+        setLoading(true)
+        try {
+            const params = new URLSearchParams({
+                page: String(pagination.current),
+                page_size: String(pagination.pageSize),
+            })
+            if (keywordDebounced.trim()) params.append('keyword', keywordDebounced.trim())
+            if (filters.category_id) params.append('category_id', String(filters.category_id))
+            if (filters.poi_id) params.append('poi_id', String(filters.poi_id))
+            if (filters.status) params.append('status', String(filters.status))
+            if (sorter.field) params.append('sort_field', sorter.field)
+            if (sorter.order) params.append('sort_order', sorter.order)
+
+            const res = await apiRequest<{ items: Product[]; pagination: { total: number } }>(
+                `/api/products?${params.toString()}`
+            )
+            setRows(res.items || [])
+            setPagination((prev) => ({ ...prev, total: res.pagination?.total || 0 }))
+        } catch (err: any) {
+            message.error(err.message || '加载产品失败')
+            setRows([])
+        } finally {
+            setLoading(false)
+        }
+    }, [filters.category_id, filters.poi_id, filters.status, keywordDebounced, pagination.current, pagination.pageSize, sorter.field, sorter.order])
+
+    useEffect(() => {
+        fetchProducts()
+    }, [fetchProducts])
 
     const handleDelete = async (id: string) => {
         try {
             await apiRequest(`/api/products/${id}`, { method: 'DELETE' })
             message.success('产品已删除')
-            await refresh()
+            await fetchProducts()
         } catch (err: any) {
             message.error(err.message || '删除失败')
         }
@@ -81,7 +128,7 @@ export default function ProductListPage() {
             })
             message.success(`已删除 ${selectedRowKeys.length} 个产品`)
             setSelectedRowKeys([])
-            await refresh()
+            await fetchProducts()
         } catch (err: any) {
             message.error(err.message || '批量删除失败')
         }
@@ -110,65 +157,40 @@ export default function ProductListPage() {
             setBatchUpdateVisible(false)
             batchUpdateForm.resetFields()
             setSelectedRowKeys([])
-            await refresh()
+            await fetchProducts()
         } catch (err: any) {
             message.error(err.message || '批量更新失败')
         }
     }
 
+    const buildInventoryRange = useCallback((days: number) => {
+        const start = new Date()
+        const end = new Date(start)
+        end.setDate(end.getDate() + days)
+        return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)] as [string, string]
+    }, [])
+
     const columns: any = [
         {
             title: '产品名称',
             dataIndex: 'product_name',
-            sorter: (a: Product, b: Product) => a.product_name.localeCompare(b.product_name),
-            filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
-                <div style={{ padding: 8 }}>
-                    <Input
-                        placeholder="搜索名称"
-                        value={selectedKeys[0]}
-                        onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-                        onPressEnter={() => confirm()}
-                        style={{ width: 188, marginBottom: 8, display: 'block' }}
-                    />
-                    <Space>
-                        <Button
-                            type="primary"
-                            onClick={() => confirm()}
-                            icon={<SearchOutlined />}
-                            size="small"
-                            style={{ width: 90 }}
-                        >
-                            搜索
-                        </Button>
-                        <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
-                            重置
-                        </Button>
-                    </Space>
-                </div>
-            ),
-            filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-            onFilter: (value: string, record: Product) =>
-                record.product_name.toLowerCase().includes(value.toLowerCase()),
+            sorter: true,
         },
         {
             title: '分类',
-            dataIndex: 'category_id',
-            render: (v: string) => categories.find(c => String(c.id) === String(v))?.name || '-',
-            filters: categories.map(c => ({ text: c.name, value: c.id })),
-            onFilter: (value: string, record: Product) => String(record.category_id) === String(value),
+            dataIndex: 'category_name',
+            render: (_: string, record: Product) => record.category_name || '-',
         },
         {
-            title: '主POI',
-            dataIndex: 'poi_id',
-            render: (v: string) => poiList.find(c => String(c.id) === String(v))?.poi_name || '-',
-            filters: poiList.map(p => ({ text: p.poi_name, value: p.id })),
-            onFilter: (value: string, record: Product) => String(record.poi_id) === String(value),
+            title: '所属POI',
+            dataIndex: 'poi_name',
+            render: (_: string, record: Product) => record.poi_name || '-',
         },
         {
             title: '建议零售价',
             dataIndex: 'suggested_price',
             render: (v: number) => v ? `¥${v}` : '-',
-            sorter: (a: Product, b: Product) => (a.suggested_price || 0) - (b.suggested_price || 0),
+            sorter: true,
         },
         {
             title: '状态',
@@ -177,25 +199,20 @@ export default function ProductListPage() {
                 const map: any = { active: '已上架', archived: '已下架', draft: '草稿' }
                 return <Tag color={v === 'active' ? 'green' : v === 'archived' ? 'red' : 'orange'}>{map[v] || v}</Tag>
             },
-            filters: [
-                { text: '已上架', value: 'active' },
-                { text: '草稿', value: 'draft' },
-                { text: '已下架', value: 'archived' },
-            ],
-            onFilter: (value: string, record: Product) => record.status === value,
         },
         {
             title: '最后更新时间',
             dataIndex: 'updated_at',
             render: (v: string) => v ? new Date(v).toLocaleString() : '-',
-            sorter: (a: Product, b: Product) => new Date(a.updated_at || '').getTime() - new Date(b.updated_at || '').getTime(),
+            sorter: true,
         },
         {
             title: '操作',
             width: 150,
             render: (_: any, record: Product) => {
-                const hasOrders = orders.some(o => String(o.product_id) === String(record.id))
-                const isLocked = skus.some(s => String(s.product_id) === String(record.id)) || hasOrders
+                const hasOrders = (record.order_count || 0) > 0
+                const hasSkus = (record.sku_count || 0) > 0
+                const isLocked = hasOrders || hasSkus
                 const lockReason = hasOrders ? '该产品已有订单，无法删除' : '该产品已关联SKU，无法删除'
                 return (
                     <Space>
@@ -214,10 +231,15 @@ export default function ProductListPage() {
                             onClick={async () => {
                                 setSelectedProduct(record)
                                 setInventoryModalVisible(true)
+                                setInventoryDays(30)
                                 setLoadingInventory(true)
+                                const [startDate, endDate] = buildInventoryRange(30)
                                 try {
+                                    const params = new URLSearchParams()
+                                    params.append('start_date', startDate)
+                                    params.append('end_date', endDate)
                                     const res = await apiRequest<{ items: { date: string, available_qty: number }[] }>(
-                                        `/api/products/${record.id}/inventory`
+                                        `/api/products/${record.id}/inventory?${params.toString()}`
                                     )
                                     setProductInventory(res.items || [])
                                 } catch {
@@ -245,7 +267,7 @@ export default function ProductListPage() {
                         ) : (
                             <Popconfirm
                                 title="确定删除此产品吗？"
-                                description="删除产品不可恢复，且可能影响已有订单（如果有）"
+                                description="删除产品不可恢复，且可能影响已有订单（如有）"
                                 onConfirm={() => handleDelete(record.id)}
                                 okText="删除"
                                 cancelText="取消"
@@ -254,7 +276,7 @@ export default function ProductListPage() {
                                 <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
                             </Popconfirm>
                         )}
-                    </Space >
+                    </Space>
                 )
             },
         },
@@ -265,14 +287,13 @@ export default function ProductListPage() {
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                     <h1 className="page-title">产品列表</h1>
-                    <p className="page-subtitle">管理所有产品，包括景区、酒店、线路及其组合</p>
+                    <p className="page-subtitle">管理所有产品，包含景区、酒店、线路及其组合</p>
                 </div>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/products/editor')}>
                     新建产品
                 </Button>
             </div>
 
-            {/* 高级筛选器 */}
             <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: '16px' } }}>
                 <Form layout="inline" style={{ width: '100%' }}>
                     <Row gutter={[16, 16]} style={{ width: '100%' }}>
@@ -282,7 +303,10 @@ export default function ProductListPage() {
                                     placeholder="搜索产品名称"
                                     prefix={<SearchOutlined style={{ color: '#ccc' }} />}
                                     value={filters.keyword}
-                                    onChange={e => setFilters({ ...filters, keyword: e.target.value })}
+                                    onChange={e => {
+                                        setFilters(prev => ({ ...prev, keyword: e.target.value }))
+                                        setPagination(prev => ({ ...prev, current: 1 }))
+                                    }}
                                     allowClear
                                 />
                             </Form.Item>
@@ -294,7 +318,10 @@ export default function ProductListPage() {
                                     allowClear
                                     options={categories.map(c => ({ value: c.id, label: c.name }))}
                                     value={filters.category_id}
-                                    onChange={v => setFilters({ ...filters, category_id: v })}
+                                    onChange={v => {
+                                        setFilters(prev => ({ ...prev, category_id: v || null }))
+                                        setPagination(prev => ({ ...prev, current: 1 }))
+                                    }}
                                     style={{ width: '100%' }}
                                 />
                             </Form.Item>
@@ -302,13 +329,19 @@ export default function ProductListPage() {
                         <Col span={6}>
                             <Form.Item label="POI区域" style={{ marginBottom: 0, width: '100%' }}>
                                 <Select
-                                    placeholder="全部区域"
+                                    placeholder="输入POI搜索"
                                     allowClear
                                     showSearch
-                                    optionFilterProp="label"
-                                    options={poiList.map(c => ({ value: c.id, label: c.poi_name }))}
+                                    filterOption={false}
+                                    onSearch={fetchPoiOptions}
+                                    onFocus={() => fetchPoiOptions()}
+                                    options={poiOptions}
                                     value={filters.poi_id}
-                                    onChange={v => setFilters({ ...filters, poi_id: v })}
+                                    onChange={v => {
+                                        setFilters(prev => ({ ...prev, poi_id: v || null }))
+                                        setPagination(prev => ({ ...prev, current: 1 }))
+                                    }}
+                                    loading={poiLoading}
                                     style={{ width: '100%' }}
                                 />
                             </Form.Item>
@@ -324,7 +357,10 @@ export default function ProductListPage() {
                                         { value: 'archived', label: '已下架' },
                                     ]}
                                     value={filters.status}
-                                    onChange={v => setFilters({ ...filters, status: v })}
+                                    onChange={v => {
+                                        setFilters(prev => ({ ...prev, status: v || null }))
+                                        setPagination(prev => ({ ...prev, current: 1 }))
+                                    }}
                                     style={{ width: '100%' }}
                                 />
                             </Form.Item>
@@ -357,7 +393,8 @@ export default function ProductListPage() {
                 <Table<Product>
                     rowKey="id"
                     columns={columns}
-                    dataSource={filteredProducts}
+                    dataSource={rows}
+                    loading={loading}
                     rowSelection={{
                         selectedRowKeys,
                         onChange: setSelectedRowKeys,
@@ -365,17 +402,21 @@ export default function ProductListPage() {
                     pagination={{
                         current: pagination.current,
                         pageSize: pagination.pageSize,
-                        total: filteredProducts.length,
+                        total: pagination.total,
                         showSizeChanger: true,
                         showTotal: (total) => `共 ${total} 条记录`,
-                        onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
-                        onShowSizeChange: (current, size) => setPagination({ current, pageSize: size })
+                        onChange: (page, pageSize) => setPagination(prev => ({ ...prev, current: page, pageSize: pageSize || prev.pageSize })),
                     }}
-                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 20 })}
+                    onChange={(p, _filters, sorterInfo) => {
+                        const nextSorter = Array.isArray(sorterInfo) ? sorterInfo[0] : sorterInfo
+                        setSorter({
+                            field: nextSorter?.field as string | undefined,
+                            order: nextSorter?.order as string | undefined,
+                        })
+                    }}
                 />
             </div>
 
-            {/* 批量更新 Modal */}
             <Modal
                 title={`批量修改已选的 ${selectedRowKeys.length} 个产品`}
                 open={batchUpdateVisible}
@@ -405,7 +446,6 @@ export default function ProductListPage() {
                 </Form>
             </Modal>
 
-            {/* 产品库存 Modal */}
             <Modal
                 title={`产品库存 - ${selectedProduct?.product_name}`}
                 open={inventoryModalVisible}
@@ -415,8 +455,44 @@ export default function ProductListPage() {
                     setProductInventory([])
                 }}
                 footer={null}
-                width={800}
+                width={860}
             >
+                <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <span style={{ color: '#666' }}>查询范围</span>
+                    <Select
+                        value={String(inventoryDays)}
+                        onChange={(v) => {
+                            setInventoryDays(Number(v))
+                        }}
+                        options={[
+                            { value: '30', label: '未来30天' },
+                            { value: '90', label: '未来90天' },
+                            { value: '180', label: '未来半年' },
+                        ]}
+                        style={{ width: 160 }}
+                    />
+                    <Button
+                        onClick={() => {
+                            if (!selectedProduct) return
+                            setLoadingInventory(true)
+                            const params = new URLSearchParams()
+                            const [startDate, endDate] = buildInventoryRange(inventoryDays)
+                            params.append('start_date', startDate)
+                            params.append('end_date', endDate)
+                            apiRequest<{ items: { date: string, available_qty: number }[] }>(
+                                `/api/products/${selectedProduct.id}/inventory?${params.toString()}`
+                            )
+                                .then((res) => setProductInventory(res.items || []))
+                                .catch(() => {
+                                    message.error('加载库存失败')
+                                    setProductInventory([])
+                                })
+                                .finally(() => setLoadingInventory(false))
+                        }}
+                    >
+                        刷新
+                    </Button>
+                </div>
                 {loadingInventory ? (
                     <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
                 ) : (

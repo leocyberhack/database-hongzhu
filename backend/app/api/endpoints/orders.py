@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Inventory, InventoryLog, Order, OrderResource, OrderStatusHistory, Price, Sku, Product
+from app.models import AuditLog, Inventory, InventoryLog, Order, OrderResource, OrderStatusHistory, Price, Sku, Product, Channel
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.order import OrderCreate, OrderDecision, OrderRead
 
@@ -96,7 +96,12 @@ async def list_orders(
     sku_id: Optional[int] = Query(default=None),
     channel_id: Optional[int] = Query(default=None),
 ):
-    stmt = select(Order)
+    stmt = (
+        select(Order, Channel.channel_name, Sku.sku_name, Product.product_name)
+        .join(Channel, Channel.id == Order.channel_id)
+        .join(Sku, Sku.id == Order.sku_id)
+        .join(Product, Product.id == Order.product_id)
+    )
     if status:
         stmt = stmt.where(Order.status == status)
     if sku_id:
@@ -104,9 +109,17 @@ async def list_orders(
     if channel_id:
         stmt = stmt.where(Order.channel_id == channel_id)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = await db.scalars(stmt.order_by(Order.id.desc()).offset((page - 1) * page_size).limit(page_size))
+    result = await db.execute(stmt.order_by(Order.id.desc()).offset((page - 1) * page_size).limit(page_size))
+    rows = result.all()
+    items = []
+    for order, channel_name, sku_name, product_name in rows:
+        payload = OrderRead.model_validate(order).model_dump()
+        payload["channel_name"] = channel_name
+        payload["sku_name"] = sku_name
+        payload["product_name"] = product_name
+        items.append(payload)
     return ListResponse(
-        items=[OrderRead.model_validate(r) for r in rows],
+        items=items,
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
     )
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Card, Row, Col, Popconfirm, Tooltip } from 'antd'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, SettingOutlined, ArrowLeftOutlined } from '@ant-design/icons'
@@ -18,8 +18,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 }
 
 export default function SKUListPage() {
-    const { data, refresh } = useData()
-    const skus = data?.skus ?? []
+    const { data, loadData } = useData()
     const products = data?.products ?? []
     const channels = data?.channels ?? []
     const poiList = data?.poi ?? []
@@ -38,7 +37,10 @@ export default function SKUListPage() {
     const [viewMode, setViewMode] = useState(false)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
-    const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
+    const [rows, setRows] = useState<SKU[]>([])
+    const [loading, setLoading] = useState(false)
+    const [sorter, setSorter] = useState<{ field?: string; order?: string }>({})
 
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
@@ -53,35 +55,46 @@ export default function SKUListPage() {
         spu_id: spuIdParam,
     })
 
-    // Filter Logic
-    const filteredSkus = useMemo(() => {
-        return skus.filter((item) => {
-            // Keyword
-            if (filters.keyword && !item.sku_name.toLowerCase().includes(filters.keyword.toLowerCase())) {
-                return false
-            }
-            // Product
-            if (filters.product_id && String(item.product_id) !== String(filters.product_id)) {
-                return false
-            }
-            // Status
-            if (filters.status && item.status !== filters.status) {
-                return false
-            }
-            // POI (via Product)
-            if (filters.poi_id) {
-                const p = products.find(x => String(x.id) === String(item.product_id))
-                if (!p || String(p.poi_id) !== String(filters.poi_id)) {
-                    return false
-                }
-            }
-            // SPU
-            if (filters.spu_id && String(item.spu_id) !== String(filters.spu_id)) {
-                return false
-            }
-            return true
-        })
-    }, [skus, filters, products])
+    const [keywordDebounced, setKeywordDebounced] = useState(filters.keyword)
+
+    useEffect(() => {
+        loadData(['products', 'channels', 'poi', 'product_resources', 'resources', 'suppliers', 'spus', 'sku_channels', 'approvals'])
+    }, [loadData])
+
+    useEffect(() => {
+        const t = setTimeout(() => setKeywordDebounced(filters.keyword), 300)
+        return () => clearTimeout(t)
+    }, [filters.keyword])
+
+    const fetchSkus = useCallback(async () => {
+        setLoading(true)
+        try {
+            const params = new URLSearchParams({
+                page: String(pagination.current),
+                page_size: String(pagination.pageSize),
+            })
+            if (keywordDebounced.trim()) params.append('keyword', keywordDebounced.trim())
+            if (filters.product_id) params.append('product_id', String(filters.product_id))
+            if (filters.status) params.append('status', String(filters.status))
+            if (filters.poi_id) params.append('poi_id', String(filters.poi_id))
+            if (filters.spu_id) params.append('spu_id', String(filters.spu_id))
+            if (sorter.field) params.append('sort_field', sorter.field)
+            if (sorter.order) params.append('sort_order', sorter.order)
+
+            const res = await apiRequest<{ items: SKU[]; pagination: { total: number } }>(`/api/skus?${params.toString()}`)
+            setRows(res.items || [])
+            setPagination(prev => ({ ...prev, total: res.pagination?.total || 0 }))
+        } catch (err: any) {
+            message.error(err.message || '加载SKU失败')
+            setRows([])
+        } finally {
+            setLoading(false)
+        }
+    }, [filters.poi_id, filters.product_id, filters.spu_id, filters.status, keywordDebounced, pagination.current, pagination.pageSize, sorter.field, sorter.order])
+
+    useEffect(() => {
+        fetchSkus()
+    }, [fetchSkus])
 
 
 
@@ -150,7 +163,8 @@ export default function SKUListPage() {
             setModalVisible(false)
             setEditingSku(null)
             form.resetFields()
-            await refresh()
+            await fetchSkus()
+            await loadData(['sku_channels', 'approvals'], { force: true })
         } catch (err: any) {
             message.error(err.message || (editingSku ? '更新失败' : '创建失败'))
         }
@@ -244,7 +258,8 @@ export default function SKUListPage() {
                 try {
                     await apiRequest(`/api/skus/${id}`, { method: 'DELETE' })
                     message.success('删除成功')
-                    await refresh()
+                    await fetchSkus()
+            await loadData(['sku_channels', 'approvals'], { force: true })
                 } catch (err: any) {
                     message.error(err.message || '删除失败')
                 }
@@ -261,7 +276,8 @@ export default function SKUListPage() {
             })
             message.success(`已删除 ${selectedRowKeys.length} 个SKU`)
             setSelectedRowKeys([])
-            await refresh()
+            await fetchSkus()
+            await loadData(['sku_channels', 'approvals'], { force: true })
         } catch (err: any) {
             message.error(err.message || '批量删除失败')
         }
@@ -290,7 +306,8 @@ export default function SKUListPage() {
             setBatchUpdateVisible(false)
             batchUpdateForm.resetFields()
             setSelectedRowKeys([])
-            await refresh()
+            await fetchSkus()
+            await loadData(['sku_channels', 'approvals'], { force: true })
         } catch (err: any) {
             message.error(err.message || '批量更新失败')
         }
@@ -514,7 +531,10 @@ export default function SKUListPage() {
                                     placeholder="搜索SKU名称"
                                     prefix={<SearchOutlined style={{ color: '#ccc' }} />}
                                     value={filters.keyword}
-                                    onChange={e => setFilters({ ...filters, keyword: e.target.value })}
+                                    onChange={(e) => {
+                                        setFilters({ ...filters, keyword: e.target.value })
+                                        setPagination((prev) => ({ ...prev, current: 1 }))
+                                    }}
                                     allowClear
                                 />
                             </Form.Item>
@@ -528,7 +548,10 @@ export default function SKUListPage() {
                                     optionFilterProp="label"
                                     options={products.map(p => ({ value: p.id, label: p.product_name }))}
                                     value={filters.product_id}
-                                    onChange={v => setFilters({ ...filters, product_id: v })}
+                                    onChange={(v) => {
+                                        setFilters({ ...filters, product_id: v })
+                                        setPagination((prev) => ({ ...prev, current: 1 }))
+                                    }}
                                     style={{ width: '100%' }}
                                 />
                             </Form.Item>
@@ -542,7 +565,10 @@ export default function SKUListPage() {
                                     optionFilterProp="label"
                                     options={poiList.map(p => ({ value: p.id, label: p.poi_name }))}
                                     value={filters.poi_id}
-                                    onChange={v => setFilters({ ...filters, poi_id: v })}
+                                    onChange={(v) => {
+                                        setFilters({ ...filters, poi_id: v })
+                                        setPagination((prev) => ({ ...prev, current: 1 }))
+                                    }}
                                     style={{ width: '100%' }}
                                 />
                             </Form.Item>
@@ -554,7 +580,10 @@ export default function SKUListPage() {
                                     allowClear
                                     options={Object.keys(STATUS_MAP).map(k => ({ value: k, label: STATUS_MAP[k].label }))}
                                     value={filters.status}
-                                    onChange={v => setFilters({ ...filters, status: v })}
+                                    onChange={(v) => {
+                                        setFilters({ ...filters, status: v })
+                                        setPagination((prev) => ({ ...prev, current: 1 }))
+                                    }}
                                     style={{ width: '100%' }}
                                 />
                             </Form.Item>
@@ -580,15 +609,23 @@ export default function SKUListPage() {
                 <Table<SKU>
                     rowKey="id"
                     columns={columns}
-                    dataSource={filteredSkus.slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)}
+                    dataSource={rows}
+                    loading={loading}
                     pagination={{
                         current: pagination.current,
                         pageSize: pagination.pageSize,
-                        total: filteredSkus.length,
+                        total: pagination.total,
                         showSizeChanger: true,
                         showTotal: (total) => `共 ${total} 条记录`,
                     }}
-                    onChange={(p) => setPagination({ current: p.current || 1, pageSize: p.pageSize || 10 })}
+                    onChange={(p, _filters, sorterInfo) => {
+                        setPagination(prev => ({ ...prev, current: p.current || 1, pageSize: p.pageSize || prev.pageSize }))
+                        const nextSorter = Array.isArray(sorterInfo) ? sorterInfo[0] : sorterInfo
+                        setSorter({
+                            field: nextSorter?.field as string | undefined,
+                            order: nextSorter?.order as string | undefined,
+                        })
+                    }}
                     rowSelection={{
                         selectedRowKeys,
                         onChange: setSelectedRowKeys,

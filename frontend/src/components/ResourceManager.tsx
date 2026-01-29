@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tag, Drawer, Descriptions, Card, Checkbox, Row, Col, Popconfirm, Tooltip } from 'antd'
 import { CalendarOutlined, PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
@@ -43,7 +43,7 @@ export default function ResourceManager({
     onOptionDelete,
     onOptionRename
 }: ResourceManagerProps) {
-    const { data, refresh } = useData()
+    const { data, loadData } = useData()
     const resources = data?.resources ?? []
     const poiList = data?.poi ?? []
     const suppliers = data?.suppliers ?? []
@@ -61,6 +61,15 @@ export default function ResourceManager({
     const [batchUpdateForm] = Form.useForm()
     const createFormPoiId = Form.useWatch('poi_id', form)
     const editFormPoiId = Form.useWatch('poi_id', editForm)
+    const dataKeys = ['poi', 'resources', 'suppliers', 'supplier_resources', 'product_resources'] as const
+
+    useEffect(() => {
+        loadData([...dataKeys])
+    }, [loadData])
+
+    const refreshData = useCallback(async () => {
+        await loadData([...dataKeys], { force: true })
+    }, [loadData])
 
     const updatePoiOptionsChange = async (targetPoiId: any, field: string, newOptions: string[]) => {
         if (isEmbedded) {
@@ -78,7 +87,7 @@ export default function ResourceManager({
                 body: JSON.stringify({ type_options: newTypeOptions })
             })
             message.success('已更新资源字段选项')
-            await refresh()
+            await refreshData()
         } catch {
             message.error('更新资源字段选项失败')
         }
@@ -109,7 +118,7 @@ export default function ResourceManager({
                 body: JSON.stringify({ type_options: newTypeOptions })
             })
             message.success('已更新资源字段选项')
-            await refresh()
+            await refreshData()
         } catch {
             message.error('更新资源字段选项失败')
         }
@@ -286,7 +295,7 @@ export default function ResourceManager({
             setIsTypeLocked(false)
             setPendingAgreements({})
             setPresetAgreementModal({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
-            await refresh()
+            await refreshData()
         } catch (err: any) {
             if (err.message?.includes('duplicate')) {
                 message.warning('该POI下已存在同名同类型的资源')
@@ -401,7 +410,7 @@ export default function ResourceManager({
             setResourceType(null) // 重置资源类型
             setPendingEditAgreements({})
             setPresetEditAgreementModal({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
-            await refresh()
+            await refreshData()
         } catch (err: any) {
             message.error(err.message || '更新失败')
         }
@@ -411,7 +420,7 @@ export default function ResourceManager({
         try {
             await apiRequest(`/api/resources/${id}`, { method: 'DELETE' })
             message.success('资源已删除')
-            await refresh()
+            await refreshData()
         } catch (err: any) {
             message.error(err.message || '删除失败')
         }
@@ -426,7 +435,7 @@ export default function ResourceManager({
             })
             message.success(`已删除 ${selectedRowKeys.length} 个资源`)
             setSelectedRowKeys([])
-            await refresh()
+            await refreshData()
         } catch (err: any) {
             message.error(err.message || '批量删除失败')
         }
@@ -455,7 +464,7 @@ export default function ResourceManager({
             setBatchUpdateVisible(false)
             batchUpdateForm.resetFields()
             setSelectedRowKeys([])
-            await refresh()
+            await refreshData()
         } catch (err: any) {
             message.error(err.message || '批量更新失败')
         }

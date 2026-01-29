@@ -33,7 +33,10 @@ interface RegionOption {
 }
 
 export default function ResourcePage() {
-    const { data, refresh } = useData()
+    const { data, loadData } = useData()
+    useEffect(() => {
+        loadData(['poi', 'resources', 'suppliers', 'supplier_resources'])
+    }, [loadData])
     const [currentTypeOptions, setCurrentTypeOptions] = useState<Record<string, string[]>>({})
 
     const handleTypeOptionsChange = (fieldKey: string, newOptions: string[]) => {
@@ -391,7 +394,7 @@ export default function ResourcePage() {
             delete (poiPayload as { resources?: unknown }).resources
             const newPoi = await apiRequest<POI>('/api/poi', { method: 'POST', body: JSON.stringify(poiPayload) })
             setCreatedPoi(newPoi)
-            await refresh()
+            await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
             return newPoi
         } catch (err: any) {
             if (!err?.errorFields) {
@@ -583,7 +586,7 @@ export default function ResourcePage() {
             }
 
             updateResourceStatus(fieldKey, { saved: true })
-            await refresh()
+            await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
             if (!err?.errorFields) {
                 message.error(err.message || '资源保存失败')
@@ -653,7 +656,7 @@ export default function ResourcePage() {
             await apiRequest(`/api/poi/${selectedPoi.id}`, { method: 'PUT', body: JSON.stringify(payload) })
             message.success('POI 已保存')
             setSelectedPoi(null)
-            await refresh()
+            await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
             message.error(err.message || '保存失败')
         }
@@ -663,7 +666,7 @@ export default function ResourcePage() {
         try {
             await apiRequest(`/api/poi/${id}`, { method: 'DELETE' })
             message.success('POI 已删除')
-            await refresh()
+            await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
             message.error(err.message || '删除失败')
         }
@@ -678,7 +681,7 @@ export default function ResourcePage() {
             })
             message.success(`已删除 ${selectedRowKeys.length} 个POI`)
             setSelectedRowKeys([])
-            await refresh()
+            await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
             message.error(err.message || '批量删除失败')
         }
@@ -707,7 +710,7 @@ export default function ResourcePage() {
             setBatchUpdateVisible(false)
             batchUpdateForm.resetFields()
             setSelectedRowKeys([])
-            await refresh()
+            await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
             message.error(err.message || '批量更新失败')
         }

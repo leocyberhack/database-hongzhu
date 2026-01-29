@@ -1,11 +1,27 @@
-import { Row, Col, Statistic, Select, DatePicker } from 'antd'
+﻿import { Row, Col, Statistic, Select, DatePicker } from 'antd'
 import { ArrowUpOutlined } from '@ant-design/icons'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { useData } from '@/contexts/DataContext'
+import { useEffect, useState } from 'react'
+import { apiRequest } from '@/lib/api'
 
 export default function SalesReportPage() {
-    const { data } = useData()
-    const orders = data?.orders ?? []
+    const [totalSales, setTotalSales] = useState(0)
+    const [totalOrders, setTotalOrders] = useState(0)
+
+    useEffect(() => {
+        const fetchSummary = async () => {
+            try {
+                const res = await apiRequest<{ trend: { gmv: number; orders: number }[] }>(`/api/reports/summary`)
+                const trend = res.trend || []
+                setTotalSales(trend.reduce((sum, item) => sum + (item.gmv || 0), 0))
+                setTotalOrders(trend.reduce((sum, item) => sum + (item.orders || 0), 0))
+            } catch {
+                setTotalSales(0)
+                setTotalOrders(0)
+            }
+        }
+        fetchSummary()
+    }, [])
 
     // Mock chart data
     const chartData = [
@@ -17,9 +33,6 @@ export default function SalesReportPage() {
         { date: '01-06', sales: 25000, orders: 82 },
         { date: '01-07', sales: 31000, orders: 95 },
     ]
-
-    const totalSales = orders.reduce((sum, o) => sum + o.sale_amount, 0)
-    const totalOrders = orders.length
 
     return (
         <div className="page-container">

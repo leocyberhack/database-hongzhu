@@ -1,5 +1,5 @@
-import type React from 'react'
-import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
+﻿import type React from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { message } from 'antd'
 import type { MockData } from '../types'
 import { apiRequest } from '@/lib/api'
@@ -8,16 +8,18 @@ import { useAuth } from './AuthContext'
 type MockDataKey = keyof MockData
 
 interface DataContextValue {
-    data: MockData | null
+    data: MockData
     loading: boolean
-    refresh: () => void
+    loadData: (keys: MockDataKey[], options?: { force?: boolean }) => Promise<void>
+    refresh: (keys?: MockDataKey[]) => Promise<void>
     updateData: <K extends MockDataKey>(key: K, value: MockData[K] | ((prev: MockData[K]) => MockData[K])) => void
 }
 
 const DataContext = createContext<DataContextValue>({
-    data: null,
-    loading: true,
-    refresh: () => { },
+    data: {} as MockData,
+    loading: false,
+    loadData: async () => { },
+    refresh: async () => { },
     updateData: () => { },
 })
 
@@ -46,6 +48,32 @@ const emptyData: MockData = {
 }
 
 const DEFAULT_PAGE_SIZE = 1000
+
+const ENDPOINTS: Record<MockDataKey, string> = {
+    poi: '/api/poi',
+    resources: '/api/resources',
+    suppliers: '/api/suppliers',
+    supplier_resources: '/api/supplier-resources',
+    supplier_resource_price_history: '/api/supplier-resource-price-history',
+    product_categories: '/api/product-categories',
+    products: '/api/products',
+    product_resources: '/api/product-resources',
+    product_structure_snapshot: '/api/product-snapshots',
+    skus: '/api/skus',
+    channels: '/api/channels',
+    sku_channels: '/api/sku_channels',
+    prices: '/api/prices',
+    price_history: '/api/price-history',
+    inventory: '/api/inventory',
+    inventory_log: '/api/inventory/logs',
+    orders: '/api/orders',
+    order_status_history: '/api/order-status-history',
+    approvals: '/api/approvals',
+    audit_log: '/api/audit-log',
+    spus: '/api/spus',
+}
+
+const ALL_KEYS = Object.keys(ENDPOINTS) as MockDataKey[]
 
 function buildPagedUrl(base: string, page: number, pageSize: number) {
     const joiner = base.includes('?') ? '&' : '?'
@@ -77,104 +105,71 @@ async function fetchAll<T>(endpoint: string): Promise<T[]> {
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-    const [data, setData] = useState<MockData | null>(null)
-    const [loading, setLoading] = useState<boolean>(true)
+    const [data, setData] = useState<MockData>(emptyData)
+    const [loadingKeys, setLoadingKeys] = useState<Set<MockDataKey>>(new Set())
     const { token } = useAuth()
+    const loadedKeysRef = useRef<Set<MockDataKey>>(new Set())
 
-    const fetchBackend = useCallback(async () => {
-        setLoading(true)
+    const setLoadingFor = useCallback((keys: MockDataKey[], isLoading: boolean) => {
+        setLoadingKeys((prev) => {
+            const next = new Set(prev)
+            keys.forEach((k) => {
+                if (isLoading) {
+                    next.add(k)
+                } else {
+                    next.delete(k)
+                }
+            })
+            return next
+        })
+    }, [])
+
+    const loadData = useCallback(async (keys: MockDataKey[], options?: { force?: boolean }) => {
+        if (!token || keys.length === 0) return
+        const force = options?.force ?? false
+        const uniqueKeys = Array.from(new Set(keys))
+        const targets = force ? uniqueKeys : uniqueKeys.filter((k) => !loadedKeysRef.current.has(k))
+        if (targets.length === 0) return
+        setLoadingFor(targets, true)
         try {
-            const [
-                poiRes,
-                resRes,
-                supRes,
-                supLinkRes,
-                supPriceHistRes,
-                prodRes,
-                prodLinkRes,
-                prodSnapRes,
-                skuRes,
-                channelRes,
-                skuChannelRes,
-                priceRes,
-                priceHistRes,
-                invRes,
-                invLogRes,
-                orderRes,
-                orderHistRes,
-                approvalRes,
-                auditRes,
-                prodCatRes,
-                spuRes,
-            ] = await Promise.all([
-                fetchAll<MockData['poi'][number]>(`/api/poi`),
-                fetchAll<MockData['resources'][number]>(`/api/resources`),
-                fetchAll<MockData['suppliers'][number]>(`/api/suppliers`),
-                fetchAll<MockData['supplier_resources'][number]>(`/api/supplier-resources`),
-                fetchAll<MockData['supplier_resource_price_history'][number]>(`/api/supplier-resource-price-history`),
-                fetchAll<MockData['products'][number]>(`/api/products`),
-                fetchAll<MockData['product_resources'][number]>(`/api/product-resources`),
-                fetchAll<MockData['product_structure_snapshot'][number]>(`/api/product-snapshots`),
-                fetchAll<MockData['skus'][number]>(`/api/skus`),
-                fetchAll<MockData['channels'][number]>(`/api/channels`),
-                fetchAll<MockData['sku_channels'][number]>(`/api/sku_channels`).catch(() => []),
-                fetchAll<MockData['prices'][number]>(`/api/prices`),
-                fetchAll<MockData['price_history'][number]>(`/api/price-history`),
-                fetchAll<MockData['inventory'][number]>(`/api/inventory`),
-                fetchAll<MockData['inventory_log'][number]>(`/api/inventory/logs`),
-                fetchAll<MockData['orders'][number]>(`/api/orders`),
-                fetchAll<MockData['order_status_history'][number]>(`/api/order-status-history`).catch(() => []),
-                fetchAll<MockData['approvals'][number]>(`/api/approvals`),
-                fetchAll<MockData['audit_log'][number]>(`/api/audit-log`),
-                fetchAll<MockData['product_categories'][number]>(`/api/product-categories`),
-                fetchAll<MockData['spus'][number]>(`/api/spus`),
-            ])
-
-            const next: MockData = {
-                ...emptyData,
-                poi: poiRes,
-                resources: resRes,
-                suppliers: supRes,
-                supplier_resources: supLinkRes,
-                supplier_resource_price_history: supPriceHistRes,
-                product_categories: prodCatRes,
-                products: prodRes,
-                product_resources: prodLinkRes,
-                product_structure_snapshot: prodSnapRes,
-                skus: skuRes,
-                channels: channelRes,
-                sku_channels: skuChannelRes ?? [],
-                prices: priceRes,
-                price_history: priceHistRes,
-                inventory: invRes,
-                inventory_log: invLogRes,
-                orders: orderRes,
-                order_status_history: orderHistRes ?? [],
-                approvals: approvalRes,
-                audit_log: auditRes,
-                spus: spuRes,
-            }
-            setData(next)
+            const results = await Promise.all(
+                targets.map(async (key) => {
+                    const endpoint = ENDPOINTS[key]
+                    const items = await fetchAll<any>(endpoint)
+                    return [key, items] as const
+                })
+            )
+            setData((prev) => {
+                const next = { ...prev }
+                results.forEach(([key, items]) => {
+                    next[key] = items
+                })
+                return next
+            })
+            targets.forEach((key) => loadedKeysRef.current.add(key))
         } catch (err) {
             console.error(err)
             message.error('加载后端数据失败，请检查API服务或认证信息')
         } finally {
-            setLoading(false)
+            setLoadingFor(targets, false)
         }
-    }, [])
+    }, [setLoadingFor, token])
+
+    const refresh = useCallback(async (keys?: MockDataKey[]) => {
+        const targets = keys && keys.length > 0 ? keys : ALL_KEYS
+        await loadData(targets, { force: true })
+    }, [loadData])
 
     useEffect(() => {
         if (!token) {
-            setData(null)
-            setLoading(false)
-            return
+            setData(emptyData)
+            loadedKeysRef.current = new Set()
+            setLoadingKeys(new Set())
         }
-        fetchBackend()
-    }, [token, fetchBackend])
+    }, [token])
 
     const updateData = useCallback(<K extends MockDataKey>(key: K, value: MockData[K] | ((prev: MockData[K]) => MockData[K])) => {
         setData((prev) => {
-            if (!prev) return prev
             const nextSection = typeof value === 'function' ? (value as (prev: MockData[K]) => MockData[K])(prev[key]) : value
             return { ...prev, [key]: nextSection }
         })
@@ -183,11 +178,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const ctx = useMemo(
         () => ({
             data,
-            loading,
-            refresh: token ? fetchBackend : () => setLoading(false),
+            loading: loadingKeys.size > 0,
+            loadData,
+            refresh,
             updateData,
         }),
-        [data, loading, token, fetchBackend, updateData]
+        [data, loadingKeys.size, loadData, refresh, updateData]
     )
 
     return <DataContext.Provider value={ctx}>{children}</DataContext.Provider>

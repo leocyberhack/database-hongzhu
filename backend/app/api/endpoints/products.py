@@ -23,6 +23,7 @@ from app.models import (
     Inventory,
     InventoryLog,
     SkuChannel,
+    Poi,
 )
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.product import (
@@ -194,16 +195,23 @@ async def list_products(
     keyword: Optional[str] = Query(default=None),
     status: Optional[str] = Query(default=None),
     category_id: Optional[int] = Query(default=None),
+    poi_id: Optional[int] = Query(default=None),
     sort_field: Optional[str] = Query(default=None),
     sort_order: Optional[str] = Query(default=None),
 ):
-    stmt = select(Product)
+    stmt = (
+        select(Product, Poi.poi_name, ProductCategory.name.label("category_name"))
+        .outerjoin(Poi, Poi.id == Product.poi_id)
+        .outerjoin(ProductCategory, ProductCategory.id == Product.category_id)
+    )
     if keyword:
         stmt = stmt.where(Product.product_name.ilike(f"%{keyword}%"))
     if status:
         stmt = stmt.where(Product.status == status)
     if category_id:
         stmt = stmt.where(Product.category_id == category_id)
+    if poi_id:
+        stmt = stmt.where(Product.poi_id == poi_id)
       
     # Sorting logic
     if sort_field and hasattr(Product, sort_field):
@@ -217,10 +225,38 @@ async def list_products(
         stmt = stmt.order_by(Product.poi_id.asc(), Product.id.desc())
         
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
-    # We might want to eagerly load resources or category in future, but for list view usually basic info is enough
+    result = await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))
+    rows = result.all()
+
+    product_ids = [row[0].id for row in rows]
+    sku_map: dict[int, int] = {}
+    order_map: dict[int, int] = {}
+    if product_ids:
+        sku_counts = await db.execute(
+            select(Sku.product_id, func.count())
+            .where(Sku.product_id.in_(product_ids))
+            .group_by(Sku.product_id)
+        )
+        sku_map = {pid: cnt for pid, cnt in sku_counts.all()}
+
+        order_counts = await db.execute(
+            select(Order.product_id, func.count())
+            .where(Order.product_id.in_(product_ids))
+            .group_by(Order.product_id)
+        )
+        order_map = {pid: cnt for pid, cnt in order_counts.all()}
+
+    items = []
+    for product, poi_name, category_name in rows:
+        payload = ProductRead.model_validate(product).model_dump()
+        payload["sku_count"] = sku_map.get(product.id, 0)
+        payload["order_count"] = order_map.get(product.id, 0)
+        payload["poi_name"] = poi_name
+        payload["category_name"] = category_name
+        items.append(payload)
+
     return ListResponse(
-        items=[ProductRead.model_validate(r) for r in rows],
+        items=items,
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
     )
 

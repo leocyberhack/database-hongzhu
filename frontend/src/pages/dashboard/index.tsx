@@ -1,12 +1,30 @@
 import { Col, Row, Table, Tag, Button } from 'antd'
 import { AccountBookOutlined, ShoppingCartOutlined, UsergroupAddOutlined, RiseOutlined } from '@ant-design/icons'
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
-import { useData } from '@/contexts/DataContext'
 import { motion } from 'framer-motion'
 import CountUp from 'react-countup'
+import { useEffect, useState } from 'react'
+import { apiRequest } from '@/lib/api'
+import type { Order } from '@/types'
 
 export default function DashboardPage() {
-    const { data, loading } = useData()
+    const [recentOrders, setRecentOrders] = useState<Order[]>([])
+    const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        const fetchRecent = async () => {
+            setLoading(true)
+            try {
+                const res = await apiRequest<{ items: Order[] }>(`/api/orders?page=1&page_size=5`)
+                setRecentOrders(res.items || [])
+            } catch {
+                setRecentOrders([])
+            } finally {
+                setLoading(false)
+            }
+        }
+        fetchRecent()
+    }, [])
 
     const chartData = [
         { name: 'Mon', gmv: 4000, orders: 2400 },
@@ -187,7 +205,7 @@ export default function DashboardPage() {
                             </div>
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                                 <Table
-                                    dataSource={data?.orders.slice(0, 5) || []}
+                                    dataSource={recentOrders}
                                     loading={loading}
                                     pagination={false}
                                     rowKey="id"

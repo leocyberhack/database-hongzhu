@@ -68,7 +68,7 @@ interface ResourceSelectorProps {
 }
 
 function ResourceSelector({ visible, onCancel, onSelect, existingIds }: ResourceSelectorProps) {
-    const { data } = useData()
+    const { data, loadData } = useData()
     const poiList = data?.poi ?? []
     const resourceTypes = ['景区', '酒店', '餐饮', '交通']
     const poiTypeOptions = ['全部', ...resourceTypes]
@@ -296,7 +296,7 @@ interface SelectedResourceItem {
 }
 
 export default function ProductEditorPage() {
-    const { data, refresh } = useData()
+    // reuse data from context
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
 
@@ -313,6 +313,10 @@ export default function ProductEditorPage() {
     const [previewLoading, setPreviewLoading] = useState(false)
     const [previewData, setPreviewData] = useState<Record<string, number>>({})
     const [, forceUpdate] = useState({})
+
+    useEffect(() => {
+        loadData(['poi', 'product_categories', 'channels', 'products'])
+    }, [loadData])
 
     // Product metadata (for edit mode info card)
     const [productMetadata, setProductMetadata] = useState<{
@@ -638,7 +642,7 @@ export default function ProductEditorPage() {
                 await apiRequest('/api/products', { method: 'POST', body: JSON.stringify(payload) })
                 message.success('产品创建成功')
             }
-            await refresh() // Refresh global cache if needed
+            await loadData(['products'], { force: true }) // Refresh cached products list
             navigate('/products/list')
         } catch (err: any) {
             message.error(err.message || '保存失败')

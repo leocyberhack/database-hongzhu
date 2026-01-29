@@ -1,11 +1,15 @@
 import { Table, Button, Space } from 'antd'
+import { useEffect } from 'react'
 import { useData } from '@/contexts/DataContext'
 
 export default function SupplierBindingsPage() {
-    const { data } = useData()
-    const supplierResources = data?.supplier_resources ?? []
-    const suppliers = data?.suppliers ?? []
-    const resources = data?.resources ?? []
+    const { data, loadData } = useData()
+    useEffect(() => {
+        loadData(['supplier_resources', 'suppliers', 'resources'])
+    }, [loadData])
+    const supplierResources = data.supplier_resources ?? []
+    const suppliers = data.suppliers ?? []
+    const resources = data.resources ?? []
 
     const columns = [
         {

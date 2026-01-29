@@ -1,22 +1,43 @@
-import { useState } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { Table, Tag, Button, Space, Modal, Input, message, Popconfirm } from 'antd'
 import { DeleteOutlined } from '@ant-design/icons'
-import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Approval } from '@/types'
 
 export default function ApprovalsPendingPage() {
-    const { data, refresh } = useData()
     const { user } = useAuth()
-    const approvals = data?.approvals ?? []
-    // Show all records for super_admin to allow cleanup; otherwise only pending
-    const displayApprovals = user?.role === 'super_admin' ? approvals : approvals.filter((a) => a.status === 'pending')
-
+    const [rows, setRows] = useState<Approval[]>([])
+    const [loading, setLoading] = useState(false)
+    const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 })
     const [rejectId, setRejectId] = useState<number | null>(null)
     const [rejectReason, setRejectReason] = useState('')
-    const [loading, setLoading] = useState(false)
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+
+    const isSuperAdmin = user?.role === 'super_admin'
+
+    const fetchApprovals = useCallback(async () => {
+        setLoading(true)
+        try {
+            const params = new URLSearchParams({
+                page: String(pagination.current),
+                page_size: String(pagination.pageSize),
+            })
+            if (!isSuperAdmin) params.append('status', 'pending')
+            const res = await apiRequest<{ items: Approval[]; pagination: { total: number } }>(`/api/approvals?${params.toString()}`)
+            setRows(res.items || [])
+            setPagination(prev => ({ ...prev, total: res.pagination?.total || 0 }))
+        } catch (err: any) {
+            message.error(err.message || '加载审批失败')
+            setRows([])
+        } finally {
+            setLoading(false)
+        }
+    }, [isSuperAdmin, pagination.current, pagination.pageSize])
+
+    useEffect(() => {
+        fetchApprovals()
+    }, [fetchApprovals])
 
     const handleDecision = async (id: number, approve: boolean, comment?: string) => {
         setLoading(true)
@@ -28,7 +49,7 @@ export default function ApprovalsPendingPage() {
             message.success(approve ? '已批准' : '已驳回')
             setRejectId(null)
             setRejectReason('')
-            await refresh()
+            await fetchApprovals()
         } catch (err: any) {
             message.error(err.message || '操作失败')
         } finally {
@@ -46,7 +67,7 @@ export default function ApprovalsPendingPage() {
             })
             message.success('批量删除成功')
             setSelectedRowKeys([])
-            await refresh()
+            await fetchApprovals()
         } catch (err: any) {
             message.error(err.message || '删除失败')
         } finally {
@@ -109,7 +130,7 @@ export default function ApprovalsPendingPage() {
                     <h1 className="page-title">审批中心 (M8)</h1>
                     <p className="page-subtitle">管理待审批请求及历史记录</p>
                 </div>
-                {user?.role === 'super_admin' && selectedRowKeys.length > 0 && (
+                {isSuperAdmin && selectedRowKeys.length > 0 && (
                     <Popconfirm
                         title={`确定删除选中的 ${selectedRowKeys.length} 条记录吗？`}
                         onConfirm={handleBatchDelete}
@@ -126,9 +147,17 @@ export default function ApprovalsPendingPage() {
                 <Table<Approval>
                     rowKey="id"
                     columns={columns}
-                    dataSource={displayApprovals}
-                    pagination={{ pageSize: 10 }}
-                    rowSelection={user?.role === 'super_admin' ? {
+                    dataSource={rows}
+                    loading={loading}
+                    pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: pagination.total,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条记录`,
+                        onChange: (page, pageSize) => setPagination(prev => ({ ...prev, current: page, pageSize: pageSize || prev.pageSize })),
+                    }}
+                    rowSelection={isSuperAdmin ? {
                         selectedRowKeys,
                         onChange: setSelectedRowKeys
                     } : undefined}

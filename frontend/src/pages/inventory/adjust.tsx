@@ -1,10 +1,15 @@
 import { Form, Input, InputNumber, Button, Select, DatePicker } from 'antd'
+import { useEffect } from 'react'
 import { useData } from '@/contexts/DataContext'
 
 export default function InventoryAdjustPage() {
-    const { data } = useData()
-    const skus = data?.skus ?? []
-    const channels = data?.channels ?? []
+    const { data, loadData } = useData()
+    const skus = data.skus ?? []
+    const channels = data.channels ?? []
+
+    useEffect(() => {
+        loadData(['skus', 'channels'])
+    }, [loadData])
 
     return (
         <div className="page-container">

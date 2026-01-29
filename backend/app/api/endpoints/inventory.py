@@ -3,11 +3,11 @@ from app.utils.time import now_china
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import Approval, AuditLog, Inventory, InventoryLog, Sku, SkuChannel
+from app.models import Approval, AuditLog, Inventory, InventoryLog, Sku, SkuChannel, Spu
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.inventory import InventoryAdjust, InventoryInit, InventoryLogRead, InventoryRead, InventoryDayRead
 
@@ -64,6 +64,8 @@ async def list_inventory_by_day(
     date: str = Query(..., description="日期 YYYY-MM-DD"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=1000),
+    keyword: Optional[str] = Query(default=None),
+    channel_id: Optional[int] = Query(default=None),
     sort_field: Optional[str] = Query(default=None),
     sort_order: Optional[str] = Query(default=None),
 ):
@@ -72,7 +74,32 @@ async def list_inventory_by_day(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
 
-    stmt = select(Inventory).join(Sku, Inventory.sku_id == Sku.id).where(Inventory.inventory_date == target)
+    channel_subq = (
+        select(SkuChannel.sku_id, func.min(SkuChannel.channel_id).label("channel_id"))
+        .where(SkuChannel.status == "active")
+        .group_by(SkuChannel.sku_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(Inventory, Sku.sku_name, Sku.spu_id, Spu.name.label("spu_name"), channel_subq.c.channel_id)
+        .join(Sku, Inventory.sku_id == Sku.id)
+        .outerjoin(Spu, Spu.id == Sku.spu_id)
+        .outerjoin(channel_subq, channel_subq.c.sku_id == Sku.id)
+        .where(Inventory.inventory_date == target)
+    )
+    if keyword:
+        stmt = stmt.where(Sku.sku_name.ilike(f"%{keyword}%"))
+    if channel_id is not None:
+        stmt = stmt.where(
+            exists(
+                select(1).where(
+                    SkuChannel.sku_id == Sku.id,
+                    SkuChannel.channel_id == channel_id,
+                    SkuChannel.status == "active",
+                )
+            )
+        )
     
     # Sorting logic
     if sort_field == "sku_name" or not sort_field:
@@ -89,36 +116,27 @@ async def list_inventory_by_day(
     else:
         stmt = stmt.order_by(Inventory.sku_id)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
-    rows = list(rows)
-
-    # Map SKU -> channel (assuming单渠道绑定；多渠道取首个绑定)
-    sku_ids = [r.sku_id for r in rows]
-    channel_map = {}
-    if sku_ids:
-        bindings = await db.scalars(select(SkuChannel).where(SkuChannel.sku_id.in_(sku_ids)))
-        for b in bindings:
-            if b.sku_id not in channel_map:
-                channel_map[b.sku_id] = b.channel_id
+    result = await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))
+    rows = result.all()
 
     items = []
-    for r in rows:
-        available = max(0, r.total_qty - r.frozen_qty - r.sold_qty)
-        items.append(
-            InventoryDayRead(
-                id=r.id,
-                sku_id=r.sku_id,
-                channel_id=channel_map.get(r.sku_id),
-                inventory_date=r.inventory_date,
-                total_qty=r.total_qty,
-                frozen_qty=r.frozen_qty,
-                sold_qty=r.sold_qty,
-                available_qty=available,
-                status=r.status,
-                created_at=r.created_at,
-                updated_at=r.updated_at,
-            )
-        )
+    for inv, sku_name, spu_id, spu_name, ch_id in rows:
+        available = max(0, inv.total_qty - inv.frozen_qty - inv.sold_qty)
+        payload = InventoryDayRead(
+            id=inv.id,
+            sku_id=inv.sku_id,
+            channel_id=ch_id,
+            inventory_date=inv.inventory_date,
+            total_qty=inv.total_qty,
+            frozen_qty=inv.frozen_qty,
+            sold_qty=inv.sold_qty,
+            available_qty=available,
+            status=inv.status,
+        ).model_dump()
+        payload["sku_name"] = sku_name
+        payload["spu_id"] = spu_id
+        payload["spu_name"] = spu_name
+        items.append(payload)
 
     return ListResponse(
         items=items,

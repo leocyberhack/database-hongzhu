@@ -98,9 +98,25 @@ async def list_suppliers(
         stmt = stmt.where(Supplier.supplier_name.ilike(f"%{keyword}%"))
 
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
+    rows = list(await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)))
+
+    supplier_ids = [s.id for s in rows]
+    resource_map: dict[int, int] = {}
+    if supplier_ids:
+        counts = await db.execute(
+            select(SupplierResource.supplier_id, func.count())
+            .where(SupplierResource.supplier_id.in_(supplier_ids))
+            .group_by(SupplierResource.supplier_id)
+        )
+        resource_map = {sid: cnt for sid, cnt in counts.all()}
+
+    items = []
+    for row in rows:
+        payload = SupplierRead.model_validate(row).model_dump()
+        payload["resource_count"] = resource_map.get(row.id, 0)
+        items.append(payload)
     return ListResponse(
-        items=[SupplierRead.model_validate(r) for r in rows],
+        items=items,
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
     )
 

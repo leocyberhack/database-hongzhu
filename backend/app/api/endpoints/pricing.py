@@ -133,6 +133,7 @@ async def list_pricing_summary(
     page_size: int = Query(default=50, ge=1, le=1000),
     sku_id: Optional[int] = Query(default=None),
     channel_id: Optional[int] = Query(default=None),
+    status: Optional[str] = Query(default=None),
     sort_field: Optional[str] = Query(default=None),
     sort_order: Optional[str] = Query(default=None),
 ):
@@ -242,6 +243,9 @@ async def list_pricing_summary(
                 status='active' if p_min is not None else 'empty'
             ))
             
+    if status in {"active", "empty"}:
+        full_items = [item for item in full_items if item.status == status]
+
     # In-memory Pagination
     total = len(full_items)
     start = (page - 1) * page_size

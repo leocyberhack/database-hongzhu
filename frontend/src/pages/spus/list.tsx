@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Table, Button, Space, Modal, Form, Input, message, Card, Row, Col, Popconfirm } from 'antd'
 import { PlusOutlined, SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
@@ -7,8 +7,11 @@ import { useNavigate } from 'react-router-dom'
 import type { Spu } from '@/types'
 
 export default function SPUListPage() {
-    const { data, refresh } = useData()
-    const spus = data?.spus ?? []
+    const { data, loadData } = useData()
+    useEffect(() => {
+        loadData(['spus'])
+    }, [loadData])
+    const spus = data.spus ?? []
     const navigate = useNavigate()
     const [modalVisible, setModalVisible] = useState(false)
     const [editingSpu, setEditingSpu] = useState<Spu | null>(null)
@@ -39,7 +42,7 @@ export default function SPUListPage() {
             setModalVisible(false)
             setEditingSpu(null)
             form.resetFields()
-            await refresh()
+            await loadData(['spus'], { force: true })
         } catch (err: any) {
             message.error(err.message || '操作失败')
         }
@@ -49,7 +52,7 @@ export default function SPUListPage() {
         try {
             await apiRequest(`/api/spus/${id}`, { method: 'DELETE' })
             message.success('删除成功')
-            await refresh()
+            await loadData(['spus'], { force: true })
         } catch (err: any) {
             message.error(err.message || '删除失败')
         }

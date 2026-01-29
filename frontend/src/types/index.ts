@@ -42,6 +42,7 @@ export interface Supplier {
     folder_id?: number
     created_at?: string
     updated_at?: string
+    resource_count?: number
 }
 
 export interface SupplierContact {
@@ -96,12 +97,16 @@ export interface Product {
     structure_hash: string
     status: 'draft' | 'active' | 'archived'
     category_id?: string
+    category_name?: string
     suggested_price?: number
     base_cost?: number
     poi_id?: string
+    poi_name?: string
     allowed_channels?: ChannelAllocation[]  // Changed to array of allocations
     created_at?: string
     updated_at?: string
+    sku_count?: number
+    order_count?: number
 }
 
 export interface ProductResource {
@@ -217,8 +222,11 @@ export interface Order {
     id: string
     order_no: string
     channel_id: string
+    channel_name?: string
     sku_id: string
+    sku_name?: string
     product_id: string
+    product_name?: string
     quantity: number
     sale_price: number
     sale_amount: number
