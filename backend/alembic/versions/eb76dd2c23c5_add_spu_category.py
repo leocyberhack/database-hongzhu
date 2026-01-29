@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 def upgrade() -> None:
-    pass
+    op.add_column('spu', sa.Column('category', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
-    pass
+    op.drop_column('spu', 'category')
