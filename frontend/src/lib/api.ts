@@ -27,7 +27,14 @@ function getStoredAuth() {
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (!API_BASE) throw new Error('API base is not configured')
     const { token, role } = getStoredAuth()
-    const res = await fetch(`${API_BASE}${path}`, {
+
+    let url = `${API_BASE}${path}`
+    // Force upgrade to HTTPS if current page is HTTPS (Double safety)
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://')) {
+        url = url.replace('http://', 'https://')
+    }
+
+    const res = await fetch(url, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
