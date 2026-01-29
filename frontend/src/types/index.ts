@@ -128,6 +128,7 @@ export interface Spu {
     id: string
     name: string
     spu_code?: string
+    category?: string
     remark?: string
     sku_count?: number
     created_at?: string

@@ -72,6 +72,11 @@ export default function SPUListPage() {
             sorter: (a: Spu, b: Spu) => a.name.localeCompare(b.name),
         },
         {
+            title: 'SPU 分类',
+            dataIndex: 'category',
+            sorter: (a: Spu, b: Spu) => (a.category || '').localeCompare(b.category || ''),
+        },
+        {
             title: '编码',
             dataIndex: 'spu_code',
         },
@@ -165,6 +170,9 @@ export default function SPUListPage() {
                     </Form.Item>
                     <Form.Item name="spu_code" label="SPU 编码">
                         <Input placeholder="例如：SPU001" />
+                    </Form.Item>
+                    <Form.Item name="category" label="SPU 分类">
+                        <Input placeholder="例如：跟团游" />
                     </Form.Item>
                     <Form.Item name="remark" label="备注">
                         <Input.TextArea rows={4} />

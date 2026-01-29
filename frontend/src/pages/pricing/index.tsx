@@ -24,6 +24,7 @@ export default function PricingPage() {
     const channels = data?.channels ?? []
     const skus = data?.skus ?? []
     const products = data?.products ?? []
+    const spus = data?.spus ?? []
 
     const [loading, setLoading] = useState(false)
     const [stockLimitMap, setStockLimitMap] = useState<Record<string, number>>({})
@@ -53,7 +54,24 @@ export default function PricingPage() {
 
             const res = await apiRequest<{ items: PricingSummaryItem[] }>(`/api/pricing/summary?${qs.toString()}`)
             const list = res.items || []
-            const filtered = filterStatus ? list.filter((r) => r.status === filterStatus) : list
+            // Enrich with SPU info
+            const enriched = list.map(item => {
+                const sku = skus.find(s => String(s.id) === String(item.sku_id))
+                const spu = sku ? spus.find(s => String(s.id) === String(sku.spu_id)) : null
+                return {
+                    ...item,
+                    spu_id: spu?.id,
+                    spu_name: spu?.name || '-',
+                }
+            })
+            // Default sort by SPU
+            enriched.sort((a, b) => {
+                const na = a.spu_name || ''
+                const nb = b.spu_name || ''
+                return na.localeCompare(nb)
+            })
+
+            const filtered = filterStatus ? enriched.filter((r) => r.status === filterStatus) : enriched
             setItems(filtered)
             setPagination((prev) => ({ ...prev, current: 1 }))
         } catch (err) {
@@ -126,6 +144,13 @@ export default function PricingPage() {
 
 
     const columns: any = [
+        {
+            title: '所属 SPU',
+            dataIndex: 'spu_name',
+            key: 'spu_name',
+            render: (text: string) => <Tag color="geekblue">{text}</Tag>,
+            sorter: (a: any, b: any) => (a.spu_name || '').localeCompare(b.spu_name || ''),
+        },
         {
             title: 'SKU 名称',
             dataIndex: 'sku_name',

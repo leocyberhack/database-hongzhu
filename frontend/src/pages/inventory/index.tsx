@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Table, Progress, Card, DatePicker, Row, Col, Space, Button, Input, Select } from 'antd'
+import { Table, Progress, Card, DatePicker, Row, Col, Space, Button, Input, Select, Tag } from 'antd'
 import dayjs, { Dayjs } from 'dayjs'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
@@ -10,12 +10,15 @@ interface InventoryDay extends Inventory {
     available_qty?: number
     inventory_date: string
     channel_id?: string
+    spu_id?: number
+    spu_name?: string
 }
 
 export default function InventoryPage() {
     const { data } = useData()
     const skus = data?.skus ?? []
     const channels = data?.channels ?? []
+    const spus = data?.spus ?? []
     const skuChannels = data?.sku_channels ?? []
 
     const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs())
@@ -44,10 +47,24 @@ export default function InventoryPage() {
         try {
             const res = await apiRequest<{ items: InventoryDay[] }>(`/api/inventory/day?date=${date.format('YYYY-MM-DD')}&page_size=1000`)
             // 补充 channel_id 兜底（后端可能没绑定）
-            const filled = (res.items || []).map((item) => ({
-                ...item,
-                channel_id: item.channel_id ?? channelMapBySku[String(item.sku_id)],
-            }))
+            const filled = (res.items || []).map((item) => {
+                const sku = skus.find(s => String(s.id) === String(item.sku_id))
+                // Enrich SPU info
+                const spu = sku ? spus.find(s => String(s.id) === String(sku.spu_id)) : null
+                return {
+                    ...item,
+                    channel_id: item.channel_id ?? channelMapBySku[String(item.sku_id)],
+                    spu_id: spu?.id ? Number(spu.id) : undefined,
+                    spu_name: spu?.name,
+                }
+            })
+            // Default sort by SPU
+            filled.sort((a, b) => {
+                const na = a.spu_name || ''
+                const nb = b.spu_name || ''
+                return na.localeCompare(nb)
+            })
+
             // Sorting is handled by backend default now, but we apply local filters on top
             setRows(filled)
             setPagination((prev) => ({ ...prev, current: 1 }))
@@ -80,6 +97,12 @@ export default function InventoryPage() {
     }, [rows, filters, skus])
 
     const columns: any = [
+        {
+            title: '所属 SPU',
+            dataIndex: 'spu_name',
+            render: (text: string) => <Tag color="geekblue">{text || '-'}</Tag>,
+            sorter: (a: InventoryDay, b: InventoryDay) => (a.spu_name || '').localeCompare(b.spu_name || ''),
+        },
         {
             title: 'SKU名称',
             dataIndex: 'sku_id',

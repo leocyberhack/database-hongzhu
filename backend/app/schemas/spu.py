@@ -6,6 +6,7 @@ from app.schemas.common import Pagination, ORMBase
 class SpuBase(BaseModel):
     name: str
     spu_code: Optional[str] = None
+    category: Optional[str] = None
     remark: Optional[str] = None
 
 class SpuCreate(SpuBase):
@@ -14,6 +15,7 @@ class SpuCreate(SpuBase):
 class SpuUpdate(BaseModel):
     name: Optional[str] = None
     spu_code: Optional[str] = None
+    category: Optional[str] = None
     remark: Optional[str] = None
 
 class SpuResponse(SpuBase):
