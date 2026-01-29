@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, Table, Tag, Space, Button, Select, Input, DatePicker, message, Popconfirm } from 'antd'
 import { ReloadOutlined, SearchOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { useData } from '@/contexts/DataContext'
 
 const { RangePicker } = DatePicker
 
@@ -190,6 +191,7 @@ const STATUS_MAP: Record<string, string> = {
 
 export default function OperationLogsPage() {
     const { user } = useAuth()
+    const { data } = useData()
     const [logs, setLogs] = useState<OperationLog[]>([])
     const [loading, setLoading] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 })
@@ -202,6 +204,17 @@ export default function OperationLogsPage() {
     })
 
     const isAdmin = user?.username === 'admin'
+
+    const poiMap = useMemo(() => new Map((data?.poi ?? []).map((item: any) => [String(item.id), item])), [data])
+    const resourceMap = useMemo(() => new Map((data?.resources ?? []).map((item: any) => [String(item.id), item])), [data])
+    const supplierMap = useMemo(() => new Map((data?.suppliers ?? []).map((item: any) => [String(item.id), item])), [data])
+    const supplierResourceMap = useMemo(() => new Map((data?.supplier_resources ?? []).map((item: any) => [String(item.id), item])), [data])
+    const productMap = useMemo(() => new Map((data?.products ?? []).map((item: any) => [String(item.id), item])), [data])
+    const productResourceMap = useMemo(() => new Map((data?.product_resources ?? []).map((item: any) => [String(item.id), item])), [data])
+    const skuMap = useMemo(() => new Map((data?.skus ?? []).map((item: any) => [String(item.id), item])), [data])
+    const channelMap = useMemo(() => new Map((data?.channels ?? []).map((item: any) => [String(item.id), item])), [data])
+    const priceMap = useMemo(() => new Map((data?.prices ?? []).map((item: any) => [String(item.id), item])), [data])
+    const orderMap = useMemo(() => new Map((data?.orders ?? []).map((item: any) => [String(item.id), item])), [data])
 
     const fetchLogs = async () => {
         setLoading(true)
@@ -249,6 +262,121 @@ export default function OperationLogsPage() {
             await fetchLogs()
         } catch (err: any) {
             message.error(err.message || '批量删除失败')
+        }
+    }
+
+    const getMapItem = (map: Map<string, any>, id: any) => {
+        if (id === undefined || id === null) return undefined
+        return map.get(String(id))
+    }
+
+    const pickFromDiff = (data: any, key: string) => {
+        if (!data) return undefined
+        if (data[key] !== undefined && data[key] !== null) return data[key]
+        if (data.after && data.after[key] !== undefined && data.after[key] !== null) return data.after[key]
+        if (data.before && data.before[key] !== undefined && data.before[key] !== null) return data.before[key]
+        return undefined
+    }
+
+    const formatResourceLabel = (resource: any, fallbackId?: any) => {
+        if (!resource) {
+            return fallbackId !== undefined ? `#${fallbackId}` : undefined
+        }
+        const poiName = getMapItem(poiMap, resource.poi_id)?.poi_name
+        if (poiName) {
+            return `${resource.resource_name} (${poiName})`
+        }
+        return resource.resource_name || (fallbackId !== undefined ? `#${fallbackId}` : undefined)
+    }
+
+    const getSupplierResourceLabel = (
+        supplierResourceId?: any,
+        supplierId?: any,
+        resourceId?: any
+    ) => {
+        const supplierResource = getMapItem(supplierResourceMap, supplierResourceId)
+        const resolvedSupplierId = supplierId ?? supplierResource?.supplier_id
+        const resolvedResourceId = resourceId ?? supplierResource?.resource_id
+        const supplierName = getMapItem(supplierMap, resolvedSupplierId)?.supplier_name
+        const resourceLabel = formatResourceLabel(getMapItem(resourceMap, resolvedResourceId), resolvedResourceId)
+        const supplierLabel = supplierName || (resolvedSupplierId !== undefined ? `#${resolvedSupplierId}` : undefined)
+        if (!supplierLabel && !resourceLabel) return undefined
+        return [supplierLabel, resourceLabel].filter(Boolean).join(' / ')
+    }
+
+    const getRecordLabel = (log: OperationLog) => {
+        const diff = log.diff_data
+        switch (log.table_name) {
+            case 'poi':
+                return getMapItem(poiMap, log.record_id)?.poi_name
+            case 'resource':
+                return formatResourceLabel(getMapItem(resourceMap, log.record_id), log.record_id)
+            case 'supplier':
+                return getMapItem(supplierMap, log.record_id)?.supplier_name
+            case 'supplier_resource': {
+                const supplierId = pickFromDiff(diff, 'supplier_id')
+                const resourceId = pickFromDiff(diff, 'resource_id')
+                return getSupplierResourceLabel(log.record_id, supplierId, resourceId)
+            }
+            case 'resource_inventory': {
+                const supplierResourceId = pickFromDiff(diff, 'supplier_resource_id') ?? log.record_id
+                const supplierId = pickFromDiff(diff, 'supplier_id')
+                const resourceId = pickFromDiff(diff, 'resource_id')
+                return getSupplierResourceLabel(supplierResourceId, supplierId, resourceId)
+            }
+            case 'supplier_resource_agreements': {
+                const supplierResourceId = pickFromDiff(diff, 'supplier_resource_id')
+                const supplierId = pickFromDiff(diff, 'supplier_id')
+                const resourceId = pickFromDiff(diff, 'resource_id')
+                const agreementName = pickFromDiff(diff, 'agreement_name')
+                const srLabel = getSupplierResourceLabel(supplierResourceId, supplierId, resourceId)
+                return [agreementName, srLabel].filter(Boolean).join(' / ') || undefined
+            }
+            case 'supplier_resource_price_history': {
+                const supplierResourceId = pickFromDiff(diff, 'supplier_resource_id')
+                const supplierId = pickFromDiff(diff, 'supplier_id')
+                const resourceId = pickFromDiff(diff, 'resource_id')
+                return getSupplierResourceLabel(supplierResourceId, supplierId, resourceId)
+            }
+            case 'product':
+                return getMapItem(productMap, log.record_id)?.product_name
+            case 'product_resource': {
+                const productResource = getMapItem(productResourceMap, log.record_id)
+                const productName = productResource ? getMapItem(productMap, productResource.product_id)?.product_name : undefined
+                const resourceLabel = productResource ? formatResourceLabel(getMapItem(resourceMap, productResource.resource_id), productResource.resource_id) : undefined
+                return [productName, resourceLabel].filter(Boolean).join(' / ') || undefined
+            }
+            case 'sku':
+                return getMapItem(skuMap, log.record_id)?.sku_name
+            case 'channel':
+                return getMapItem(channelMap, log.record_id)?.channel_name
+            case 'price': {
+                const price = getMapItem(priceMap, log.record_id)
+                if (!price) return undefined
+                const skuName = getMapItem(skuMap, price.sku_id)?.sku_name
+                const channelName = getMapItem(channelMap, price.channel_id)?.channel_name
+                return [skuName, channelName].filter(Boolean).join(' / ') || undefined
+            }
+            case 'price_history': {
+                const priceId = pickFromDiff(diff, 'price_id')
+                const price = getMapItem(priceMap, priceId)
+                if (!price) return undefined
+                const skuName = getMapItem(skuMap, price.sku_id)?.sku_name
+                const channelName = getMapItem(channelMap, price.channel_id)?.channel_name
+                return [skuName, channelName].filter(Boolean).join(' / ') || undefined
+            }
+            case 'order':
+                return getMapItem(orderMap, log.record_id)?.order_no
+            case 'order_status_history': {
+                const orderId = pickFromDiff(diff, 'order_id')
+                return getMapItem(orderMap, orderId)?.order_no
+            }
+            case 'inventory_log': {
+                const skuId = pickFromDiff(diff, 'sku_id')
+                return getMapItem(skuMap, skuId)?.sku_name
+            }
+            default:
+                return undefined
         }
     }
 

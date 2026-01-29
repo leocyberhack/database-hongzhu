@@ -1,8 +1,8 @@
-
+﻿
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
     Form, Input, Button, Select, Card, Space, InputNumber, Switch, Table,
-    Modal, Tag, Divider, Row, Col, Statistic, message, Spin, Radio, Empty
+    Modal, Tag, Divider, Row, Col, Statistic, message, Spin, Radio, Empty, Alert
 } from 'antd'
 import { PlusOutlined, DeleteOutlined, SearchOutlined, CheckOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
@@ -283,7 +283,9 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
 interface SelectedResourceItem {
     key: string // unique loop key
     resource_id: string
-    supplier_id?: string
+    supplier_id?: string // deprecated
+    supplier_mode?: 'auto' | 'locked'
+    supplier_ids?: string[]
     quantity: number
     required_flag: boolean
     remark?: string
@@ -311,6 +313,25 @@ export default function ProductEditorPage() {
     const [previewLoading, setPreviewLoading] = useState(false)
     const [previewData, setPreviewData] = useState<Record<string, number>>({})
     const [, forceUpdate] = useState({})
+
+    // Product metadata (for edit mode info card)
+    const [productMetadata, setProductMetadata] = useState<{
+        id?: number
+        product_name?: string
+        created_at?: string
+        updated_at?: string
+        // created_by?: string
+    } | null>(null)
+
+    // Change tracking
+    const [initialFormValues, setInitialFormValues] = useState<any>(null)
+    const [initialItems, setInitialItems] = useState<SelectedResourceItem[]>([])
+    const [changedFields, setChangedFields] = useState<Set<string>>(new Set())
+
+    // Template copying (for create mode)
+    const [templateModalVisible, setTemplateModalVisible] = useState(false)
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+
     // Watch allowed_channels at the top level to avoid hook-in-loop error
     const watchedAllocations = Form.useWatch('allowed_channels', form) || []
 
@@ -384,15 +405,30 @@ export default function ProductEditorPage() {
                 // 1. Fetch Product
                 const p = await apiRequest<Product>(`/api/products/${productId}`)
 
-                form.setFieldsValue({
+                const formValues = {
                     product_name: p.product_name,
+                    product_code: p.product_code,
                     description: p.description,
                     status: p.status,
                     category_id: p.category_id,
                     suggested_price: p.suggested_price,
                     allowed_channels: p.allowed_channels,
-                })
+                }
+
+                form.setFieldsValue(formValues)
                 setSuggestedPrice(p.suggested_price ? Number(p.suggested_price) : 0)
+
+                // Save metadata for info card
+                setProductMetadata({
+                    id: Number(p.id),
+                    product_name: p.product_name,
+                    created_at: p.created_at,
+                    updated_at: p.updated_at,
+                    // created_by not in type
+                })
+
+                // Save initial values for change tracking
+                setInitialFormValues(formValues)
 
                 // 2. Fetch Product Resources
                 const prRes = await apiRequest<{ items: any[] }>(`/api/product-resources?product_id=${productId}`)
@@ -402,12 +438,14 @@ export default function ProductEditorPage() {
                 const newItems = links.map((l, idx) => ({
                     key: `${l.resource_id}_${idx} `,
                     resource_id: String(l.resource_id),
-                    supplier_id: l.supplier_id ? String(l.supplier_id) : undefined,
+                    supplier_mode: l.supplier_mode || 'auto',
+                    supplier_ids: l.supplier_ids && l.supplier_ids.length > 0 ? l.supplier_ids.map(String) : (l.supplier_id ? [String(l.supplier_id)] : []),
                     quantity: l.quantity,
                     required_flag: l.required_flag,
                     remark: l.remark,
                 }))
                 setItems(newItems)
+                setInitialItems(JSON.parse(JSON.stringify(newItems))) // Deep copy
 
                 // 4. Fetch related data
                 const rIds = Array.from(new Set(links.map((l: any) => String(l.resource_id))))
@@ -424,12 +462,13 @@ export default function ProductEditorPage() {
 
     // When adding new resources
     const handleAddResources = async (ids: string[]) => {
-        const newItems = ids.map(id => ({
+        const newItems: SelectedResourceItem[] = ids.map(id => ({
             key: `${id}_${Date.now()}_${Math.random()} `,
             resource_id: id,
             quantity: 1,
             required_flag: true,
-            supplier_id: undefined
+            supplier_mode: 'auto' as const,
+            supplier_ids: []
         }))
         setItems(prev => [...prev, ...newItems])
         setModalVisible(false)
@@ -442,7 +481,7 @@ export default function ProductEditorPage() {
     useEffect(() => {
         const fetchPreview = async () => {
             // Only preview if we have items and all have supplier_id
-            const validItems = items.filter(i => i.resource_id && i.supplier_id)
+            const validItems = items.filter(i => i.resource_id)
             if (validItems.length === 0) {
                 setEstimatedDailyStock(null)
                 setPreviewData({})
@@ -456,7 +495,8 @@ export default function ProductEditorPage() {
                 const payload = {
                     resources: validItems.map(i => ({
                         resource_id: Number(i.resource_id),
-                        supplier_id: Number(i.supplier_id),
+                        supplier_mode: i.supplier_mode,
+                        supplier_ids: i.supplier_ids ? i.supplier_ids.map(Number) : [],
                         quantity: i.quantity
                     }))
                 }
@@ -499,22 +539,77 @@ export default function ProductEditorPage() {
         return () => clearTimeout(timer)
     }, [items])
 
-    // Cost Calculation
+    // Cost Calculation (Estimate)
     const totalCost = useMemo(() => {
         return items.reduce((sum, item) => {
-            if (!item.resource_id || !item.supplier_id) return sum
-            // Find price in supplierResourceMap
+            if (!item.resource_id) return sum
+
             const srs = supplierResourceMap[item.resource_id] || []
-            const sr = srs.find(x => String(x.supplier_id) === String(item.supplier_id))
-            const price = sr?.settlement_price || 0
-            return sum + (Number(price) * item.quantity)
+            if (srs.length === 0) return sum
+
+            let applicableSRs = srs
+            if (item.supplier_mode === 'locked' && item.supplier_ids && item.supplier_ids.length > 0) {
+                applicableSRs = srs.filter(sr => item.supplier_ids!.includes(String(sr.supplier_id)))
+            }
+
+            // Find lowest price among applicable suppliers
+            let minPrice = 99999999
+            let found = false
+            applicableSRs.forEach(sr => {
+                const p = Number(sr.settlement_price || 0)
+                if (p < minPrice) minPrice = p
+                found = true
+            })
+
+            const unitCost = found ? minPrice : 0
+            return sum + (unitCost * item.quantity)
         }, 0)
     }, [items, supplierResourceMap])
+
+    // Change tracking - Track which fields have been modified
+    useEffect(() => {
+        if (!productId || !initialFormValues) return // Only track in edit mode
+
+        const currentValues = form.getFieldsValue()
+        const changed = new Set<string>()
+
+        // Compare form values
+        Object.keys(initialFormValues).forEach(key => {
+            const initial = initialFormValues[key]
+            const current = currentValues[key]
+
+            // Deep comparison for objects/arrays
+            if (JSON.stringify(initial) !== JSON.stringify(current)) {
+                changed.add(key)
+            }
+        })
+
+        // Check if items (resources) changed
+        if (JSON.stringify(initialItems) !== JSON.stringify(items)) {
+            changed.add('resources')
+        }
+
+        setChangedFields(changed)
+    }, [form, productId, initialFormValues, initialItems, items])
+    // Helper to render label with change indicator
+    const renderLabel = (label: string, fieldName: string) => {
+        const hasChanged = changedFields.has(fieldName)
+        return (
+            <span>
+                {label}
+                {hasChanged && productId && (
+                    <Tag color="orange" style={{ marginLeft: 8, fontSize: 10 }}>
+                        已修改
+                    </Tag>
+                )}
+            </span>
+        )
+    }
 
     const handleSave = async (values: any) => {
         // Validate items
         for (const item of items) {
-            if (!item.supplier_id) {
+            if (item.supplier_mode === 'locked' && (!item.supplier_ids || item.supplier_ids.length === 0)) {
                 message.error('请为所有资源选择供应商')
                 return
             }
@@ -526,7 +621,8 @@ export default function ProductEditorPage() {
             structure_hash: `HASH_${Date.now()} `, // Simple mock hash
             resources: items.map(i => ({
                 resource_id: i.resource_id,
-                supplier_id: i.supplier_id,
+                supplier_mode: i.supplier_mode,
+                supplier_ids: i.supplier_ids ? i.supplier_ids.map(Number) : [],
                 quantity: i.quantity,
                 required_flag: i.required_flag,
                 remark: i.remark
@@ -567,34 +663,106 @@ export default function ProductEditorPage() {
             }
         },
         {
-            title: '供应商 (选择以计算成本)',
-            width: 300,
+            title: '供应商选择',
+            width: 450,
             render: (_: any, record: SelectedResourceItem, index: number) => {
                 const availSR = supplierResourceMap[record.resource_id] || []
+                const mode = record.supplier_mode || 'auto'
+
+                // Sort by price
+                const sortedSR = [...availSR].sort((a, b) => Number(a.settlement_price) - Number(b.settlement_price))
+
                 return (
-                    <Select
-                        style={{ width: '100%' }}
-                        placeholder={availSR.length > 0 ? "选择供应商" : "无直连供应商"}
-                        value={record.supplier_id ? String(record.supplier_id) : undefined}
-                        onChange={(val) => {
-                            const newItems = [...items]
-                            newItems[index].supplier_id = val
-                            setItems(newItems)
-                        }}
-                        disabled={isReadOnly}
-                    >
-                        {availSR.map(sr => {
-                            const s = supplierMap[String(sr.supplier_id)]
-                            return (
-                                <Select.Option key={sr.supplier_id} value={String(sr.supplier_id)}>
-                                    <Space>
-                                        <span>{s?.supplier_name || sr.supplier_id}</span>
-                                        <Tag color="gold">¥{sr.settlement_price}</Tag>
-                                    </Space>
-                                </Select.Option>
-                            )
-                        })}
-                    </Select>
+                    <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Space>
+                            <Switch
+                                checkedChildren="自动"
+                                unCheckedChildren="锁定"
+                                checked={mode === 'auto'}
+                                onChange={(checked) => {
+                                    const newItems = [...items]
+                                    newItems[index].supplier_mode = checked ? 'auto' : 'locked'
+                                    if (!checked && (!newItems[index].supplier_ids || newItems[index].supplier_ids!.length === 0)) {
+                                        // Default to all suppliers when switching to locked mode
+                                        newItems[index].supplier_ids = sortedSR.map(s => String(s.supplier_id))
+                                    }
+                                    setItems(newItems)
+                                }}
+                                disabled={isReadOnly}
+                            />
+                            <span style={{ fontSize: 12, color: '#999' }}>
+                                {mode === 'auto' ? '自动选择最低价' : '从指定供应商中选择'}
+                            </span>
+                        </Space>
+
+                        {mode === 'auto' ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                {sortedSR.length === 0 && <Tag>无可用供应商</Tag>}
+                                {sortedSR.map((sr, idx) => {
+                                    const s = supplierMap[String(sr.supplier_id)]
+                                    const isLowest = idx === 0
+                                    return (
+                                        <Tag key={sr.supplier_id} color={isLowest ? "success" : "default"}>
+                                            {s?.supplier_name} ¥{sr.settlement_price}
+                                            {isLowest && " ⭐"}
+                                        </Tag>
+                                    )
+                                })}
+                            </div>
+                        ) : (
+                            <div style={{ width: '100%' }}>
+                                <Select
+                                    mode="multiple"
+                                    style={{ width: '100%' }}
+                                    placeholder="点击选择供应商"
+                                    value={record.supplier_ids || []}
+                                    onChange={(vals) => {
+                                        const newItems = [...items]
+                                        newItems[index].supplier_ids = vals
+                                        setItems(newItems)
+                                    }}
+                                    disabled={isReadOnly}
+                                    maxTagCount="responsive"
+                                    size="small"
+                                    tagRender={(props) => {
+                                        const sr = sortedSR.find(s => String(s.supplier_id) === props.value)
+                                        const s = supplierMap[String(props.value)]
+                                        return (
+                                            <Tag
+                                                color="processing"
+                                                closable={!isReadOnly && props.closable}
+                                                onClose={props.onClose}
+                                                style={{ marginRight: 3 }}
+                                            >
+                                                {s?.supplier_name} ¥{sr?.settlement_price || '-'}
+                                            </Tag>
+                                        )
+                                    }}
+                                >
+                                    {sortedSR.map(sr => {
+                                        const s = supplierMap[String(sr.supplier_id)]
+                                        const isLowest = sortedSR[0]?.supplier_id === sr.supplier_id
+                                        return (
+                                            <Select.Option key={sr.supplier_id} value={String(sr.supplier_id)}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span>{s?.supplier_name || sr.supplier_id}</span>
+                                                    <Space size={4}>
+                                                        <Tag color="gold" style={{ margin: 0 }}>¥{sr.settlement_price}</Tag>
+                                                        {isLowest && <Tag color="success" style={{ margin: 0 }}>最低价</Tag>}
+                                                    </Space>
+                                                </div>
+                                            </Select.Option>
+                                        )
+                                    })}
+                                </Select>
+                                {record.supplier_ids && record.supplier_ids.length > 0 && (
+                                    <div style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
+                                        已选 {record.supplier_ids.length} 个供应商
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </Space>
                 )
             }
         },
@@ -635,6 +803,59 @@ export default function ProductEditorPage() {
         }
     ]
 
+    // Load template from existing product
+    const handleLoadTemplate = async () => {
+        if (!selectedTemplateId) {
+            message.warning('请先选择一个产品作为模板')
+            return
+        }
+
+        try {
+            setLoading(true)
+            // Fetch product details
+            const p = await apiRequest<Product>(`/api/products/${selectedTemplateId}`)
+
+            // Fill form
+            form.setFieldsValue({
+                product_name: `${p.product_name} (副本)`,
+                product_code: p.product_code, // Copy product code
+                description: p.description,
+                status: 'draft', // Always draft for new products
+                category_id: p.category_id,
+                suggested_price: p.suggested_price,
+                allowed_channels: p.allowed_channels,
+            })
+            setSuggestedPrice(p.suggested_price ? Number(p.suggested_price) : 0)
+
+            // Fetch product resources
+            const prRes = await apiRequest<{ items: any[] }>(`/api/product-resources?product_id=${selectedTemplateId}`)
+            const links = prRes.items
+
+            // Load resources
+            const newItems = links.map((l, idx) => ({
+                key: `${l.resource_id}_${idx}_${Date.now()}`,
+                resource_id: String(l.resource_id),
+                supplier_mode: l.supplier_mode || 'auto',
+                supplier_ids: l.supplier_ids && l.supplier_ids.length > 0 ? l.supplier_ids.map(String) : (l.supplier_id ? [String(l.supplier_id)] : []),
+                quantity: l.quantity,
+                required_flag: l.required_flag,
+                remark: l.remark,
+            }))
+            setItems(newItems)
+
+            // Fetch resource data
+            const rIds = Array.from(new Set(links.map((l: any) => String(l.resource_id))))
+            await fetchResourcesData(rIds)
+
+            setTemplateModalVisible(false)
+            message.success(`已从 "${p.product_name}" 复制配置`)
+        } catch (err: any) {
+            message.error(err.message || '加载模板失败')
+        } finally {
+            setLoading(false)
+        }
+    }
+
     if (initLoading) {
         return <div style={{ padding: 50, textAlign: 'center' }}><Spin size="large" tip="加载产品数据..." /></div>
     }
@@ -646,6 +867,64 @@ export default function ProductEditorPage() {
                 <p className="page-subtitle">组合资源构建产品，自动计算成本</p>
             </div>
 
+            {/* Header Alert - Visual distinction */}
+            {productId ? (
+                <Alert
+                    message={`正在编辑产品：${productMetadata?.product_name || '加载中...'}`}
+                    description={productMetadata && (
+                        <Space size={16}>
+                            <span>产品ID: {productMetadata.id}</span>
+                            {productMetadata.updated_at && (
+                                <span>最后修改: {new Date(productMetadata.updated_at).toLocaleString('zh-CN')}</span>
+                            )}
+                        </Space>
+                    )}
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                />
+            ) : (
+                <Alert
+                    message="正在创建新产品"
+                    description="您可以从现有产品复制配置，或从头开始创建"
+                    type="info"
+                    showIcon
+                    action={
+                        <Button size="small" type="link" onClick={() => setTemplateModalVisible(true)}>
+                            从现有产品复制
+                        </Button>
+                    }
+                    style={{ marginBottom: 16 }}
+                />
+            )}
+
+            {/* Product Info Card - Edit mode only */}
+            {productId && productMetadata && (
+                <Card
+                    size="small"
+                    title="产品信息"
+                    style={{ marginBottom: 16 }}
+                >
+                    <Row gutter={16}>
+                        <Col span={6}>
+                            <Statistic title="产品ID" value={productMetadata.id} />
+                        </Col>
+                        <Col span={9}>
+                            <Statistic
+                                title="创建时间"
+                                value={productMetadata.created_at ? new Date(productMetadata.created_at).toLocaleString('zh-CN') : '-'}
+                            />
+                        </Col>
+                        <Col span={9}>
+                            <Statistic
+                                title="最后修改时间"
+                                value={productMetadata.updated_at ? new Date(productMetadata.updated_at).toLocaleString('zh-CN') : '-'}
+                            />
+                        </Col>
+                    </Row>
+                </Card>
+            )}
+
             <Row gutter={24}>
                 <Col span={16}>
                     <div className="glass-card" style={{ padding: '24px', marginBottom: 24 }}>
@@ -656,12 +935,20 @@ export default function ProductEditorPage() {
                         }}>
                             <Row gutter={16}>
                                 <Col span={12}>
-                                    <Form.Item label="产品名称" name="product_name" rules={[{ required: true }]}>
+                                    <Form.Item label={renderLabel("产品名称", "product_name")} name="product_name" rules={[{ required: true }]}>
                                         <Input placeholder="输入产品名称" />
                                     </Form.Item>
                                 </Col>
                                 <Col span={12}>
-                                    <Form.Item label="产品分类" name="category_id">
+                                    <Form.Item label={renderLabel("产品编码", "product_code")} name="product_code">
+                                        <Input placeholder="输入产品编码(可选)" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+
+                            <Row gutter={16}>
+                                <Col span={24}>
+                                    <Form.Item label={renderLabel("产品分类", "category_id")} name="category_id">
                                         <Select
                                             placeholder="选择分类"
                                             allowClear
@@ -671,18 +958,18 @@ export default function ProductEditorPage() {
                                 </Col>
                             </Row>
 
-                            <Form.Item label="产品描述" name="description">
+                            <Form.Item label={renderLabel("产品描述", "description")} name="description">
                                 <Input.TextArea rows={2} placeholder="输入描述" />
                             </Form.Item>
 
                             <Row gutter={16}>
                                 <Col span={8}>
-                                    <Form.Item label="建议零售价" name="suggested_price">
+                                    <Form.Item label={renderLabel("建议零售价", "suggested_price")} name="suggested_price">
                                         <InputNumber style={{ width: '100%' }} prefix="¥" min={0} />
                                     </Form.Item>
                                 </Col>
                                 <Col span={8}>
-                                    <Form.Item label="状态" name="status" initialValue="draft">
+                                    <Form.Item label={renderLabel("状态", "status")} name="status" initialValue="draft">
                                         <Select options={[
                                             { value: 'draft', label: '草稿' },
                                             { value: 'active', label: '上架' },
@@ -863,6 +1150,33 @@ export default function ProductEditorPage() {
                 onSelect={handleAddResources}
                 existingIds={items.map(i => i.resource_id)}
             />
+
+            {/* Template Selector Modal */}
+            <Modal
+                title="从现有产品复制配置"
+                open={templateModalVisible}
+                onCancel={() => setTemplateModalVisible(false)}
+                onOk={handleLoadTemplate}
+                confirmLoading={loading}
+                okText="加载配置"
+                width={600}
+            >
+                <p>选择一个现有产品作为模板，系统将复制其资源配置、供应商选择等信息：</p>
+                <Select
+                    style={{ width: '100%' }}
+                    placeholder="请选择产品"
+                    value={selectedTemplateId}
+                    onChange={setSelectedTemplateId}
+                    showSearch
+                    filterOption={(input, option) =>
+                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={(data?.products || []).map(p => ({
+                        value: p.id,
+                        label: `${p.product_name} (ID: ${p.id})`
+                    }))}
+                />
+            </Modal>
         </div>
     )
 }

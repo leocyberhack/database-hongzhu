@@ -15,8 +15,6 @@ from app.models import (
     Poi,
     Resource,
     Supplier,
-    SupplierResourcePriceHistory,
-    SupplierResourceAgreement,
     ProductCategory,
     Product,
     ProductResource,
@@ -38,8 +36,8 @@ TARGET_MODELS = (
     # Poi,              # Handled manually
     # Resource,         # Handled manually
     # Supplier,         # Handled manually
-    SupplierResourcePriceHistory,
-    SupplierResourceAgreement,
+    # SupplierResourcePriceHistory,  # Handled by business audit logs
+    # SupplierResourceAgreement,     # Handled manually for business-friendly logs
     # ProductCategory,  # Handled manually or low priority
     # Product,          # Handled manually
     ProductResource,

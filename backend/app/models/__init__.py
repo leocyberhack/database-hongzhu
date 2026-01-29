@@ -190,6 +190,7 @@ class Product(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     product_name: Mapped[str] = mapped_column(String, nullable=False)
+    product_code: Mapped[str | None] = mapped_column(String, nullable=True)  # 产品编码
     category: Mapped[str | None] = mapped_column(String, nullable=True)  # Legacy or simple string if not using FK
     # Using FK for category management as requested
     category_id: Mapped[int | None] = mapped_column(ForeignKey("product_category.id", ondelete="SET NULL"), nullable=True)
@@ -211,19 +212,32 @@ class Product(Base):
 
 
 class ProductResource(Base):
+    """
+    产品资源组合表
+    
+    supplier_mode: 供应商选择模式
+        - 'auto': 自动模式，所有可用供应商都可提供，下单时选择最低价
+        - 'locked': 锁定模式，只有指定的供应商可以提供
+    
+    supplier_ids: 锁定模式下的供应商ID列表 (JSONB存储)
+        - 自动模式下为 None 或空列表
+        - 锁定模式下至少包含一个供应商ID
+    """
     __tablename__ = "product_resource"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("product.id", ondelete="CASCADE"), nullable=False)
     resource_id: Mapped[int] = mapped_column(ForeignKey("resource.id", ondelete="RESTRICT"), nullable=False)
-    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("supplier.id", ondelete="RESTRICT"), nullable=True)
+    # 新增: 供应商选择模式 ('auto' 或 'locked')
+    supplier_mode: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'auto'"))
+    # 新增: 锁定模式下的供应商ID列表
+    supplier_ids: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     required_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     remark: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     product = relationship("Product")
     resource = relationship("Resource")
-    supplier = relationship("Supplier")
 
 
 class ProductStructureSnapshot(Base):
@@ -375,6 +389,28 @@ class Order(Base):
     remark: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (UniqueConstraint("order_no", "channel_id", name="uq_order_no_channel"),)
+
+
+class OrderResource(Base):
+    """
+    订单资源明细表
+    
+    记录订单中每个资源实际使用的供应商和结算价
+    用于多供应商模式下的精确成本追溯和库存扣减
+    """
+    __tablename__ = "order_resource"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("order.id", ondelete="CASCADE"), nullable=False)
+    resource_id: Mapped[int] = mapped_column(ForeignKey("resource.id", ondelete="RESTRICT"), nullable=False)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("supplier.id", ondelete="RESTRICT"), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    settlement_price: Mapped[Numeric] = mapped_column(Numeric(12, 2), nullable=False)  # 实际结算价
+    cost_amount: Mapped[Numeric] = mapped_column(Numeric(12, 2), nullable=False)  # 成本小计 = settlement_price * quantity
+    
+    order = relationship("Order", backref="resources")
+    resource = relationship("Resource")
+    supplier = relationship("Supplier")
 
 
 class OrderStatusHistory(Base):

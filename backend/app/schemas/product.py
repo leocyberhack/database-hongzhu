@@ -1,5 +1,5 @@
-from datetime import datetime, date
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Literal
 
 from pydantic import BaseModel, field_validator
 
@@ -8,18 +8,33 @@ from app.schemas.common import ORMBase
 
 
 class ProductResourceLine(BaseModel):
+    """产品资源行项目 - 用于创建/更新产品"""
     resource_id: int
-    supplier_id: Optional[int] = None
+    supplier_mode: Literal['auto', 'locked'] = 'auto'  # 'auto' 自动选择, 'locked' 锁定指定供应商
+    supplier_ids: Optional[list[int]] = None  # 锁定模式下的供应商ID列表
     quantity: int
     required_flag: bool = True
     remark: Optional[str] = None
+    
+    @field_validator('supplier_ids', mode='before')
+    @classmethod
+    def validate_supplier_ids(cls, v, info):
+        # 如果是锁定模式，supplier_ids 必须非空
+        # 注意：这里的验证是宽松的，严格验证在 API 层做
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return [int(x) for x in v if x is not None]
+        return v
 
 
 class ProductResourceRead(ORMBase):
+    """产品资源行项目 - 用于读取"""
     id: int
     product_id: int
     resource_id: int
-    supplier_id: Optional[int] = None
+    supplier_mode: str = 'auto'
+    supplier_ids: Optional[list[int]] = None
     quantity: int
     required_flag: bool
     remark: Optional[str] = None
@@ -33,6 +48,7 @@ class ChannelAllocation(BaseModel):
 
 class ProductBase(BaseModel):
     product_name: str
+    product_code: Optional[str] = None  # 产品编码
     description: Optional[str] = None
     status: Optional[str] = None
     structure_hash: str

@@ -281,7 +281,8 @@ async def create_product(
             ProductResource(
                 product_id=product.id,
                 resource_id=line.resource_id,
-                supplier_id=line.supplier_id,
+                supplier_mode=line.supplier_mode,
+                supplier_ids=line.supplier_ids if line.supplier_mode == 'locked' else None,
                 quantity=line.quantity,
                 required_flag=line.required_flag,
                 remark=line.remark,
@@ -335,7 +336,7 @@ async def update_product(
     # Capture before data for audit log
     existing_resources = await db.scalars(select(ProductResource).where(ProductResource.product_id == product_id))
     existing_resource_list = [
-        {"resource_id": r.resource_id, "supplier_id": r.supplier_id, "quantity": r.quantity} 
+        {"resource_id": r.resource_id, "supplier_mode": r.supplier_mode, "supplier_ids": r.supplier_ids, "quantity": r.quantity} 
         for r in existing_resources
     ]
     
@@ -393,7 +394,8 @@ async def update_product(
             ProductResource(
                 product_id=product.id,
                 resource_id=line.resource_id,
-                supplier_id=line.supplier_id,
+                supplier_mode=line.supplier_mode,
+                supplier_ids=line.supplier_ids if line.supplier_mode == 'locked' else None,
                 quantity=line.quantity,
                 required_flag=line.required_flag,
                 remark=line.remark,
@@ -403,7 +405,7 @@ async def update_product(
     
     # Record audit log
     after_resource_list = [
-        {"resource_id": line.resource_id, "supplier_id": line.supplier_id, "quantity": line.quantity} 
+        {"resource_id": line.resource_id, "supplier_mode": line.supplier_mode, "supplier_ids": line.supplier_ids, "quantity": line.quantity} 
         for line in payload.resources
     ]
     after_data = {
@@ -563,7 +565,7 @@ async def snapshot_product(
     snapshot_data = [
         {
             "resource_id": r.resource_id,
-            "supplier_id": r.supplier_id,
+            "supplier_mode": r.supplier_mode, "supplier_ids": r.supplier_ids,
             "quantity": r.quantity,
             "required_flag": r.required_flag,
             "remark": r.remark,
@@ -669,11 +671,11 @@ async def get_product_inventory(
         min_qty = None
         for pr in required_resources:
             # Determine which inventory pool to use
-            if pr.supplier_id is not None:
-                # Specific supplier bound
-                resource_available = detailed_lookup.get((pr.resource_id, pr.supplier_id, date_str), 0)
+            if pr.supplier_mode == 'locked' and pr.supplier_ids:
+                # 锁定模式：只使用指定供应商的库存之和
+                resource_available = sum(detailed_lookup.get((pr.resource_id, sid, date_str), 0) for sid in pr.supplier_ids)
             else:
-                # No binding, use accumulated total
+                # 自动模式：使用所有供应商的库存之和
                 resource_available = total_lookup.get((pr.resource_id, date_str), 0)
                 
             if pr.quantity > 0:
@@ -799,8 +801,9 @@ async def preview_product_inventory(
 
         for pr in payload.resources:
             # Determine which inventory pool to use
-            if pr.supplier_id is not None:
-                resource_available = detailed_lookup.get((pr.resource_id, pr.supplier_id, date_str), 0)
+            if pr.supplier_mode == 'locked' and pr.supplier_ids:
+                # 锁定模式：只使用指定供应商的库存之和
+                resource_available = sum(detailed_lookup.get((pr.resource_id, sid, date_str), 0) for sid in pr.supplier_ids)
             else:
                 resource_available = total_lookup.get((pr.resource_id, date_str), 0)
                 

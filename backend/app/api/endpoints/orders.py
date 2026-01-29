@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Inventory, InventoryLog, Order, OrderStatusHistory, Price, Sku, Product
+from app.models import AuditLog, Inventory, InventoryLog, Order, OrderResource, OrderStatusHistory, Price, Sku, Product
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.order import OrderCreate, OrderDecision, OrderRead
 
@@ -113,6 +113,7 @@ async def list_orders(
 
 @router.post("/orders", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
 async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends(require_roles(["admin", "operator", "csr"]))):
+    # 1. Check duplicate
     dup = await db.scalar(
         select(Order).where(Order.order_no == payload.order_no, Order.channel_id == payload.channel_id)
     )
@@ -129,8 +130,7 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
     if sku.product_id != payload.product_id:
         raise HTTPException(status_code=400, detail="SKU does not belong to product")
     
-    # Calculate Dynamic Cost based on Resource Settlement Price
-    # This replaces the static cost from Price table
+    # 2. Process Product Resources & Choose Suppliers
     from app.models import ProductResource, ResourceInventory, SupplierResource
     
     # Get product resources
@@ -138,58 +138,126 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
     pres = list(pres)
     
     calculated_cost = Decimal("0.00")
-    if pres:
-        r_ids = [p.resource_id for p in pres]
-        # Query inventory prices for these resources on the travel date
-        # If product_resource specifies supplier, filter by it.
-        # Otherwise, we might need a strategy. For MVP, we fetch all valid prices and pick relevant one.
-        
-        # We need to handle each resource line item
-        for line in pres:
-            qty_needed = line.quantity
-            if qty_needed <= 0:
-                continue
-                
-            # Query inventory and fallback price together
-            q = select(ResourceInventory, SupplierResource.settlement_price).join(SupplierResource).where(
+    order_resources_data = [] # List of dicts to create OrderResource
+    
+    # Manual selection map: resource_id -> supplier_id
+    selections = payload.resource_selections or {}
+
+    for line in pres:
+        qty_needed = line.quantity * payload.quantity
+        if qty_needed <= 0:
+            continue
+            
+        # Determine candidate suppliers
+        candidates = []
+        if line.supplier_mode == 'locked':
+            if not line.supplier_ids:
+                raise HTTPException(status_code=400, detail=f"Booked resource {line.resource_id} is locked but has no suppliers")
+            # Fetch SupplierResources for these IDs
+            stmt = select(SupplierResource).where(
                 SupplierResource.resource_id == line.resource_id,
-                ResourceInventory.inventory_date == payload.travel_date
+                SupplierResource.supplier_id.in_(line.supplier_ids)
             )
-            if line.supplier_id:
-                q = q.where(SupplierResource.supplier_id == line.supplier_id)
+            # candidates = list(await db.scalars(stmt))
+            candidates = (await db.scalars(stmt)).all()
+        else: # 'auto'
+            # Fetch ALL SupplierResources for this resource
+            stmt = select(SupplierResource).where(SupplierResource.resource_id == line.resource_id)
+            # candidates = list(await db.scalars(stmt))
+            candidates = (await db.scalars(stmt)).all()
             
-            results = (await db.execute(q)).all()
+        if not candidates:
+            raise HTTPException(status_code=400, detail=f"No suppliers found for resource {line.resource_id}")
+
+        # Fetch effective prices for candidates on travel_date
+        # We also need to check stock availability here or later. For now, we prefer those with stock.
+        candidate_prices = [] # (supplier_id, price, has_stock, supplier_resource_id)
+        
+        for cand in candidates:
+            # Check ResourceInventory
+            inv = await db.scalar(
+                select(ResourceInventory).where(
+                    ResourceInventory.supplier_resource_id == cand.id,
+                    ResourceInventory.inventory_date == payload.travel_date
+                )
+            )
             
-            if not results:
-                # No inventory record found. Fallback to SupplierResource default price
-                sr_q = select(SupplierResource).where(SupplierResource.resource_id == line.resource_id)
-                if line.supplier_id:
-                    sr_q = sr_q.where(SupplierResource.supplier_id == line.supplier_id)
-                srs = (await db.scalars(sr_q)).all()
-                unit_cost = max([sr.settlement_price or 0 for sr in srs]) if srs else 0
-            else:
-                # Use the price from inventory record. If null, fallback to SR price
-                valid_prices = []
-                for inv, default_price in results:
-                    price = inv.settlement_price if inv.settlement_price is not None else default_price
-                    if price is not None:
-                        valid_prices.append(price)
-                
-                if valid_prices:
-                    unit_cost = max(valid_prices)
-                else:
-                    unit_cost = 0
+            # Determine price
+            price = cand.settlement_price
+            if inv and inv.settlement_price is not None:
+                price = inv.settlement_price
             
-            calculated_cost += Decimal(str(unit_cost)) * qty_needed
+            # Determine stock
+            # available = total - frozen - sold
+            has_stock = False
+            if inv:
+                avail = inv.total_qty - inv.frozen_qty - inv.sold_qty
+                if avail >= qty_needed:
+                    has_stock = True
+            
+            candidate_prices.append({
+                "supplier_id": cand.supplier_id,
+                "price": price or Decimal(0),
+                "has_stock": has_stock,
+                "supplier_resource_id": cand.id,
+                "cand_obj": cand
+            })
+
+        # Filter: If manual selection exists, force it
+        selected_cand = None
+        if line.resource_id in selections:
+            target_sid = selections[line.resource_id]
+            # Find in candidates
+            found = [c for c in candidate_prices if c["supplier_id"] == target_sid]
+            if not found:
+                 raise HTTPException(status_code=400, detail=f"Selected supplier {target_sid} is not valid for resource {line.resource_id}")
+            selected_cand = found[0]
+            if not selected_cand["has_stock"]:
+                 # We might raise error or allow overbooking? Let's be strict.
+                 pass # Will fail at freeze step if we don't catch here.
+        else:
+            # Auto selection:
+            # 1. Prefer has_stock
+            # 2. Lowest price
+            valid_cands = [c for c in candidate_prices if c["has_stock"]]
+            if not valid_cands:
+                # Fallback to any candidate to report "Out of Stock" properly later? 
+                # Or pick lowest price one and let it fail at freeze.
+                # Let's pick lowest price among ALL to attempt.
+                valid_cands = candidate_prices
+            
+            if not valid_cands:
+                 raise HTTPException(status_code=400, detail=f"No valid suppliers for resource {line.resource_id}")
+                 
+            # Sort by price
+            valid_cands.sort(key=lambda x: x["price"])
+            selected_cand = valid_cands[0]
+            
+        # Add to order resources
+        unit_cost = selected_cand["price"]
+        line_cost = unit_cost * Decimal(line.quantity) # Cost per product unit
+        calculated_cost += line_cost
+        
+        order_resources_data.append({
+            "resource_id": line.resource_id,
+            "supplier_id": selected_cand["supplier_id"],
+            "supplier_resource_id": selected_cand["supplier_resource_id"],
+            "quantity": line.quantity * payload.quantity, # Total qty for whole order
+            "settlement_price": unit_cost,
+            "cost_amount": unit_cost * Decimal(line.quantity * payload.quantity)
+        })
+
+    calculated_cost = calculated_cost * Decimal(payload.quantity) # Total Cost
 
     active_price = await _active_price(db, payload.sku_id, payload.channel_id, payload.travel_date)
     sale_price = Decimal(str(payload.sale_price or (active_price.sale_price if active_price else 0)))
     
     # Use calculated dynamic cost if payload doesn't provide it
-    cost_price = Decimal(str(payload.cost_price)) if payload.cost_price is not None else calculated_cost
+    cost_price = Decimal(str(payload.cost_price)) if payload.cost_price is not None else (calculated_cost / Decimal(payload.quantity) if payload.quantity > 0 else 0)
     
     sale_amount, cost_amount, profit_amount = _calc_amounts(sale_price, cost_price, payload.quantity)
 
+    # 3. Create Order
     order = Order(
         order_no=payload.order_no,
         channel_id=payload.channel_id,
@@ -210,8 +278,50 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
     db.add(order)
     await db.flush()
 
-    # freeze inventory
-    await _freeze_inventory(db, payload.sku_id, payload.travel_date, payload.quantity, user.username, order.id)
+    # 4. Create Order Resources and Freeze Resource Inventory
+    for item in order_resources_data:
+        # Create DB record
+        or_rec = OrderResource(
+            order_id=order.id,
+            resource_id=item["resource_id"],
+            supplier_id=item["supplier_id"],
+            quantity=item["quantity"],
+            settlement_price=item["settlement_price"],
+            cost_amount=item["cost_amount"]
+        )
+        db.add(or_rec)
+        
+        # Freeze Resource Inventory
+        # Look up inventory again to lock
+        inv = await db.scalar(
+            select(ResourceInventory).where(
+                ResourceInventory.supplier_resource_id == item["supplier_resource_id"],
+                ResourceInventory.inventory_date == payload.travel_date
+            ).with_for_update()
+        )
+        
+        if not inv:
+             raise HTTPException(status_code=400, detail=f"Inventory record missing for resource {item['resource_id']} supplier {item['supplier_id']}")
+        
+        avail = inv.total_qty - inv.frozen_qty - inv.sold_qty
+        if avail < item["quantity"]:
+             raise HTTPException(status_code=400, detail=f"Inventory insufficient for resource {item['resource_id']} supplier {item['supplier_id']}")
+             
+        inv.frozen_qty += item["quantity"]
+        inv.updated_at = now_china()
+        db.add(inv)
+
+    # 5. Freeze SKU Inventory (if used)
+    # We still do this for backward compatibility or if they use SKU-level limits
+    try:
+        await _freeze_inventory(db, payload.sku_id, payload.travel_date, payload.quantity, user.username, order.id)
+    except HTTPException as e:
+        # It's possible SKU inventory isn't initialized if we only use ResourceInventory
+        # But for now, let's assume if it fails, we shouldn't block if we successfully froze resources?
+        # NO, if the system was using SKU inventory, we must respect it.
+        # But if the user didn't initialize SKU inventory, this might fail.
+        # Let's keep it strict for now as per previous logic.
+        raise e
 
     hist = OrderStatusHistory(
         order_id=order.id,

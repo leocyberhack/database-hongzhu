@@ -245,7 +245,13 @@ async def bind_supplier_resource(
         table_name="supplier_resource",
         record_id=obj.id,
         operation="CREATE",
-        diff_data={"supplier_id": obj.supplier_id, "resource_id": obj.resource_id, "settlement_price": str(obj.settlement_price) if obj.settlement_price else None},
+        diff_data={
+            "supplier_id": obj.supplier_id,
+            "supplier_name": supplier.supplier_name,
+            "resource_id": obj.resource_id,
+            "resource_name": resource.resource_name,
+            "settlement_price": str(obj.settlement_price) if obj.settlement_price else None,
+        },
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -267,13 +273,18 @@ async def delete_supplier_resource(
     if not sr:
         raise HTTPException(status_code=404, detail="Supplier resource not found")
 
+    supplier = await db.get(Supplier, sr.supplier_id)
+    resource = await db.get(Resource, sr.resource_id)
+
     audit = AuditLog(
         table_name="supplier_resource",
         record_id=sr.id,
         operation="DELETE",
         diff_data={
             "supplier_id": sr.supplier_id,
+            "supplier_name": supplier.supplier_name if supplier else None,
             "resource_id": sr.resource_id,
+            "resource_name": resource.resource_name if resource else None,
             "supply_status": sr.supply_status,
             "settlement_price": str(sr.settlement_price) if sr.settlement_price is not None else None,
         },
@@ -302,6 +313,9 @@ async def adjust_supplier_price(
     sr = await db.get(SupplierResource, supplier_resource_id)
     if not sr:
         raise HTTPException(status_code=404, detail="Supplier resource not found")
+
+    supplier = await db.get(Supplier, sr.supplier_id)
+    resource = await db.get(Resource, sr.resource_id)
 
     before_price = sr.settlement_price
     sr.settlement_price = Decimal(str(payload.settlement_price))
@@ -336,7 +350,16 @@ async def adjust_supplier_price(
         table_name="supplier_resource",
         record_id=sr.id,
         operation="UPDATE",
-        diff_data={"type": "settlement_price_change", "supplier_id": sr.supplier_id, "resource_id": sr.resource_id, "before_price": str(before_price) if before_price else None, "after_price": str(sr.settlement_price)},
+        diff_data={
+            "type": "settlement_price_change",
+            "supplier_id": sr.supplier_id,
+            "supplier_name": supplier.supplier_name if supplier else None,
+            "resource_id": sr.resource_id,
+            "resource_name": resource.resource_name if resource else None,
+            "before_price": str(before_price) if before_price else None,
+            "after_price": str(sr.settlement_price),
+            "reason": payload.reason,
+        },
         operator=user.username,
         operated_at=now_china(),
         source="web",
@@ -559,6 +582,10 @@ async def batch_update_supplier_resource_inventory(
     """Batch set inventory for a supplier resource over a date range."""
     from datetime import timedelta
     
+    supplier_resource = await db.get(SupplierResource, payload.supplier_resource_id)
+    supplier = await db.get(Supplier, supplier_resource.supplier_id) if supplier_resource else None
+    resource = await db.get(Resource, supplier_resource.resource_id) if supplier_resource else None
+
     current_date = payload.start_date
     end_date = payload.end_date
     
@@ -642,6 +669,10 @@ async def batch_update_supplier_resource_inventory(
         operation="BATCH_UPDATE",
         diff_data={
             "supplier_resource_id": payload.supplier_resource_id,
+            "supplier_id": supplier_resource.supplier_id if supplier_resource else None,
+            "supplier_name": supplier.supplier_name if supplier else None,
+            "resource_id": supplier_resource.resource_id if supplier_resource else None,
+            "resource_name": resource.resource_name if resource else None,
             "date_range": f"{payload.start_date} ~ {payload.end_date}",
             "set_total_qty": payload.total_qty,
             "set_price": str(payload.settlement_price) if payload.settlement_price else None,

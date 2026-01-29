@@ -173,6 +173,15 @@ export default function ResourceManager({
         supplierName: string
         supplierFolderId: number | null
     }>({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
+    // Pending Agreements for Edit Mode
+    const [pendingEditAgreements, setPendingEditAgreements] = useState<Record<number, any[]>>({})
+    const [presetEditAgreementModal, setPresetEditAgreementModal] = useState<{
+        visible: boolean
+        fieldIndex: number
+        supplierId: number
+        supplierName: string
+        supplierFolderId: number | null
+    }>({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
 
     // 过滤逻辑
     const filteredResources = useMemo(() => {
@@ -322,6 +331,7 @@ export default function ResourceManager({
             // 获取现有绑定
             const existingBindings = getResourceSuppliers(selectedResource.id)
             const newBindings = values.supplier_bindings || []
+            const agreementErrors: string[] = []
 
             // 找出需要删除的绑定（在现有列表中但不在新列表中）
             for (const existing of existingBindings) {
@@ -336,7 +346,8 @@ export default function ResourceManager({
             }
 
             // 处理新增或更新的绑定
-            for (const binding of newBindings) {
+            for (let i = 0; i < newBindings.length; i += 1) {
+                const binding = newBindings[i]
                 const existingBinding = existingBindings.find((eb: any) =>
                     Number(eb.supplier_id) === Number(binding.supplier_id)
                 )
@@ -354,7 +365,7 @@ export default function ResourceManager({
                     }
                 } else {
                     // 创建新绑定
-                    await apiRequest('/api/supplier-resources', {
+                    const createdBinding = await apiRequest<{ id: number }>('/api/supplier-resources', {
                         method: 'POST',
                         body: JSON.stringify({
                             supplier_id: binding.supplier_id,
@@ -363,13 +374,33 @@ export default function ResourceManager({
                             supply_status: 'active',
                         })
                     })
+
+                    const presetList = pendingEditAgreements[i] || []
+                    for (const preset of presetList) {
+                        try {
+                            await apiRequest('/api/supplier-resource-agreements', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    supplier_resource_id: createdBinding.id,
+                                    ...preset,
+                                }),
+                            })
+                        } catch (err: any) {
+                            agreementErrors.push(err?.message || '协议创建失败')
+                        }
+                    }
                 }
             }
 
             message.success('资源已更新')
+            if (agreementErrors.length > 0) {
+                message.warning(`资源已更新，但有 ${agreementErrors.length} 份协议创建失败`)
+            }
             setEditModalVisible(false)
             setSelectedResource(null)
             setResourceType(null) // 重置资源类型
+            setPendingEditAgreements({})
+            setPresetEditAgreementModal({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
             await refresh()
         } catch (err: any) {
             message.error(err.message || '更新失败')
@@ -609,23 +640,25 @@ export default function ResourceManager({
                             type="link"
                             size="small"
                             icon={<EditOutlined />}
-                            onClick={() => {
-                                setSelectedResource(record)
-                                // 设置资源类型以显示对应字段
-                                setResourceType(record.resource_type)
-                                // 获取现有供应商绑定信息
-                                const existingBindings = getResourceSuppliers(record.id).map(sr => ({
-                                    supplier_id: sr.supplier_id,
-                                    settlement_price: sr.settlement_price,
-                                    binding_id: sr.id
-                                }))
-                                editForm.setFieldsValue({
-                                    ...record,
-                                    supplier_bindings: existingBindings.length > 0 ? existingBindings : []
-                                })
-                                setEditModalVisible(true)
-                            }}
-                        >
+                              onClick={() => {
+                                  setSelectedResource(record)
+                                  // 设置资源类型以显示对应字段
+                                  setResourceType(record.resource_type)
+                                  // 获取现有供应商绑定信息
+                                  const existingBindings = getResourceSuppliers(record.id).map(sr => ({
+                                      supplier_id: sr.supplier_id,
+                                      settlement_price: sr.settlement_price,
+                                      binding_id: sr.id
+                                  }))
+                                  editForm.setFieldsValue({
+                                      ...record,
+                                      supplier_bindings: existingBindings.length > 0 ? existingBindings : []
+                                  })
+                                  setPendingEditAgreements({})
+                                  setPresetEditAgreementModal({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
+                                  setEditModalVisible(true)
+                              }}
+                          >
                             编辑
                         </Button>
                         {isLocked ? (
@@ -1008,6 +1041,8 @@ export default function ResourceManager({
                     setSelectedResource(null)
                     editForm.resetFields()
                     setResourceType(null) // 重置资源类型
+                    setPendingEditAgreements({})
+                    setPresetEditAgreementModal({ visible: false, fieldIndex: -1, supplierId: 0, supplierName: '', supplierFolderId: null })
                 }}
                 footer={null}
                 width={720}
@@ -1114,6 +1149,7 @@ export default function ResourceManager({
                                             >
                                                 {({ getFieldValue }) => {
                                                     const supplierId = getFieldValue(['supplier_bindings', name, 'supplier_id'])
+                                                    const supplier = suppliers.find(s => String(s.id) === String(supplierId))
                                                     const bindingIdFromForm = getFieldValue(['supplier_bindings', name, 'binding_id'])
                                                     const resolvedBindingId = bindingIdFromForm || supplierResources.find(
                                                         sr => Number(sr.resource_id) === Number(selectedResource?.id) && Number(sr.supplier_id) === Number(supplierId)
@@ -1125,7 +1161,6 @@ export default function ResourceManager({
                                                                 type="link"
                                                                 size="small"
                                                                 onClick={() => {
-                                                                    const supplier = suppliers.find(s => s.id === supplierId)
                                                                     setAgreementModalState({
                                                                         visible: true,
                                                                         supplierResourceId: resolvedBindingId,
@@ -1138,7 +1173,29 @@ export default function ResourceManager({
                                                             </Button>
                                                         )
                                                     }
-                                                    return null
+                                                    const agreementCount = pendingEditAgreements[name]?.length || 0
+                                                    const disabled = !supplierId
+                                                    return (
+                                                        <Tooltip title={disabled ? '请先选择供应商' : '预设协议'}>
+                                                            <Button
+                                                                type="link"
+                                                                size="small"
+                                                                disabled={disabled}
+                                                                onClick={() => {
+                                                                    if (disabled) return
+                                                                    setPresetEditAgreementModal({
+                                                                        visible: true,
+                                                                        fieldIndex: name,
+                                                                        supplierId: supplierId,
+                                                                        supplierName: supplier?.supplier_name || '未知供应商',
+                                                                        supplierFolderId: supplier?.folder_id || null
+                                                                    })
+                                                                }}
+                                                            >
+                                                                预设协议{agreementCount > 0 ? ` (${agreementCount})` : ''}
+                                                            </Button>
+                                                        </Tooltip>
+                                                    )
                                                 }}
                                             </Form.Item>
 
@@ -1146,7 +1203,22 @@ export default function ResourceManager({
                                                 <Input />
                                             </Form.Item>
 
-                                            <Button type="link" danger onClick={() => remove(name)}>
+                                            <Button
+                                                type="link"
+                                                danger
+                                                onClick={() => {
+                                                    remove(name)
+                                                    setPendingEditAgreements(prev => {
+                                                        const next: Record<number, any[]> = {}
+                                                        Object.entries(prev).forEach(([k, v]) => {
+                                                            const idx = Number(k)
+                                                            if (idx < name) next[idx] = v
+                                                            if (idx > name) next[idx - 1] = v
+                                                        })
+                                                        return next
+                                                    })
+                                                }}
+                                            >
                                                 删除
                                             </Button>
                                         </Space>
@@ -1337,6 +1409,20 @@ export default function ResourceManager({
                 supplierName={presetAgreementModal.supplierName}
                 supplierFolderId={presetAgreementModal.supplierFolderId}
                 initialAgreements={pendingAgreements[presetAgreementModal.fieldIndex] || []}
+            />
+
+            <PresetAgreementEditor
+                visible={presetEditAgreementModal.visible}
+                onCancel={() => setPresetEditAgreementModal(prev => ({ ...prev, visible: false }))}
+                onSave={(agreements) => {
+                    setPendingEditAgreements(prev => ({
+                        ...prev,
+                        [presetEditAgreementModal.fieldIndex]: agreements
+                    }))
+                }}
+                supplierName={presetEditAgreementModal.supplierName}
+                supplierFolderId={presetEditAgreementModal.supplierFolderId}
+                initialAgreements={pendingEditAgreements[presetEditAgreementModal.fieldIndex] || []}
             />
         </div >
     )

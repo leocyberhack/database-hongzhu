@@ -1,4 +1,4 @@
-// Core entity types matching backend schema
+﻿// Core entity types matching backend schema
 
 export interface POI {
     id: string
@@ -91,6 +91,7 @@ export interface ChannelAllocation {
 export interface Product {
     id: string
     product_name: string
+    product_code?: string
     description?: string
     structure_hash: string
     status: 'draft' | 'active' | 'archived'
@@ -107,7 +108,9 @@ export interface ProductResource {
     id: string
     product_id: string
     resource_id: string
-    supplier_id?: string
+    supplier_id?: string // Deprecated
+    supplier_mode?: 'auto' | 'locked'
+    supplier_ids?: number[]
     quantity: number
     required_flag: boolean
     remark?: string

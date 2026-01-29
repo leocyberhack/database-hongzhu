@@ -16,6 +16,8 @@ class OrderCreate(BaseModel):
     sale_price: float
     cost_price: Optional[float] = None
     remark: Optional[str] = None
+    # Manual supplier selection: {resource_id: supplier_id}
+    resource_selections: Optional[dict[int, int]] = None
 
 
 class OrderRead(ORMBase):
