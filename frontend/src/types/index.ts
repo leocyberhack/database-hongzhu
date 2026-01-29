@@ -124,8 +124,19 @@ export interface ProductStructureSnapshot {
     created_at?: string
 }
 
+export interface Spu {
+    id: string
+    name: string
+    spu_code?: string
+    remark?: string
+    sku_count?: number
+    created_at?: string
+    updated_at?: string
+}
+
 export interface SKU {
     id: string
+    spu_id: string
     product_id: string
     sku_name: string
     status: 'draft' | 'active' | 'offline' | 'archived'
@@ -277,4 +288,5 @@ export interface MockData {
     order_status_history: OrderStatusHistory[]
     approvals: Approval[]
     audit_log: AuditLog[]
+    spus: Spu[]
 }

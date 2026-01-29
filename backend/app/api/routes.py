@@ -41,6 +41,10 @@ api_router.include_router(channels.router, prefix="/channels", tags=["channel"])
 api_router.include_router(skus.router, prefix="/skus", tags=["sku"])
 api_router.include_router(regions.router, tags=["region"])
 
+from app.api.endpoints import spus
+api_router.include_router(spus.router, prefix="/spus", tags=["spu"])
+
+
 from app.api.endpoints import files
 api_router.include_router(files.router, prefix="/files", tags=["files"])
 

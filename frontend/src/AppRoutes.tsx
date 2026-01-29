@@ -8,6 +8,7 @@ import SupplierListPage from '@/pages/suppliers/list'
 import ProductListPage from '@/pages/products/list'
 import ProductCategoryPage from '@/pages/products/categories'
 import ProductEditorPage from '@/pages/products/editor'
+import SPUListPage from '@/pages/spus/list'
 import SKUListPage from '@/pages/skus/list'
 import ChannelsPage from '@/pages/skus/channels'
 import PricingCenterPage from '@/pages/pricing/center'
@@ -65,6 +66,7 @@ export default function AppRoutes() {
                 <Route path="products/editor" element={<ProductEditorPage />} />
 
                 {/* SKUs & Channels M4 */}
+                <Route path="spus/list" element={<SPUListPage />} />
                 <Route path="skus/list" element={<SKUListPage />} />
                 <Route path="skus/channels" element={<ChannelsPage />} />
 

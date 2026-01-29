@@ -261,10 +261,30 @@ class Channel(Base):
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
 
+
+class Spu(Base):
+    """
+    SPU (Standard Product Unit) - 标准产品单位
+    SKU的父级概念，用于对SKU进行分组管理
+    """
+    __tablename__ = "spu"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    spu_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+
+    # Relationship
+    skus = relationship("Sku", back_populates="spu", cascade="all, delete-orphan")
+
+
 class Sku(Base):
     __tablename__ = "sku"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    spu_id: Mapped[int] = mapped_column(ForeignKey("spu.id", ondelete="CASCADE"), nullable=False)
     product_id: Mapped[int] = mapped_column(ForeignKey("product.id", ondelete="RESTRICT"), nullable=False)
     sku_name: Mapped[str] = mapped_column(String, nullable=False)
     sku_type: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -278,6 +298,7 @@ class Sku(Base):
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     poi_id: Mapped[int | None] = mapped_column(ForeignKey("poi.id", ondelete="SET NULL"), nullable=True)
 
+    spu = relationship("Spu", back_populates="skus")
     product = relationship("Product")
     poi = relationship("Poi")
 
@@ -481,6 +502,7 @@ __all__ = [
     "User",
     "Folder",
     "File",
+    "Spu",
 ]
 
 

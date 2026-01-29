@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Card, Row, Col, Popconfirm, Tooltip } from 'antd'
-import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, SettingOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
 import type { SKU } from '@/types'
@@ -25,6 +26,7 @@ export default function SKUListPage() {
     const productResources = data?.product_resources ?? []
     const resources = data?.resources ?? []
     const suppliers = data?.suppliers ?? []
+    const spus = data?.spus ?? []
     const [modalVisible, setModalVisible] = useState(false)
     const [editingSku, setEditingSku] = useState<SKU | null>(null)
     const [form] = Form.useForm()
@@ -38,12 +40,17 @@ export default function SKUListPage() {
     const [batchUpdateVisible, setBatchUpdateVisible] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
 
+    const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const spuIdParam = searchParams.get('spu_id')
+
     // Global Filter State
     const [filters, setFilters] = useState({
         keyword: '',
         product_id: null as string | null,
         status: null as string | null,
         poi_id: null as string | null,
+        spu_id: spuIdParam,
     })
 
     // Filter Logic
@@ -68,6 +75,10 @@ export default function SKUListPage() {
                     return false
                 }
             }
+            // SPU
+            if (filters.spu_id && String(item.spu_id) !== String(filters.spu_id)) {
+                return false
+            }
             return true
         })
     }, [skus, filters, products])
@@ -79,6 +90,7 @@ export default function SKUListPage() {
             // Map form values to API payload
             const payload = {
                 sku_name: values.name,
+                spu_id: Number(values.spu_id),
                 product_id: values.product_id,
                 status: values.status,
             }
@@ -297,6 +309,7 @@ export default function SKUListPage() {
 
             form.setFieldsValue({
                 name: record.sku_name,
+                spu_id: record.spu_id,
                 product_id: record.product_id,
                 status: record.status,
                 channel_id: channelId,
@@ -305,6 +318,10 @@ export default function SKUListPage() {
             setSelectedProductId(undefined)
             setSelectedChannelId(undefined)
             form.resetFields()
+            // Default SPU if filtered
+            if (filters.spu_id) {
+                form.setFieldValue('spu_id', Number(filters.spu_id))
+            }
         }
         setModalVisible(true)
     }
@@ -455,16 +472,35 @@ export default function SKUListPage() {
         return productResources.filter(pr => String(pr.product_id) === String(selectedProductId));
     }, [selectedProductId, productResources]);
 
+    const currentSpu = useMemo(() => {
+        if (!spuIdParam) return null
+        return spus.find(s => String(s.id) === String(spuIdParam))
+    }, [spuIdParam, spus])
+
     return (
         <div className="page-container">
             {/* ... header ... */}
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                    <h1 className="page-title">SKU 管理 (M4)</h1>
-                    <p className="page-subtitle">SKU 与渠道管理</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    {spuIdParam && (
+                        <Button
+                            icon={<ArrowLeftOutlined />}
+                            onClick={() => navigate('/spus/list')}
+                            type="text"
+                            style={{ fontSize: '18px' }}
+                        />
+                    )}
+                    <div>
+                        <h1 className="page-title">
+                            {currentSpu ? `${currentSpu.name}` : 'SKU 管理 (M4)'}
+                        </h1>
+                        <p className="page-subtitle">
+                            {currentSpu ? `所属 SPU: ${currentSpu.name} / ${currentSpu.spu_code || ''}` : 'SKU 与渠道管理'}
+                        </p>
+                    </div>
                 </div>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null, 'create')}>
-                    新建 SKU
+                    {currentSpu ? '在该 SPU 下新建 SKU' : '新建 SKU'}
                 </Button>
             </div>
 
@@ -573,6 +609,17 @@ export default function SKUListPage() {
             >
                 <Form form={form} layout="vertical" onFinish={handleSaveSKU} disabled={viewMode}>
                     <Row gutter={16}>
+                        <Col span={8}>
+                            <Form.Item name="spu_id" label="所属SPU" rules={[{ required: true, message: '请选择SPU' }]}>
+                                <Select
+                                    placeholder="选择SPU"
+                                    showSearch
+                                    optionFilterProp="label"
+                                    options={spus.map(s => ({ value: Number(s.id), label: s.name }))}
+                                    disabled={!!filters.spu_id} // Disable if pre-filtered
+                                />
+                            </Form.Item>
+                        </Col>
                         <Col span={8}>
                             <Form.Item name="product_id" label="关联产品" rules={[{ required: true, message: '请选择产品' }]}>
                                 <Select

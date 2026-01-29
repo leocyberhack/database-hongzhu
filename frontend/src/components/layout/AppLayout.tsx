@@ -54,12 +54,12 @@ export default function AppLayout() {
         ...(canSeeResources ? [{
             key: 'resource-center',
             icon: <DatabaseOutlined />,
-                label: '资源中心',
-                children: [
-                    { key: '/resources/poi', label: '资源管理' },
-                    { key: '/suppliers/list', label: '供应商管理' },
-                ]
-            }] : []),
+            label: '资源中心',
+            children: [
+                { key: '/resources/poi', label: '资源管理' },
+                { key: '/suppliers/list', label: '供应商管理' },
+            ]
+        }] : []),
         ...(canSeeProducts ? [{
             key: 'products',
             icon: <ShoppingOutlined />,
@@ -80,7 +80,7 @@ export default function AppLayout() {
                     label: 'SKU & 渠道',
                     type: 'group' as const,
                     children: [
-                        ...(showSkuList ? [{ key: '/skus/list', label: 'SKU 管理' }] : []),
+                        ...(showSkuList ? [{ key: '/spus/list', label: 'SPU & SKU 管理' }] : []),
                         ...(showChannelList ? [{ key: '/skus/channels', label: '渠道管理' }] : []),
                     ]
                 },

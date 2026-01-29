@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Product, Sku, Approval, SkuChannel
+from app.models import AuditLog, Product, Sku, Approval, SkuChannel, Spu
 from app.schemas.common import Pagination
 from app.schemas.sku import SkuCreate, SkuListResponse, SkuResponse, SkuUpdate
 
@@ -214,6 +214,11 @@ async def create_sku(
     product = await db.get(Product, payload.product_id)
     if not product:
         raise HTTPException(status_code=404, detail=f"Product with id {payload.product_id} not found")
+
+    # Verify SPU exists
+    spu = await db.get(Spu, payload.spu_id)
+    if not spu:
+        raise HTTPException(status_code=404, detail=f"SPU with id {payload.spu_id} not found")
         
     # Logic Lock 3: Inactive products cannot be associated with SKUs
     if product.status != "active":
@@ -255,6 +260,7 @@ async def list_skus(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=1000),
     product_id: Optional[int] = Query(default=None, description="Filter by product ID"),
+    spu_id: Optional[int] = Query(default=None, description="Filter by SPU ID"),
     keyword: Optional[str] = Query(default=None, description="Search by sku name"),
     status: Optional[str] = Query(default=None, description="Filter by status"),
     sort_field: Optional[str] = Query(default=None),
@@ -264,6 +270,8 @@ async def list_skus(
     
     if product_id is not None:
         stmt = stmt.where(Sku.product_id == product_id)
+    if spu_id is not None:
+        stmt = stmt.where(Sku.spu_id == spu_id)
     if keyword:
         stmt = stmt.where(Sku.sku_name.ilike(f"%{keyword}%"))
     if status:

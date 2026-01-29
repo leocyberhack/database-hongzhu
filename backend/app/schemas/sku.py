@@ -5,6 +5,7 @@ from app.schemas.common import Pagination
 
 class SkuBase(BaseModel):
     product_id: int
+    spu_id: int
     sku_name: str
     sku_type: Optional[str] = None
     sale_start: Optional[date] = None
@@ -19,6 +20,7 @@ class SkuCreate(SkuBase):
 
 class SkuUpdate(BaseModel):
     sku_name: Optional[str] = None
+    spu_id: Optional[int] = None
     sku_type: Optional[str] = None
     sale_start: Optional[date] = None
     sale_end: Optional[date] = None

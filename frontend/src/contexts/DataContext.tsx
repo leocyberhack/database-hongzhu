@@ -42,6 +42,7 @@ const emptyData: MockData = {
     order_status_history: [],
     approvals: [],
     audit_log: [],
+    spus: [],
 }
 
 const DEFAULT_PAGE_SIZE = 1000
@@ -104,6 +105,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 approvalRes,
                 auditRes,
                 prodCatRes,
+                spuRes,
             ] = await Promise.all([
                 fetchAll<MockData['poi'][number]>(`/api/poi`),
                 fetchAll<MockData['resources'][number]>(`/api/resources`),
@@ -125,6 +127,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 fetchAll<MockData['approvals'][number]>(`/api/approvals`),
                 fetchAll<MockData['audit_log'][number]>(`/api/audit-log`),
                 fetchAll<MockData['product_categories'][number]>(`/api/product-categories`),
+                fetchAll<MockData['spus'][number]>(`/api/spus`),
             ])
 
             const next: MockData = {
@@ -149,6 +152,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 order_status_history: orderHistRes ?? [],
                 approvals: approvalRes,
                 audit_log: auditRes,
+                spus: spuRes,
             }
             setData(next)
         } catch (err) {
