@@ -297,6 +297,7 @@ interface SelectedResourceItem {
 
 export default function ProductEditorPage() {
     // reuse data from context
+    const { data, loadData } = useData()
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
 
