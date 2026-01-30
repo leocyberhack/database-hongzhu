@@ -8,10 +8,27 @@ if (typeof window !== 'undefined' && window.location.protocol === 'https:' && AP
 }
 const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
+const LOGIN_TIME_KEY = 'auth_login_time'
+const AUTH_EXPIRY_HOURS = 24
 
 function getStoredAuth() {
     const token = localStorage.getItem(TOKEN_KEY) || undefined
     const user = localStorage.getItem(USER_KEY)
+    const loginTime = localStorage.getItem(LOGIN_TIME_KEY)
+
+    // 检查是否超过24小时
+    if (loginTime) {
+        const loginTimestamp = parseInt(loginTime, 10)
+        const now = Date.now()
+        const expiryMs = AUTH_EXPIRY_HOURS * 60 * 60 * 1000
+
+        if (now - loginTimestamp > expiryMs) {
+            // 已超过24小时，清除认证
+            clearAuth()
+            return { token: undefined, role: undefined }
+        }
+    }
+
     let role: string | undefined
     if (user) {
         try {
@@ -105,11 +122,13 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 export function storeAuth(token: string, user: { username: string; role: string }) {
     localStorage.setItem(TOKEN_KEY, token)
     localStorage.setItem(USER_KEY, JSON.stringify(user))
+    localStorage.setItem(LOGIN_TIME_KEY, Date.now().toString())
 }
 
 export function clearAuth() {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
+    localStorage.removeItem(LOGIN_TIME_KEY)
 }
 
 export function getAuthUser() {

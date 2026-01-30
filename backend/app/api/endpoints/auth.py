@@ -7,14 +7,37 @@ from app.core.security import create_access_token
 from app.models import User as UserModel
 from app.schemas.auth import LoginRequest, TokenResponse, UserCreate, UserRead, RoleUpdate, PasswordReset
 
+from app.core.login_tracker import login_tracker
+
 router = APIRouter()
 
 
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, db: DbSession):
+    # 检查账户是否被锁定
+    is_locked, locked_until = login_tracker.is_locked(payload.username)
+    if is_locked:
+        remaining_seconds = login_tracker.get_remaining_lockout_seconds(payload.username)
+        remaining_minutes = remaining_seconds // 60
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"账户已被锁定，请在 {remaining_minutes} 分钟 {remaining_seconds % 60} 秒后重试"
+        )
+    
+    # 验证用户凭证
     user = await db.scalar(select(UserModel).where(UserModel.username == payload.username))
     if not user or not verify_user_password(payload.password, user.password_hash):
+        # 记录失败
+        lockout_minutes = login_tracker.record_failure(payload.username)
+        if lockout_minutes > 0:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"密码错误次数过多，账户已被锁定 {int(lockout_minutes)} 分钟"
+            )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
+    
+    # 登录成功，重置失败计数
+    login_tracker.record_success(payload.username)
     token = create_access_token(user.username, user.role)
     return TokenResponse(access_token=token, token_type="bearer", user=UserRead.model_validate(user))
 
