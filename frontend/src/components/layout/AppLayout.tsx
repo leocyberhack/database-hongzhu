@@ -1,4 +1,4 @@
-import { Layout, Menu, Button, Avatar, Dropdown, Space, ConfigProvider, theme, Badge } from 'antd'
+import { Layout, Menu, Button, Avatar, Dropdown, Space, ConfigProvider, theme } from 'antd'
 import {
     DashboardOutlined,
     DatabaseOutlined,
@@ -6,7 +6,6 @@ import {
     AppstoreOutlined,
     LogoutOutlined,
     UserOutlined,
-    BellOutlined,
     CheckCircleOutlined,
     BarChartOutlined,
     MenuFoldOutlined,
@@ -151,14 +150,6 @@ export default function AppLayout() {
     const userMenu = {
         items: [
             {
-                key: 'profile',
-                icon: <UserOutlined />,
-                label: '个人中心',
-            },
-            {
-                type: 'divider' as const,
-            },
-            {
                 key: 'logout',
                 icon: <LogoutOutlined />,
                 label: '退出登录',
@@ -299,12 +290,6 @@ export default function AppLayout() {
                         </div>
 
                         <Space size="large">
-                            <motion.div whileHover={{ rotate: 15 }} style={{ cursor: 'pointer' }}>
-                                <Badge dot color="red">
-                                    <BellOutlined style={{ fontSize: '20px', color: '#555' }} />
-                                </Badge>
-                            </motion.div>
-
                             <Dropdown menu={userMenu} placement="bottomRight">
                                 <motion.div
                                     whileHover={{ scale: 1.05 }}

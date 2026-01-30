@@ -82,15 +82,18 @@ export default function SPUListPage() {
         {
             title: '编码',
             dataIndex: 'spu_code',
+            width: 100,
         },
         {
             title: 'SKU 数量',
             dataIndex: 'sku_count',
+            width: 90,
             sorter: (a: Spu, b: Spu) => (a.sku_count || 0) - (b.sku_count || 0),
         },
         {
             title: '备注',
             dataIndex: 'remark',
+            width: 120,
             ellipsis: true,
         },
         {
@@ -101,6 +104,7 @@ export default function SPUListPage() {
         },
         {
             title: '操作',
+            width: 280,
             render: (_: any, record: Spu) => (
                 <Space>
                     <Button
