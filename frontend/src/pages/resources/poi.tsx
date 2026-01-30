@@ -398,18 +398,44 @@ export default function ResourcePage() {
             return newPoi
         } catch (err: any) {
             if (err?.errorFields) {
+                // 字段标签映射（包含通用字段和 attrs 嵌套字段）
                 const fieldLabels: Record<string, string> = {
+                    // 通用字段
                     'poi_name': 'POI名称',
                     'poi_type': 'POI类型',
                     'province': '省份',
                     'city': '城市',
                     'district': '区县',
-                    'address': '详细地址'
+                    'address': '详细地址',
+                    // 景区 POI attrs 字段
+                    'entrance_times': '入园次数',
+                    'earliest_entry_time': '最早入园时间',
+                    'latest_entry_time': '最晚入园时间',
+                    'pickup_location': '取票地址',
+                    'required_traveler_info': '所需出行人信息',
+                    'voucher_type': '凭证类型',
+                    // 酒店 POI attrs 字段
+                    'hotel_type': '酒店类型',
+                    'phone': '联系电话',
+                    // 其他类型可以继续添加...
                 }
-                const missingFields = err.errorFields.map((f: any) => {
-                    const fieldName = Array.isArray(f.name) ? f.name[0] : f.name
-                    return fieldLabels[fieldName] || fieldName
-                }).filter(Boolean)
+
+                const missingFields: string[] = []
+                err.errorFields.forEach((f: any) => {
+                    const fieldPath = Array.isArray(f.name) ? f.name : [f.name]
+                    // 处理顶层字段
+                    if (fieldPath.length === 1) {
+                        const label = fieldLabels[fieldPath[0]] || fieldPath[0]
+                        if (!missingFields.includes(label)) missingFields.push(label)
+                    }
+                    // 处理 attrs 嵌套字段
+                    else if (fieldPath[0] === 'attrs' && fieldPath.length >= 2) {
+                        const attrKey = fieldPath[1]
+                        const label = fieldLabels[attrKey] || attrKey
+                        if (!missingFields.includes(label)) missingFields.push(label)
+                    }
+                })
+
                 if (missingFields.length > 0) {
                     message.error(`请填写以下必填字段：${missingFields.join('、')}`)
                 } else {
@@ -604,12 +630,61 @@ export default function ResourcePage() {
             await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
             if (err?.errorFields) {
+                // 资源字段标签映射
+                const fieldLabels: Record<string, string> = {
+                    // 通用资源字段
+                    'resource_name': '资源名称',
+                    'supplier_bindings': '供应商绑定',
+                    // 景区资源 attrs 字段
+                    'ticket_type': '票种',
+                    'min_age': '最小年龄',
+                    'max_age': '最大年龄',
+                    'booking_days_in_advance': '提前预订天数',
+                    'hours': '小时',
+                    'minutes': '分钟',
+                    'validity_days': '可用时间',
+                    // 酒店资源 attrs 字段
+                    'room_type': '房型',
+                    'max_occupancy': '最大入住人数',
+                    // 餐饮资源 attrs 字段
+                    'dining_type': '餐饮类型',
+                    'meal_category': '餐饮分类',
+                    'suitable_people': '适配人数',
+                    // 交通资源 attrs 字段
+                    'transport_type': '交通类型',
+                    'departure_point': '起点',
+                    'arrival_point': '终点',
+                    'max_seats': '最大座位数',
+                    'duration': '行程时长',
+                }
+
                 const missingFields: string[] = []
                 err.errorFields.forEach((f: any) => {
                     const fieldPath = Array.isArray(f.name) ? f.name : [f.name]
-                    if (fieldPath.includes('resource_name')) missingFields.push('资源名称')
-                    if (fieldPath.includes('supplier_bindings')) missingFields.push('供应商绑定')
+
+                    // 跳过 resources 前缀（第0个是 'resources'，第1个是索引）
+                    let relevantPath = fieldPath
+                    if (fieldPath[0] === 'resources' && typeof fieldPath[1] === 'number') {
+                        relevantPath = fieldPath.slice(2) // 从索引2开始才是真正的字段路径
+                    }
+
+                    // 处理顶层字段（如 resource_name, supplier_bindings）
+                    if (relevantPath.length === 1) {
+                        const label = fieldLabels[relevantPath[0]] || relevantPath[0]
+                        if (!missingFields.includes(label)) missingFields.push(label)
+                    }
+                    // 处理 attrs 嵌套字段
+                    else if (relevantPath[0] === 'attrs' && relevantPath.length >= 2) {
+                        const attrKey = relevantPath[1]
+                        const label = fieldLabels[attrKey] || attrKey
+                        if (!missingFields.includes(label)) missingFields.push(label)
+                    }
+                    // 处理 supplier_bindings 内部字段
+                    else if (relevantPath[0] === 'supplier_bindings') {
+                        if (!missingFields.includes('供应商绑定')) missingFields.push('供应商绑定')
+                    }
                 })
+
                 if (missingFields.length > 0) {
                     message.error(`请填写以下必填字段：${missingFields.join('、')}`)
                 } else {
