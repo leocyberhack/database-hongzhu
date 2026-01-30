@@ -397,7 +397,25 @@ export default function ResourcePage() {
             await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
             return newPoi
         } catch (err: any) {
-            if (!err?.errorFields) {
+            if (err?.errorFields) {
+                const fieldLabels: Record<string, string> = {
+                    'poi_name': 'POI名称',
+                    'poi_type': 'POI类型',
+                    'province': '省份',
+                    'city': '城市',
+                    'district': '区县',
+                    'address': '详细地址'
+                }
+                const missingFields = err.errorFields.map((f: any) => {
+                    const fieldName = Array.isArray(f.name) ? f.name[0] : f.name
+                    return fieldLabels[fieldName] || fieldName
+                }).filter(Boolean)
+                if (missingFields.length > 0) {
+                    message.error(`请填写以下必填字段：${missingFields.join('、')}`)
+                } else {
+                    message.error('请检查表单填写是否正确')
+                }
+            } else {
                 message.error(err.message || '创建失败')
             }
             return null
@@ -420,9 +438,6 @@ export default function ResourcePage() {
         if (!newPoi) return
         if (createResourceEnabled) {
             message.success('POI 已创建，请逐条保存资源')
-            if (agreementErrors.length > 0) {
-                message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
-            }
         } else {
             message.success('POI 已创建，可以上传详情图片')
             resetCreateModal()
@@ -518,7 +533,7 @@ export default function ResourcePage() {
                                     }),
                                 })
                             } catch (err: any) {
-                            agreementErrors.push(err?.message || '协议创建失败')
+                                agreementErrors.push(err?.message || '协议创建失败')
                             }
                         }
                         if (presetList.length > 0) {
@@ -533,7 +548,7 @@ export default function ResourcePage() {
 
                 message.success('资源已更新')
                 if (agreementErrors.length > 0) {
-                message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
+                    message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
                 }
             } else {
                 const newResource = await apiRequest<{ id: string }>('/api/resources', {
@@ -550,7 +565,7 @@ export default function ResourcePage() {
                         settlement_price: binding.settlement_price,
                         supply_status: 'active',
                     }
-                    const createdBinding = await apiRequest('/api/supplier-resources', {
+                    const createdBinding = await apiRequest<{ id: number }>('/api/supplier-resources', {
                         method: 'POST',
                         body: JSON.stringify(bindingPayload),
                     })
@@ -581,14 +596,26 @@ export default function ResourcePage() {
                 poiForm.setFieldValue(['resources', resourceIndex, 'id'], newResource.id)
                 message.success(hadPoi ? '资源已保存' : 'POI 已创建，资源已保存')
                 if (agreementErrors.length > 0) {
-                message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
+                    message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
                 }
             }
 
             updateResourceStatus(fieldKey, { saved: true })
             await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
-            if (!err?.errorFields) {
+            if (err?.errorFields) {
+                const missingFields: string[] = []
+                err.errorFields.forEach((f: any) => {
+                    const fieldPath = Array.isArray(f.name) ? f.name : [f.name]
+                    if (fieldPath.includes('resource_name')) missingFields.push('资源名称')
+                    if (fieldPath.includes('supplier_bindings')) missingFields.push('供应商绑定')
+                })
+                if (missingFields.length > 0) {
+                    message.error(`请填写以下必填字段：${missingFields.join('、')}`)
+                } else {
+                    message.error('请检查资源表单填写是否正确')
+                }
+            } else {
                 message.error(err.message || '资源保存失败')
             }
         } finally {
