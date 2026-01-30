@@ -6,6 +6,7 @@ import { apiRequest } from '@/lib/api'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, SettingOutlined, FolderOpenOutlined } from '@ant-design/icons'
 import ContactTableEditor from '@/components/ContactTableEditor'
 import SupplierFileModal from '@/components/SupplierFileModal'
+import { useData } from '@/contexts/DataContext'
 
 interface FilterState {
     keyword: string
@@ -69,7 +70,9 @@ const formatAttrDisplay = (value: unknown) => {
     return normalized === undefined ? '-' : String(normalized)
 }
 
+
 export default function SupplierPage() {
+    const { loadData } = useData()
     const [supplierForm] = Form.useForm()
     const [editForm] = Form.useForm()
     const [batchUpdateForm] = Form.useForm()
@@ -91,6 +94,7 @@ export default function SupplierPage() {
 
     const [supplyRows, setSupplyRows] = useState<SupplierResource[]>([])
     const [resourceMap, setResourceMap] = useState<Map<string, Resource>>(new Map())
+
 
     useEffect(() => {
         const t = setTimeout(() => setDebouncedKeyword(filters.keyword), 300)
@@ -163,7 +167,7 @@ export default function SupplierPage() {
             supplierForm.resetFields()
             setCreateModalVisible(false)
             setFileManagerSupplier(created)
-            await fetchSuppliers()
+            await Promise.all([fetchSuppliers(), loadData(['suppliers'], { force: true })])
         } catch (err: any) {
             message.error(err.message || '创建失败')
         }
@@ -202,7 +206,7 @@ export default function SupplierPage() {
             message.success('供应商已更新')
             setEditModalVisible(false)
             setSelected(null)
-            await fetchSuppliers()
+            await Promise.all([fetchSuppliers(), loadData(['suppliers'], { force: true })])
         } catch (err: any) {
             message.error(err.message || '更新失败')
         }
@@ -233,7 +237,7 @@ export default function SupplierPage() {
         try {
             await apiRequest(`/api/suppliers/${id}`, { method: 'DELETE' })
             message.success('供应商已删除')
-            await fetchSuppliers()
+            await Promise.all([fetchSuppliers(), loadData(['suppliers'], { force: true })])
         } catch (err: any) {
             message.error(err.message || '删除失败')
         }
@@ -248,7 +252,7 @@ export default function SupplierPage() {
             })
             message.success(`已删除 ${selectedRowKeys.length} 个供应商`)
             setSelectedRowKeys([])
-            await fetchSuppliers()
+            await Promise.all([fetchSuppliers(), loadData(['suppliers'], { force: true })])
         } catch (err: any) {
             message.error(err.message || '批量删除失败')
         }
@@ -281,7 +285,7 @@ export default function SupplierPage() {
             setBatchUpdateVisible(false)
             batchUpdateForm.resetFields()
             setSelectedRowKeys([])
-            await fetchSuppliers()
+            await Promise.all([fetchSuppliers(), loadData(['suppliers'], { force: true })])
         } catch (err: any) {
             message.error(err.message || '批量更新失败')
         }
