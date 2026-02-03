@@ -128,6 +128,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
     const isResourceMode = mode === 'resource';
     const readonlyStock = props.readonlyStock || false;
     const readOnly = props.readOnly || false;
+    const canEditStock = !readonlyStock && !readOnly;
 
     const [currentDate, setCurrentDate] = useState<Dayjs>(dayjs());
     const [selection, setSelection] = useState<{ start: Dayjs | null; end: Dayjs | null }>({ start: null, end: null });
@@ -254,7 +255,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
             dirtyDates.current.clear(); // Clear dirty tracking on fresh load
         } catch (err) {
             console.error(err);
-            message.error("加载资源库存数据失败");
+            message.error("加载子资源库存数据失败");
         } finally {
             setLoading(false);
         }
@@ -350,27 +351,31 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
             }
             if (currentPriceSeg) priceSegments.push(currentPriceSeg);
 
-            // 2. Group Stock Segments
+            const shouldSaveStock = !readonlyStock;
+
+            // 2. Group Stock Segments (only when manual stock is allowed)
             const stockSegments: { start: string, end: string, stock: number }[] = [];
             let currentStockSeg: { start: string, end: string, stock: number } | null = null;
 
-            for (const date of dates) {
-                const data = localData[date];
-                if (data.stock === undefined) continue;
+            if (shouldSaveStock) {
+                for (const date of dates) {
+                    const data = localData[date];
+                    if (data.stock === undefined) continue;
 
-                if (!currentStockSeg) {
-                    currentStockSeg = { start: date, end: date, stock: data.stock };
-                } else {
-                    const nextDate = dayjs(currentStockSeg.end).add(1, 'day').format('YYYY-MM-DD');
-                    if (date === nextDate && data.stock === currentStockSeg.stock) {
-                        currentStockSeg.end = date;
-                    } else {
-                        stockSegments.push(currentStockSeg);
+                    if (!currentStockSeg) {
                         currentStockSeg = { start: date, end: date, stock: data.stock };
+                    } else {
+                        const nextDate = dayjs(currentStockSeg.end).add(1, 'day').format('YYYY-MM-DD');
+                        if (date === nextDate && data.stock === currentStockSeg.stock) {
+                            currentStockSeg.end = date;
+                        } else {
+                            stockSegments.push(currentStockSeg);
+                            currentStockSeg = { start: date, end: date, stock: data.stock };
+                        }
                     }
                 }
+                if (currentStockSeg) stockSegments.push(currentStockSeg);
             }
-            if (currentStockSeg) stockSegments.push(currentStockSeg);
 
 
             // Save Prices
@@ -389,18 +394,20 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                 });
             }
 
-            // Save Stock
-            for (const seg of stockSegments) {
-                await apiRequest('/api/inventory/init', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        sku_id: skuId,
-                        start_date: seg.start,
-                        end_date: seg.end,
-                        total_qty: seg.stock,
-                        reason: 'Batch update via SKU Calendar'
-                    })
-                });
+            if (shouldSaveStock) {
+                // Save Stock
+                for (const seg of stockSegments) {
+                    await apiRequest('/api/inventory/init', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            sku_id: skuId,
+                            start_date: seg.start,
+                            end_date: seg.end,
+                            total_qty: seg.stock,
+                            reason: 'Batch update via SKU Calendar'
+                        })
+                    });
+                }
             }
         }
     }));
@@ -456,8 +463,8 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
             message.warning("请先在日历选择日期范围");
             return;
         }
-        if (inputPrice === null && inputStock === null) {
-            message.warning("请输入价格或库存");
+        if (inputPrice === null && (!canEditStock || inputStock === null)) {
+            message.warning(canEditStock ? "请输入价格或库存" : "请输入价格");
             return;
         }
 
@@ -476,7 +483,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
 
             if (inputPrice !== null) newData[dStr].price = inputPrice;
 
-            if (inputStock !== null) {
+            if (canEditStock && inputStock !== null) {
                 // Check against limit
                 let finalStock = inputStock;
                 const limit = props.stockLimitData?.[dStr];
@@ -492,7 +499,7 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
         }
 
         setLocalData(newData);
-        message.success("设置已应用到选定日期 (已自动按最大库存截断)");
+        message.success(canEditStock ? "设置已应用到选定日期 (已自动按最大库存截断)" : "价格已应用到选定日期");
     };
 
     const handleMonthChange = (val: number) => {
@@ -623,6 +630,11 @@ const SKUCalendarEditor = forwardRef<SKUCalendarEditorRef, Props>((props, ref) =
                             </Button>
                         </Col>
                     </Row>
+                    {readonlyStock && (
+                        <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+                            库存由产品子资源与渠道占比自动计算，不支持手动修改。
+                        </div>
+                    )}
                     <div style={{ marginTop: 12 }}>
                         <div>应用周期:</div>
                         <Checkbox.Group

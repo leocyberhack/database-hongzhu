@@ -745,7 +745,7 @@ export default function FilesPage() {
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                     <h1 className="page-title">文件管理</h1>
-                    <p className="page-subtitle">管理图片、文档等文件资源</p>
+                    <p className="page-subtitle">管理图片、文档等文件资料</p>
                 </div>
                 <Space>
                     <Button icon={<FolderAddOutlined />} onClick={() => setNewFolderModal(true)}>

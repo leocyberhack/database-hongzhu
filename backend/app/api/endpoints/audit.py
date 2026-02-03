@@ -37,13 +37,13 @@ async def list_audit_logs(
         try:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid start_date format, expected YYYY-MM-DD")
+            raise HTTPException(status_code=400, detail="开始日期格式错误，应为 YYYY-MM-DD")
         stmt = stmt.where(func.date(AuditLog.operated_at) >= start_dt)
     if end_date:
         try:
             end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid end_date format, expected YYYY-MM-DD")
+            raise HTTPException(status_code=400, detail="结束日期格式错误，应为 YYYY-MM-DD")
         stmt = stmt.where(func.date(AuditLog.operated_at) <= end_dt)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = await db.scalars(stmt.order_by(AuditLog.operated_at.desc()).offset((page - 1) * page_size).limit(page_size))
@@ -67,7 +67,7 @@ async def get_audit_log(
 ):
     log = await db.get(AuditLog, log_id)
     if not log:
-        raise HTTPException(status_code=404, detail="Audit log not found")
+        raise HTTPException(status_code=404, detail="审计日志不存在")
     return AuditLogRead.model_validate(log)
 
 
@@ -82,7 +82,7 @@ async def batch_delete_audit_logs(
     if user.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super_admin can delete audit logs"
+            detail="仅超级管理员可删除审计日志"
         )
     
     if not ids:

@@ -13,7 +13,7 @@ export default function HotelResourceFields({ prefix = ['attrs'], typeOptions, o
         <div style={{ marginTop: 16, padding: 16, background: '#f9f0ff', borderRadius: 8, border: '1px solid #d3adf7' }}>
             <h4 style={{ marginBottom: 16, color: '#722ed1' }}>🛏️ 酒店房型独属信息</h4>
             <p style={{ marginBottom: 16, color: '#666', fontSize: 12 }}>
-                提示：通用字段（设施、地址、电话等）已在POI层设置，此处只需填写该房型的特有属性
+                提示：通用字段（设施、地址、电话等）已在资源层设置，此处只需填写该房型的特有属性
             </p>
 
             <Form.Item name={[...prefix, 'room_type']} label="房型" rules={[{ required: true, message: '请选择房型' }]}>

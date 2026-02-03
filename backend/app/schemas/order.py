@@ -1,31 +1,83 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, Literal
 
-from pydantic import BaseModel, Field
-
-from app.schemas.common import ORMBase
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class OrderCreate(BaseModel):
+class OrderStatusFields(BaseModel):
+    is_paid: bool = False
+    paid_qty: Optional[int] = None
+    paid_amount: Optional[float] = None
+    paid_at: Optional[datetime] = None
+
+    is_issued: bool = False
+    issued_qty: Optional[int] = None
+    issued_amount: Optional[float] = None
+    issued_at: Optional[datetime] = None
+
+    is_verified: bool = False
+    verified_qty: Optional[int] = None
+    verified_amount: Optional[float] = None
+    verified_at: Optional[datetime] = None
+
+    is_reserved: bool = False
+    reserved_qty: Optional[int] = None
+    reserved_amount: Optional[float] = None
+    reserved_at: Optional[datetime] = None
+
+    is_refund_unverified: bool = False
+    refund_unverified_qty: Optional[int] = None
+    refund_unverified_amount: Optional[float] = None
+    refund_unverified_at: Optional[datetime] = None
+
+    is_refund_unreserved: bool = False
+    refund_unreserved_qty: Optional[int] = None
+    refund_unreserved_amount: Optional[float] = None
+    refund_unreserved_at: Optional[datetime] = None
+
+    is_refund_verified: bool = False
+    refund_verified_qty: Optional[int] = None
+    refund_verified_amount: Optional[float] = None
+    refund_verified_at: Optional[datetime] = None
+
+    is_refund_reserved: bool = False
+    refund_reserved_qty: Optional[int] = None
+    refund_reserved_amount: Optional[float] = None
+    refund_reserved_at: Optional[datetime] = None
+
+    is_completed: bool = False
+    completed_qty: Optional[int] = None
+    completed_amount: Optional[float] = None
+    completed_at: Optional[datetime] = None
+
+    is_disputed: bool = False
+    disputed_qty: Optional[int] = None
+    disputed_amount: Optional[float] = None
+    disputed_at: Optional[datetime] = None
+
+
+class OrderCreate(OrderStatusFields):
     order_no: str
     channel_id: int
     sku_id: int
-    product_id: int
+    product_id: Optional[int] = None
+    is_paid: bool = True
+    paid_at: datetime
     travel_date: date
-    quantity: int = Field(..., gt=0)
-    sale_price: float
-    cost_price: Optional[float] = None
+    quantity: int = Field(default=1, ge=1)
+    sale_price: Optional[float] = Field(default=None, ge=0)
+    cost_price: Optional[float] = Field(default=None, ge=0)
     remark: Optional[str] = None
-    # Manual supplier selection: {resource_id: supplier_id}
     resource_selections: Optional[dict[int, int]] = None
 
 
-class OrderRead(ORMBase):
+class OrderRead(OrderStatusFields):
     id: int
     order_no: str
     channel_id: int
     sku_id: int
     product_id: int
+    spu_id: Optional[int] = None
     travel_date: date
     quantity: int
     sale_price: float
@@ -33,24 +85,40 @@ class OrderRead(ORMBase):
     cost_price: Optional[float] = None
     cost_amount: Optional[float] = None
     profit_amount: Optional[float] = None
-    status: str
-    created_by: Optional[str] = None
-    created_at: datetime
-    verified_at: Optional[datetime] = None
-    refunded_at: Optional[datetime] = None
     remark: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    channel_name: Optional[str] = None
+    spu_name: Optional[str] = None
+    sku_name: Optional[str] = None
+    product_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderDecision(BaseModel):
-    action: str  # verify | refund
+    action: Literal[
+        "verify",
+        "refund",
+        "refund_unverified",
+        "refund_unreserved",
+        "refund_verified",
+        "refund_reserved",
+    ]
+    qty: Optional[int] = None
+    amount: Optional[float] = None
+    at: Optional[datetime] = None
     comment: Optional[str] = None
 
 
-class OrderStatusHistoryRead(ORMBase):
+class OrderStatusHistoryRead(BaseModel):
     id: int
     order_id: int
     before_status: Optional[str] = None
     after_status: str
     operator: Optional[str] = None
-    operated_at: datetime
+    operated_at: Optional[datetime] = None
     reason: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

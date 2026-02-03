@@ -1,13 +1,26 @@
 ﻿from datetime import datetime, timedelta
+import math
 from app.utils.time import now_china
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import exists, func, select
+from sqlalchemy import and_, exists, func, select
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import Approval, AuditLog, Inventory, InventoryLog, Sku, SkuChannel, Spu
+from app.models import (
+    Approval,
+    AuditLog,
+    Inventory,
+    InventoryLog,
+    Product,
+    ProductResource,
+    ResourceInventory,
+    Sku,
+    SkuChannel,
+    Spu,
+    SupplierResource,
+)
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.inventory import InventoryAdjust, InventoryInit, InventoryLogRead, InventoryRead, InventoryDayRead
 
@@ -72,7 +85,7 @@ async def list_inventory_by_day(
     try:
         target = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+        raise HTTPException(status_code=400, detail="日期格式错误，应为 YYYY-MM-DD")
 
     channel_subq = (
         select(SkuChannel.sku_id, func.min(SkuChannel.channel_id).label("channel_id"))
@@ -82,11 +95,25 @@ async def list_inventory_by_day(
     )
 
     stmt = (
-        select(Inventory, Sku.sku_name, Sku.spu_id, Spu.name.label("spu_name"), channel_subq.c.channel_id)
-        .join(Sku, Inventory.sku_id == Sku.id)
+        select(
+            Sku.id.label("sku_id"),
+            Sku.sku_name,
+            Sku.spu_id,
+            Spu.name.label("spu_name"),
+            Sku.product_id,
+            channel_subq.c.channel_id,
+            Inventory.id.label("inventory_id"),
+            Inventory.frozen_qty,
+            Inventory.sold_qty,
+            Inventory.status.label("inventory_status"),
+        )
+        .select_from(Sku)
         .outerjoin(Spu, Spu.id == Sku.spu_id)
         .outerjoin(channel_subq, channel_subq.c.sku_id == Sku.id)
-        .where(Inventory.inventory_date == target)
+        .outerjoin(
+            Inventory,
+            and_(Inventory.sku_id == Sku.id, Inventory.inventory_date == target),
+        )
     )
     if keyword:
         stmt = stmt.where(Sku.sku_name.ilike(f"%{keyword}%"))
@@ -101,42 +128,145 @@ async def list_inventory_by_day(
             )
         )
     
-    # Sorting logic
-    if sort_field == "sku_name" or not sort_field:
-        if sort_order == "descend":
-            stmt = stmt.order_by(Sku.sku_name.desc(), Sku.poi_id.asc())
-        else:
-            stmt = stmt.order_by(Sku.sku_name.asc(), Sku.poi_id.asc())
-    elif sort_field and hasattr(Inventory, sort_field):
-        field = getattr(Inventory, sort_field)
-        if sort_order == "descend":
-            stmt = stmt.order_by(field.desc())
-        else:
-            stmt = stmt.order_by(field.asc())
-    else:
-        stmt = stmt.order_by(Inventory.sku_id)
-    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    result = await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))
+    result = await db.execute(stmt)
     rows = result.all()
 
+    product_ids = {row.product_id for row in rows if row.product_id}
+    product_map: dict[int, Product] = {}
+    if product_ids:
+        products = list(await db.scalars(select(Product).where(Product.id.in_(product_ids))))
+        product_map = {p.id: p for p in products}
+
+    product_resources = []
+    if product_ids:
+        product_resources = list(
+            await db.scalars(select(ProductResource).where(ProductResource.product_id.in_(product_ids)))
+        )
+
+    pr_by_product: dict[int, list[ProductResource]] = {}
+    for pr in product_resources:
+        if not pr.required_flag:
+            continue
+        pr_by_product.setdefault(pr.product_id, []).append(pr)
+
+    resource_ids = {pr.resource_id for prs in pr_by_product.values() for pr in prs}
+    resource_total: dict[int, int] = {}
+    resource_by_supplier: dict[tuple[int, int], int] = {}
+    if resource_ids:
+        inv_stmt = (
+            select(ResourceInventory, SupplierResource.resource_id, SupplierResource.supplier_id)
+            .join(SupplierResource)
+            .where(
+                SupplierResource.resource_id.in_(resource_ids),
+                ResourceInventory.inventory_date == target,
+            )
+        )
+        for inv, r_id, s_id in (await db.execute(inv_stmt)).all():
+            available = max(0, inv.total_qty - inv.sold_qty - inv.frozen_qty)
+            resource_total[r_id] = resource_total.get(r_id, 0) + available
+            resource_by_supplier[(r_id, s_id)] = resource_by_supplier.get((r_id, s_id), 0) + available
+
+    product_qty_map: dict[int, int] = {}
+    for pid, prs in pr_by_product.items():
+        min_qty = None
+        for pr in prs:
+            if pr.supplier_mode == "locked" and pr.supplier_ids:
+                resource_available = sum(
+                    resource_by_supplier.get((pr.resource_id, sid), 0) for sid in pr.supplier_ids
+                )
+            else:
+                resource_available = resource_total.get(pr.resource_id, 0)
+            qty_from_resource = resource_available // pr.quantity if pr.quantity > 0 else 0
+            min_qty = qty_from_resource if min_qty is None else min(min_qty, qty_from_resource)
+        product_qty_map[pid] = min_qty if min_qty is not None else 0
+
     items = []
-    for inv, sku_name, spu_id, spu_name, ch_id in rows:
-        available = max(0, inv.total_qty - inv.frozen_qty - inv.sold_qty)
+    for row in rows:
+        resolved_channel_id = channel_id if channel_id is not None else row.channel_id
+        ratio = 0
+        product = product_map.get(row.product_id)
+        if product and resolved_channel_id is not None and product.allowed_channels:
+            for alloc in product.allowed_channels:
+                if isinstance(alloc, dict):
+                    if alloc.get("channel_id") == resolved_channel_id:
+                        ratio = alloc.get("stock_ratio", 0) or 0
+                        if alloc.get("stock_ratio") is None:
+                            ratio = 100
+                        break
+                    continue
+                try:
+                    cid = int(alloc)
+                except (TypeError, ValueError):
+                    continue
+                if cid == resolved_channel_id:
+                    ratio = 100
+                    break
+
+        product_qty = product_qty_map.get(row.product_id, 0)
+        total_qty = int(math.floor(product_qty * (ratio / 100))) if ratio > 0 else 0
+        frozen_qty = row.frozen_qty or 0
+        sold_qty = row.sold_qty or 0
+        available = max(0, total_qty - frozen_qty - sold_qty)
         payload = InventoryDayRead(
-            id=inv.id,
-            sku_id=inv.sku_id,
-            channel_id=ch_id,
-            inventory_date=inv.inventory_date,
-            total_qty=inv.total_qty,
-            frozen_qty=inv.frozen_qty,
-            sold_qty=inv.sold_qty,
+            id=row.inventory_id or 0,
+            sku_id=row.sku_id,
+            channel_id=resolved_channel_id,
+            inventory_date=target,
+            total_qty=total_qty,
+            frozen_qty=frozen_qty,
+            sold_qty=sold_qty,
             available_qty=available,
-            status=inv.status,
+            status=row.inventory_status or "normal",
         ).model_dump()
-        payload["sku_name"] = sku_name
-        payload["spu_id"] = spu_id
-        payload["spu_name"] = spu_name
+        payload["sku_name"] = row.sku_name
+        payload["spu_id"] = row.spu_id
+        payload["spu_name"] = row.spu_name
         items.append(payload)
+
+    reverse = sort_order == "descend"
+    if sort_field in {"total_qty", "frozen_qty", "sold_qty", "available_qty"}:
+        items.sort(
+            key=lambda x: (
+                x.get(sort_field, 0),
+                x.get("spu_name") or "",
+                x.get("sku_name") or "",
+                x.get("sku_id") or 0,
+            ),
+            reverse=reverse,
+        )
+    elif sort_field == "spu_name":
+        items.sort(
+            key=lambda x: (
+                x.get("spu_name") or "",
+                x.get("sku_name") or "",
+                x.get("sku_id") or 0,
+            ),
+            reverse=reverse,
+        )
+    elif sort_field == "sku_name" or not sort_field:
+        items.sort(
+            key=lambda x: (
+                x.get("spu_name") or "",
+                x.get("sku_name") or "",
+                x.get("sku_id") or 0,
+            ),
+            reverse=reverse,
+        )
+    elif sort_field == "sku_id":
+        items.sort(
+            key=lambda x: (x.get("spu_name") or "", x.get("sku_id") or 0),
+            reverse=reverse,
+        )
+    else:
+        items.sort(
+            key=lambda x: (x.get("spu_name") or "", x.get("sku_id") or 0),
+            reverse=reverse,
+        )
+
+    total = len(items)
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = items[start:end]
 
     return ListResponse(
         items=items,
@@ -169,9 +299,10 @@ async def init_inventory(
     db: DbSession,
     user: User = Depends(require_roles(["admin", "product", "operator", "csr"])),
 ):
+    raise HTTPException(status_code=400, detail="SKU库存由产品资源自动计算，已禁用手动设置")
     sku = await db.get(Sku, payload.sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU not found")
+        raise HTTPException(status_code=404, detail="SKU 不存在")
 
     created = []
     # Optimization: Do not create per-day InventoryLog for batch init to avoid log explosion.
@@ -277,13 +408,14 @@ async def adjust_inventory(
     db: DbSession,
     user: User = Depends(require_roles(["admin", "product", "operator", "csr"])),
 ):
+    raise HTTPException(status_code=400, detail="SKU库存由产品资源自动计算，已禁用手动调整")
     inv = await db.scalar(
         select(Inventory)
         .where(Inventory.sku_id == payload.sku_id, Inventory.inventory_date == payload.inventory_date)
         .with_for_update()
     )
     if not inv:
-        raise HTTPException(status_code=404, detail="Inventory record not found")
+        raise HTTPException(status_code=404, detail="库存记录不存在")
 
     min_required = inv.sold_qty + inv.frozen_qty
     if payload.total_qty < min_required:

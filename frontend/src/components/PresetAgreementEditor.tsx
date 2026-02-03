@@ -175,7 +175,7 @@ export default function PresetAgreementEditor({
                 />
 
                 <div style={{ marginTop: 12, color: '#666', fontSize: 12 }}>
-                    提示：这些协议会在资源创建成功后自动关联到该供应商绑定。
+                    提示：这些协议会在子资源创建成功后自动关联到该供应商绑定。
                 </div>
             </Modal>
 

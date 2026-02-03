@@ -224,7 +224,7 @@ export default function ResourcePage() {
 
     const columns: any = [
         {
-            title: 'POI 名称',
+            title: '资源名称',
             dataIndex: 'poi_name',
             sorter: (a: POI, b: POI) => a.poi_name.localeCompare(b.poi_name),
             filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
@@ -269,7 +269,7 @@ export default function ResourcePage() {
             ellipsis: true
         },
         {
-            title: '资源数',
+            title: '子资源数',
             render: (_: any, record: POI) => resources.filter((r) => r.poi_id === record.id).length,
             width: 100,
             sorter: (a: POI, b: POI) => {
@@ -310,7 +310,7 @@ export default function ResourcePage() {
                             查看
                         </Button>
                         {isLocked ? (
-                            <Tooltip title="该POI下已有资源(数量不为0)，不可删除">
+                            <Tooltip title="该资源下已有子资源(数量不为0)，不可删除">
                                 <Button
                                     type="link"
                                     size="small"
@@ -323,8 +323,8 @@ export default function ResourcePage() {
                             </Tooltip>
                         ) : (
                             <Popconfirm
-                                title="确定删除该POI吗？"
-                                description="删除POI可能影响关联的资源，请谨慎操作"
+                                title="确定删除该资源吗？"
+                                description="删除资源可能影响关联的子资源，请谨慎操作"
                                 onConfirm={() => deletePoi(record.id)}
                                 okText="删除"
                                 cancelText="取消"
@@ -401,8 +401,8 @@ export default function ResourcePage() {
                 // 字段标签映射（包含通用字段和 attrs 嵌套字段）
                 const fieldLabels: Record<string, string> = {
                     // 通用字段
-                    'poi_name': 'POI名称',
-                    'poi_type': 'POI类型',
+                    'poi_name': '资源名称',
+                    'poi_type': '资源类型',
                     'province': '省份',
                     'city': '城市',
                     'district': '区县',
@@ -463,9 +463,9 @@ export default function ResourcePage() {
         const newPoi = await createPoi()
         if (!newPoi) return
         if (createResourceEnabled) {
-            message.success('POI 已创建，请逐条保存资源')
+            message.success('资源已创建，请逐条保存子资源')
         } else {
-            message.success('POI 已创建，可以上传详情图片')
+            message.success('资源已创建，可以上传详情图片')
             resetCreateModal()
             // 打开文件管理Modal
             setFileManagerPoi(newPoi)
@@ -533,7 +533,7 @@ export default function ResourcePage() {
                                 method: 'POST',
                                 body: JSON.stringify({
                                     settlement_price: binding.settlement_price,
-                                    reason: '新建POI时资源编辑修改结算价',
+                                    reason: '新建资源时子资源编辑修改结算价',
                                 })
                             })
                         }
@@ -572,7 +572,7 @@ export default function ResourcePage() {
                     }
                 }
 
-                message.success('资源已更新')
+                message.success('子资源已更新')
                 if (agreementErrors.length > 0) {
                     message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
                 }
@@ -620,7 +620,7 @@ export default function ResourcePage() {
                 }
 
                 poiForm.setFieldValue(['resources', resourceIndex, 'id'], newResource.id)
-                message.success(hadPoi ? '资源已保存' : 'POI 已创建，资源已保存')
+                message.success(hadPoi ? '子资源已保存' : '资源已创建，子资源已保存')
                 if (agreementErrors.length > 0) {
                     message.warning(`有 ${agreementErrors.length} 份协议创建失败`)
                 }
@@ -630,12 +630,12 @@ export default function ResourcePage() {
             await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
             if (err?.errorFields) {
-                // 资源字段标签映射
+                // 子资源字段标签映射
                 const fieldLabels: Record<string, string> = {
-                    // 通用资源字段
-                    'resource_name': '资源名称',
+                    // 通用子资源字段
+                    'resource_name': '子资源名称',
                     'supplier_bindings': '供应商绑定',
-                    // 景区资源 attrs 字段
+                    // 景区子资源 attrs 字段
                     'ticket_type': '票种',
                     'min_age': '最小年龄',
                     'max_age': '最大年龄',
@@ -643,14 +643,14 @@ export default function ResourcePage() {
                     'hours': '小时',
                     'minutes': '分钟',
                     'validity_days': '可用时间',
-                    // 酒店资源 attrs 字段
+                    // 酒店子资源 attrs 字段
                     'room_type': '房型',
                     'max_occupancy': '最大入住人数',
-                    // 餐饮资源 attrs 字段
+                    // 餐饮子资源 attrs 字段
                     'dining_type': '餐饮类型',
                     'meal_category': '餐饮分类',
                     'suitable_people': '适配人数',
-                    // 交通资源 attrs 字段
+                    // 交通子资源 attrs 字段
                     'transport_type': '交通类型',
                     'departure_point': '起点',
                     'arrival_point': '终点',
@@ -688,10 +688,10 @@ export default function ResourcePage() {
                 if (missingFields.length > 0) {
                     message.error(`请填写以下必填字段：${missingFields.join('、')}`)
                 } else {
-                    message.error('请检查资源表单填写是否正确')
+                    message.error('请检查子资源表单填写是否正确')
                 }
             } else {
-                message.error(err.message || '资源保存失败')
+                message.error(err.message || '子资源保存失败')
             }
         } finally {
             updateResourceStatus(fieldKey, { saving: false })
@@ -756,7 +756,7 @@ export default function ResourcePage() {
                 return
             }
             await apiRequest(`/api/poi/${selectedPoi.id}`, { method: 'PUT', body: JSON.stringify(payload) })
-            message.success('POI 已保存')
+            message.success('资源已保存')
             setSelectedPoi(null)
             await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
@@ -767,7 +767,7 @@ export default function ResourcePage() {
     const deletePoi = async (id: string) => {
         try {
             await apiRequest(`/api/poi/${id}`, { method: 'DELETE' })
-            message.success('POI 已删除')
+            message.success('资源已删除')
             await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
             message.error(err.message || '删除失败')
@@ -781,7 +781,7 @@ export default function ResourcePage() {
                 method: 'POST',
                 body: JSON.stringify(selectedRowKeys)
             })
-            message.success(`已删除 ${selectedRowKeys.length} 个POI`)
+            message.success(`已删除 ${selectedRowKeys.length} 个资源`)
             setSelectedRowKeys([])
             await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
         } catch (err: any) {
@@ -808,7 +808,7 @@ export default function ResourcePage() {
                     fields
                 })
             })
-            message.success(`已更新 ${selectedRowKeys.length} 个POI`)
+            message.success(`已更新 ${selectedRowKeys.length} 个资源`)
             setBatchUpdateVisible(false)
             batchUpdateForm.resetFields()
             setSelectedRowKeys([])
@@ -881,16 +881,16 @@ export default function ResourcePage() {
     return (
         <div className="page-container">
             <div className="page-header">
-                <h1 className="page-title">POI 管理</h1>
-                <p className="page-subtitle">管理所有 POI 及其资源，点击查看进入资源列表与创建</p>
+                <h1 className="page-title">资源管理</h1>
+                <p className="page-subtitle">管理所有资源及其子资源，点击查看进入子资源列表与创建</p>
             </div>
 
             <Space size={12} style={{ width: '100%', marginBottom: 12, display: 'flex' }}>
                 <div className="glass-card" style={{ flex: 1, padding: '16px' }}>
-                    <Statistic title="POI 总数" value={stats.poi} />
+                    <Statistic title="资源总数" value={stats.poi} />
                 </div>
                 <div className="glass-card" style={{ flex: 1, padding: '16px' }}>
-                    <Statistic title="资源数" value={stats.resources} />
+                    <Statistic title="子资源数" value={stats.resources} />
                 </div>
                 <div className="glass-card" style={{ flex: 1, padding: '16px' }}>
                     <Statistic title="供应商数" value={stats.suppliers} />
@@ -907,7 +907,7 @@ export default function ResourcePage() {
                         <Col span={8}>
                             <Form.Item label="关键词" style={{ marginBottom: 0, width: '100%' }}>
                                 <Input
-                                    placeholder="搜索POI名称或地址"
+                                    placeholder="搜索资源名称或地址"
                                     prefix={<SearchOutlined style={{ color: '#ccc' }} />}
                                     value={filters.keyword}
                                     onChange={e => setFilters({ ...filters, keyword: e.target.value })}
@@ -930,7 +930,7 @@ export default function ResourcePage() {
                         </Col>
                         <Col span={8} style={{ textAlign: 'right' }}>
                             <Button type="primary" onClick={() => setCreateModalVisible(true)} style={{ marginRight: 8 }}>
-                                新建 POI
+                                新建 资源
                             </Button>
                             {selectedRowKeys.length > 0 && (
                                 <Space>
@@ -938,7 +938,7 @@ export default function ResourcePage() {
                                         批量修改
                                     </Button>
                                     <Popconfirm
-                                        title={`确定删除选中的 ${selectedRowKeys.length} 个POI吗？`}
+                                        title={`确定删除选中的 ${selectedRowKeys.length} 个资源吗？`}
                                         onConfirm={handleBatchDelete}
                                         okText="确定删除"
                                         cancelText="取消"
@@ -956,10 +956,10 @@ export default function ResourcePage() {
             </Card>
 
 
-            {/* POI列表 - 全宽显示 */}
+            {/* 资源列表 - 全宽显示 */}
             <div className="glass-card" style={{ padding: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <h3 style={{ margin: 0 }}>POI 列表</h3>
+                    <h3 style={{ margin: 0 }}>资源列表</h3>
                     {selectedRowKeys.length > 0 && <span style={{ color: '#666' }}>已选择 {selectedRowKeys.length} 项</span>}
                 </div>
                 <Table<POI>
@@ -983,9 +983,9 @@ export default function ResourcePage() {
                 />
             </div>
 
-            {/* 新建POI Modal */}
+            {/* 新建资源 Modal */}
             <Modal
-                title="新建 POI"
+                title="新建 资源"
                 open={createModalVisible}
                 onCancel={() => {
                     resetCreateModal()
@@ -1001,19 +1001,19 @@ export default function ResourcePage() {
                 >
                     <Row gutter={16}>
                         <Col span={10}>
-                            <Form.Item name="poi_name" label="POI 名称" rules={[{ required: true, message: '请输入POI名称' }]}>
+                            <Form.Item name="poi_name" label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
                                 <Input placeholder="如：丽江古城" />
                             </Form.Item>
                         </Col>
                         <Col span={7}>
-                            <Form.Item name="poi_code" label="POI 编码">
-                                <Input placeholder="如：POI-001" />
+                            <Form.Item name="poi_code" label="资源编码">
+                                <Input placeholder="如：资源-001" />
                             </Form.Item>
                         </Col>
                         <Col span={7}>
-                            <Form.Item name="poi_type" label="POI 类型" rules={[{ required: true, message: '请选择POI类型' }]}>
+                            <Form.Item name="poi_type" label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
                                 <Select
-                                    placeholder="选择POI类型（必选）"
+                                    placeholder="选择资源类型（必选）"
                                     disabled={!!createdPoi}
                                     onChange={(value) => {
                                         setPoiType(value)
@@ -1114,7 +1114,7 @@ export default function ResourcePage() {
 
                     {suggestions.length > 0 && (
                         <div style={{ padding: 8, background: '#fff3cd', borderRadius: 4, marginBottom: 12, fontSize: 12 }}>
-                            ⚠️ 检测到同名同城的POI ({suggestions.length}个)，请确认是否重复
+                            ⚠️ 检测到同名同城的资源 ({suggestions.length}个)，请确认是否重复
                         </div>
                     )}
 
@@ -1156,7 +1156,7 @@ export default function ResourcePage() {
                                 }
                             }}
                         />
-                        <span style={{ fontWeight: 600 }}>同时创建资源</span>
+                        <span style={{ fontWeight: 600 }}>同时创建子资源</span>
                         <span style={{ fontSize: 12, color: '#888' }}>可选</span>
                     </div>
                     {createResourceEnabled && poiType && (
@@ -1170,7 +1170,7 @@ export default function ResourcePage() {
                                                 <div key={field.key} style={{ marginBottom: 16, padding: 16, background: '#fafafa', borderRadius: 10, border: '1px solid #f0f0f0' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                                                         <Space size={8}>
-                                                            <span style={{ fontWeight: 600 }}>资源 {index + 1}</span>
+                                                            <span style={{ fontWeight: 600 }}>子资源 {index + 1}</span>
                                                             {status?.saved && (
                                                                 <Tooltip title="可继续编辑后再次保存">
                                                                     <Tag color="green">已保存</Tag>
@@ -1185,10 +1185,10 @@ export default function ResourcePage() {
                                                                 loading={status?.saving}
                                                                 disabled={status?.saving}
                                                             >
-                                                                保存资源
+                                                                保存子资源
                                                             </Button>
                                                             {fields.length > 1 && (status?.saved ? (
-                                                                <Tooltip title="已保存的资源请在详情页删除">
+                                                                <Tooltip title="已保存的子资源请在详情页删除">
                                                                     <Button size="small" danger disabled>
                                                                         删除
                                                                     </Button>
@@ -1205,17 +1205,17 @@ export default function ResourcePage() {
                                                         <Col span={14}>
                                                             <Row gutter={16}>
                                                                 <Col span={12}>
-                                                                    <Form.Item name={[field.name, 'resource_name']} label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
+                                                                    <Form.Item name={[field.name, 'resource_name']} label="子资源名称" rules={[{ required: true, message: '请输入子资源名称' }]}>
                                                                         <Input placeholder="例如：标准双床房" />
                                                                     </Form.Item>
-                                                                    <Form.Item name={[field.name, 'resource_code']} label="资源编码">
+                                                                    <Form.Item name={[field.name, 'resource_code']} label="子资源编码">
                                                                         <Input placeholder="例如：RES-001" />
                                                                     </Form.Item>
                                                                 </Col>
                                                                 <Col span={12}>
-                                                                    <Form.Item name={[field.name, 'resource_type']} label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
+                                                                    <Form.Item name={[field.name, 'resource_type']} label="子资源类型" rules={[{ required: true, message: '请选择子资源类型' }]}>
                                                                         <Select
-                                                                            placeholder="资源类型"
+                                                                            placeholder="子资源类型"
                                                                             disabled
                                                                             options={poiType ? [{ value: poiType, label: poiType }] : []}
                                                                         />
@@ -1232,7 +1232,7 @@ export default function ResourcePage() {
                                                             <div style={{ padding: 12, background: '#fff', borderRadius: 8, border: '1px solid #f0f0f0' }}>
                                                                 <h4 style={{ marginBottom: 8 }}>供应商绑定（可选）</h4>
                                                                 <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
-                                                                    可先创建资源，再视需要绑定供应商，绑定后可设置结算价。
+                                                                    可先创建子资源，再视需要绑定供应商，绑定后可设置结算价。
                                                                 </p>
                                                                 <Form.List name={[field.name, 'supplier_bindings']}>
                                                                     {(supplierFields, { add: addSupplier, remove: removeSupplier }, { errors }) => (
@@ -1340,7 +1340,7 @@ export default function ResourcePage() {
                                             block
                                             icon={<PlusOutlined />}
                                         >
-                                            增加一个资源
+                                            增加一个子资源
                                         </Button>
                                     </>
                                 )}
@@ -1349,7 +1349,7 @@ export default function ResourcePage() {
                     )}
 
                     <div style={{ marginTop: 24, padding: 12, background: '#e6f7ff', borderRadius: 4, fontSize: 12, marginBottom: 16 }}>
-                        💡 提示：资源需要逐条点击“保存资源”，未保存的不会创建。也可以先保存 POI，稍后在详情里添加资源。
+                        💡 提示：子资源需要逐条点击“保存子资源”，未保存的不会创建。也可以先保存资源，稍后在详情里添加子资源。
                     </div>
 
                     <Form.Item style={{ marginBottom: 0 }}>
@@ -1360,7 +1360,7 @@ export default function ResourcePage() {
                                 取消
                             </Button>
                             <Button type="primary" onClick={handleCreatePoi} loading={creatingPoi}>
-                                {createdPoi ? '完成' : '创建 POI'}
+                                {createdPoi ? '完成' : '创建 资源'}
                             </Button>
                         </Space>
                     </Form.Item>
@@ -1401,7 +1401,7 @@ export default function ResourcePage() {
 
             {/* 批量更新 Modal */}
             <Modal
-                title={`批量修改已选的 ${selectedRowKeys.length} 个POI`}
+                title={`批量修改已选的 ${selectedRowKeys.length} 个资源`}
                 open={batchUpdateVisible}
                 onCancel={() => setBatchUpdateVisible(false)}
                 footer={null}

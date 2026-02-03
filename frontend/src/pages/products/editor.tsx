@@ -142,7 +142,7 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
                 setList(res.items)
             } catch (err) {
                 console.error(err)
-                message.error('加载资源列表失败')
+                message.error('加载子资源列表失败')
             } finally {
                 setLoading(false)
             }
@@ -160,14 +160,14 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
     }, [visible, selectedPoiId, selectedType])
 
     const columns = [
-        { title: '资源名称', dataIndex: 'resource_name' },
-        { title: '资源编码', dataIndex: 'resource_code' },
+        { title: '子资源名称', dataIndex: 'resource_name' },
+        { title: '子资源编码', dataIndex: 'resource_code' },
         { title: '类型', dataIndex: 'resource_type', render: (v: string) => <Tag>{v}</Tag> },
     ]
 
     return (
         <Modal
-            title="选择要添加的资源（先选POI，再选资源类型）"
+            title="选择要添加的子资源（先选资源，再选子资源类型）"
             open={visible}
             onCancel={onCancel}
             width={980}
@@ -180,7 +180,7 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
             <Row gutter={16}>
                 <Col span={7}>
                     <Space style={{ marginBottom: 12 }} size={8}>
-                        <span style={{ fontSize: 12, color: '#666' }}>POI类型</span>
+                        <span style={{ fontSize: 12, color: '#666' }}>资源类型</span>
                         <Select
                             size="small"
                             value={poiTypeFilter}
@@ -190,7 +190,7 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
                         />
                     </Space>
                     <Input
-                        placeholder="搜索POI名称/编码"
+                        placeholder="搜索资源名称/编码"
                         prefix={<SearchOutlined />}
                         value={poiKw}
                         onChange={e => setPoiKw(e.target.value)}
@@ -199,7 +199,7 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
                     />
                     <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8 }}>
                         {filteredPoiList.length === 0 ? (
-                            <Empty description="暂无POI" style={{ margin: '24px 0' }} />
+                            <Empty description="暂无资源" style={{ margin: '24px 0' }} />
                         ) : (
                             filteredPoiList.map((poi) => {
                                 const isActive = String(poi.id) === String(selectedPoiId)
@@ -243,7 +243,7 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
                             ))}
                         </Radio.Group>
                         <Input
-                            placeholder="搜索资源名称..."
+                            placeholder="搜索子资源名称..."
                             prefix={<SearchOutlined />}
                             value={filterKw}
                             onChange={e => setFilterKw(e.target.value)}
@@ -251,7 +251,7 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
                         />
                     </Space>
                     {!selectedPoiId ? (
-                        <Empty description="请先选择POI" style={{ marginTop: 60 }} />
+                        <Empty description="请先选择资源" style={{ marginTop: 60 }} />
                     ) : (
                         <Table
                             rowKey="id"
@@ -397,7 +397,7 @@ export default function ProductEditorPage() {
 
         } catch (err) {
             console.error('Fetch resources data error', err)
-            message.error('加载资源详情失败')
+            message.error('加载子资源详情失败')
         }
     }, [])
 
@@ -615,7 +615,7 @@ export default function ProductEditorPage() {
         // Validate items
         for (const item of items) {
             if (item.supplier_mode === 'locked' && (!item.supplier_ids || item.supplier_ids.length === 0)) {
-                message.error('请为所有资源选择供应商')
+                message.error('请为所有子资源选择供应商')
                 return
             }
         }
@@ -655,7 +655,7 @@ export default function ProductEditorPage() {
     // Columns
     const itemColumns = [
         {
-            title: '资源',
+            title: '子资源',
             dataIndex: 'resource_id',
             render: (rid: string) => {
                 const r = resourceMap[rid]
@@ -869,7 +869,7 @@ export default function ProductEditorPage() {
         <div className="page-container">
             <div className="page-header">
                 <h1 className="page-title">{productId ? '编辑产品' : '新建产品'}</h1>
-                <p className="page-subtitle">组合资源构建产品，自动计算成本</p>
+                <p className="page-subtitle">组合子资源构建产品，自动计算成本</p>
             </div>
 
             {/* Header Alert - Visual distinction */}
@@ -1069,9 +1069,9 @@ export default function ProductEditorPage() {
                                 />
                             </Form.Item>
 
-                            <Divider>资源组合</Divider>
+                            <Divider>子资源组合</Divider>
                             <div style={{ marginBottom: 8, color: '#666', fontSize: 12 }}>
-                                💡 点击行左侧箭头可展开查看资源详细信息（景区、酒店等特定字段）
+                                💡 点击行左侧箭头可展开查看子资源详细信息（景区、酒店等特定字段）
                             </div>
 
                             <Table
@@ -1083,7 +1083,7 @@ export default function ProductEditorPage() {
                                     expandedRowRender: (record: SelectedResourceItem) => {
                                         const resource = resourceMap[record.resource_id]
                                         if (!resource) {
-                                            return <div style={{ padding: 16, color: '#999' }}>加载资源信息...</div>
+                                            return <div style={{ padding: 16, color: '#999' }}>加载子资源信息...</div>
                                         }
                                         return <ResourceDetailsPanel resource={resource} />
                                     },
@@ -1091,7 +1091,7 @@ export default function ProductEditorPage() {
                                 }}
                                 footer={() => !isReadOnly ? (
                                     <Button type="dashed" block icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
-                                        添加资源
+                                        添加子资源
                                     </Button>
                                 ) : null}
                             />
@@ -1142,9 +1142,9 @@ export default function ProductEditorPage() {
                 <Col span={8}>
                     <Card title="帮助指南" size="small" className="glass-card" bordered={false}>
                         <p>1. <b>分类管理</b>：请前往"产品管理 -&gt; 产品分类"建立分类。</p>
-                        <p>2. <b>资源选择</b>：从资源库中选择景区、酒店等。</p>
-                        <p>3. <b>供应商指定</b>：必须为每个资源指定供应商，以便系统计算成本和后续下单。</p>
-                        <p>4. <b>成本计算</b>：成本 = Σ(资源数量 × 供应商结算价)。</p>
+                        <p>2. <b>子资源选择</b>：从子资源库中选择景区、酒店等。</p>
+                        <p>3. <b>供应商指定</b>：必须为每个子资源指定供应商，以便系统计算成本和后续下单。</p>
+                        <p>4. <b>成本计算</b>：成本 = Σ(子资源数量 × 供应商结算价)。</p>
                     </Card>
                 </Col>
             </Row>
@@ -1166,7 +1166,7 @@ export default function ProductEditorPage() {
                 okText="加载配置"
                 width={600}
             >
-                <p>选择一个现有产品作为模板，系统将复制其资源配置、供应商选择等信息：</p>
+                <p>选择一个现有产品作为模板，系统将复制其子资源配置、供应商选择等信息：</p>
                 <Select
                     style={{ width: '100%' }}
                     placeholder="请选择产品"

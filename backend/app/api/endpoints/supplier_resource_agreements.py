@@ -85,7 +85,7 @@ async def create_agreement(
 ):
     supplier_resource = await db.get(SupplierResource, payload.supplier_resource_id)
     if not supplier_resource:
-        raise HTTPException(status_code=404, detail="Supplier resource not found")
+        raise HTTPException(status_code=404, detail="供应商资源关联不存在")
 
     agreement = SupplierResourceAgreement(**payload.model_dump())
     db.add(agreement)
@@ -117,7 +117,7 @@ async def get_agreement(
 ):
     agreement = await db.get(SupplierResourceAgreement, agreement_id)
     if not agreement:
-        raise HTTPException(status_code=404, detail="Agreement not found")
+        raise HTTPException(status_code=404, detail="协议不存在")
     return agreement
 
 
@@ -130,7 +130,7 @@ async def update_agreement(
 ):
     agreement = await db.get(SupplierResourceAgreement, agreement_id)
     if not agreement:
-        raise HTTPException(status_code=404, detail="Agreement not found")
+        raise HTTPException(status_code=404, detail="协议不存在")
 
     supplier_resource, supplier, resource = await _fetch_supplier_resource_context(
         db,
@@ -167,7 +167,7 @@ async def delete_agreement(
 ):
     agreement = await db.get(SupplierResourceAgreement, agreement_id)
     if not agreement:
-        raise HTTPException(status_code=404, detail="Agreement not found")
+        raise HTTPException(status_code=404, detail="协议不存在")
 
     supplier_resource, supplier, resource = await _fetch_supplier_resource_context(
         db,

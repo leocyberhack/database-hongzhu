@@ -223,6 +223,8 @@ export interface Order {
     order_no: string
     channel_id: string
     channel_name?: string
+    spu_id?: string
+    spu_name?: string
     sku_id: string
     sku_name?: string
     product_id: string
@@ -234,7 +236,46 @@ export interface Order {
     cost_amount?: number
     profit_amount?: number
     travel_date: string
-    status: 'paid' | 'verified' | 'refunded'
+    is_paid: boolean
+    paid_qty?: number
+    paid_amount?: number
+    paid_at?: string
+    is_issued: boolean
+    issued_qty?: number
+    issued_amount?: number
+    issued_at?: string
+    is_verified: boolean
+    verified_qty?: number
+    verified_amount?: number
+    verified_at?: string
+    is_reserved: boolean
+    reserved_qty?: number
+    reserved_amount?: number
+    reserved_at?: string
+    is_refund_unverified: boolean
+    refund_unverified_qty?: number
+    refund_unverified_amount?: number
+    refund_unverified_at?: string
+    is_refund_unreserved: boolean
+    refund_unreserved_qty?: number
+    refund_unreserved_amount?: number
+    refund_unreserved_at?: string
+    is_refund_verified: boolean
+    refund_verified_qty?: number
+    refund_verified_amount?: number
+    refund_verified_at?: string
+    is_refund_reserved: boolean
+    refund_reserved_qty?: number
+    refund_reserved_amount?: number
+    refund_reserved_at?: string
+    is_completed: boolean
+    completed_qty?: number
+    completed_amount?: number
+    completed_at?: string
+    is_disputed: boolean
+    disputed_qty?: number
+    disputed_amount?: number
+    disputed_at?: string
     created_at?: string
     updated_at?: string
 }

@@ -152,7 +152,7 @@ async def list_folders(
         query = select(Folder).where(Folder.parent_id == parent_id)
     else:
         if include_private and user.role != "super_admin":
-            raise HTTPException(status_code=403, detail="Permission denied")
+            raise HTTPException(status_code=403, detail="无权限访问")
         if include_private and user.role == "super_admin":
             query = select(Folder).where(Folder.parent_id.is_(None))
         else:
@@ -185,7 +185,7 @@ async def list_all_folders(
 ):
     """List all folders (flat)"""
     if include_private and user.role != "super_admin":
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(status_code=403, detail="无权限访问")
     result = await db.execute(select(Folder).order_by(Folder.name))
     folders = result.scalars().all()
     if not include_private and folders:

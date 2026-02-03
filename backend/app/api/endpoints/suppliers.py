@@ -129,7 +129,7 @@ async def create_supplier(
 ):
     exists = await db.scalar(select(Supplier).where(Supplier.supplier_name == payload.supplier_name))
     if exists:
-        raise HTTPException(status_code=400, detail="Supplier already exists")
+        raise HTTPException(status_code=400, detail="供应商名称已存在")
 
     supplier_folder = Folder(
         name=f"SUPPLIER_{payload.supplier_name}",
@@ -170,7 +170,7 @@ async def ensure_supplier_folder(
 ):
     supplier = await db.get(Supplier, supplier_id)
     if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
+        raise HTTPException(status_code=404, detail="供应商不存在")
 
     if supplier.folder_id:
         return SupplierRead.model_validate(supplier)
@@ -239,10 +239,10 @@ async def bind_supplier_resource(
 ):
     supplier = await db.get(Supplier, payload.supplier_id)
     if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
+        raise HTTPException(status_code=404, detail="供应商不存在")
     resource = await db.get(Resource, payload.resource_id)
     if not resource:
-        raise HTTPException(status_code=404, detail="Resource not found")
+        raise HTTPException(status_code=404, detail="资源不存在")
 
     dup = await db.scalar(
         select(SupplierResource).where(
@@ -251,7 +251,7 @@ async def bind_supplier_resource(
         )
     )
     if dup:
-        raise HTTPException(status_code=400, detail="Binding already exists")
+        raise HTTPException(status_code=400, detail="绑定关系已存在")
     obj = SupplierResource(**payload.model_dump())
     db.add(obj)
     await db.flush()
@@ -287,7 +287,7 @@ async def delete_supplier_resource(
 ):
     sr = await db.get(SupplierResource, supplier_resource_id)
     if not sr:
-        raise HTTPException(status_code=404, detail="Supplier resource not found")
+        raise HTTPException(status_code=404, detail="供应商资源关联不存在")
 
     supplier = await db.get(Supplier, sr.supplier_id)
     resource = await db.get(Resource, sr.resource_id)
@@ -328,7 +328,7 @@ async def adjust_supplier_price(
 ):
     sr = await db.get(SupplierResource, supplier_resource_id)
     if not sr:
-        raise HTTPException(status_code=404, detail="Supplier resource not found")
+        raise HTTPException(status_code=404, detail="供应商资源关联不存在")
 
     supplier = await db.get(Supplier, sr.supplier_id)
     resource = await db.get(Resource, sr.resource_id)
@@ -396,12 +396,12 @@ async def update_supplier(
 ):
     supplier = await db.get(Supplier, supplier_id)
     if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
+        raise HTTPException(status_code=404, detail="供应商不存在")
     
     if payload.supplier_name:
         dup = await db.scalar(select(Supplier).where(Supplier.supplier_name == payload.supplier_name, Supplier.id != supplier_id))
         if dup:
-            raise HTTPException(status_code=400, detail="Supplier name already exists")
+            raise HTTPException(status_code=400, detail="供应商名称已存在")
     
     # Capture before state
     before_data = _supplier_audit_snapshot(supplier, include_empty_attrs=True)
@@ -439,7 +439,7 @@ async def delete_supplier(
 ):
     supplier = await db.get(Supplier, supplier_id)
     if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
+        raise HTTPException(status_code=404, detail="供应商不存在")
 
     binding_count = await db.scalar(
         select(func.count()).select_from(SupplierResource).where(SupplierResource.supplier_id == supplier_id)
@@ -485,8 +485,8 @@ async def batch_delete_suppliers(
     if usage_map:
         blocked = sorted(usage_map.keys())
         preview = ", ".join(str(i) for i in blocked[:10])
-        suffix = f" ? {len(blocked)} ????" if len(blocked) > 10 else ""
-        raise HTTPException(status_code=400, detail=f"???????????????: {preview}{suffix}")
+        suffix = f" 等 {len(blocked)} 个供应商" if len(blocked) > 10 else ""
+        raise HTTPException(status_code=400, detail=f"以下供应商已绑定资源，无法删除: {preview}{suffix}")
 
     suppliers = []
     folder_ids: set[int] = set()
@@ -542,7 +542,7 @@ async def batch_update_suppliers(
     if len(suppliers) != len(supplier_ids):
         found_ids = {s.id for s in suppliers}
         missing = [sid for sid in supplier_ids if sid not in found_ids]
-        raise HTTPException(status_code=404, detail=f"Supplier not found: {missing}")
+        raise HTTPException(status_code=404, detail=f"供应商不存在: {missing}")
 
     updated_count = 0
     for supplier in suppliers:
@@ -574,9 +574,9 @@ async def list_supplier_resource_inventory(
         start = datetime.strptime(start_date, "%Y-%m-%d").date()
         end = datetime.strptime(end_date, "%Y-%m-%d").date()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+        raise HTTPException(status_code=400, detail="日期格式错误，应为 YYYY-MM-DD")
     if start > end:
-        raise HTTPException(status_code=400, detail="start_date cannot be later than end_date")
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
     
     stmt = select(ResourceInventory).where(
         ResourceInventory.supplier_resource_id == supplier_resource_id,
@@ -707,6 +707,6 @@ async def batch_update_supplier_resource_inventory(
     db.add(audit)
     
     await db.commit()
-    return {"message": "Inventory updated successfully"}
+    return {"message": "库存更新成功"}
 
 

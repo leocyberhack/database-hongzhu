@@ -49,9 +49,9 @@ async def decide_approval(
 ):
     approval = await db.get(Approval, approval_id)
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval not found")
+        raise HTTPException(status_code=404, detail="审批记录不存在")
     if approval.status != "pending":
-        raise HTTPException(status_code=400, detail="Approval already processed")
+        raise HTTPException(status_code=400, detail="审批已处理")
 
     target_status = "approved" if payload.approve else "rejected"
     decided_at = now_china()
@@ -62,7 +62,7 @@ async def decide_approval(
         if approval.object_type == "sku" and approval.action_type == "update":
             sku = await db.get(Sku, approval.object_id)
             if not sku:
-                raise HTTPException(status_code=404, detail="SKU not found")
+                raise HTTPException(status_code=404, detail="SKU 不存在")
             after_data = approval.after_data or {}
 
             # Re-check sku_name uniqueness within bound channels
@@ -84,7 +84,7 @@ async def decide_approval(
                         .limit(1)
                     )
                     if conflict:
-                        raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
+                        raise HTTPException(status_code=400, detail="该渠道下已存在相同 SKU 名称")
 
             for k, v in after_data.items():
                 setattr(sku, k, v)
@@ -105,10 +105,10 @@ async def decide_approval(
                 payload_data = approval.after_data or {}
                 channel_name = payload_data.get("channel_name")
                 if not channel_name:
-                    raise HTTPException(status_code=400, detail="Channel name is required")
+                    raise HTTPException(status_code=400, detail="渠道名称不能为空")
                 dup = await db.scalar(select(Channel.id).where(Channel.channel_name == channel_name))
                 if dup:
-                    raise HTTPException(status_code=400, detail="Channel name already exists")
+                    raise HTTPException(status_code=400, detail="渠道名称已存在")
 
                 new_channel = Channel(**payload_data)
                 db.add(new_channel)
@@ -128,7 +128,7 @@ async def decide_approval(
             elif approval.action_type == "update":
                 chan = await db.get(Channel, approval.object_id)
                 if not chan:
-                    raise HTTPException(status_code=404, detail="Channel not found")
+                    raise HTTPException(status_code=404, detail="渠道不存在")
                 after_data = approval.after_data or {}
 
                 new_name = after_data.get("channel_name")
@@ -137,7 +137,7 @@ async def decide_approval(
                         select(Channel.id).where(Channel.channel_name == new_name, Channel.id != chan.id)
                     )
                     if dup:
-                        raise HTTPException(status_code=400, detail="Channel name already exists")
+                        raise HTTPException(status_code=400, detail="渠道名称已存在")
 
                 for k, v in after_data.items():
                     setattr(chan, k, v)
@@ -156,17 +156,17 @@ async def decide_approval(
             elif approval.action_type == "delete":
                 chan = await db.get(Channel, approval.object_id)
                 if not chan:
-                    raise HTTPException(status_code=404, detail="Channel not found")
+                    raise HTTPException(status_code=404, detail="渠道不存在")
 
                 sub_count = await db.scalar(select(func.count()).where(Channel.parent_id == chan.id))
                 if sub_count and sub_count > 0:
-                    raise HTTPException(status_code=400, detail="Cannot delete channel with sub-channels")
+                    raise HTTPException(status_code=400, detail="存在子渠道，无法删除")
 
                 order_count = await db.scalar(
                     select(func.count()).select_from(Order).where(Order.channel_id == chan.id)
                 )
                 if order_count and order_count > 0:
-                    raise HTTPException(status_code=400, detail=f"Cannot delete channel with orders: {order_count}")
+                    raise HTTPException(status_code=400, detail=f"该渠道存在 {order_count} 条订单，无法删除")
 
                 await db.delete(chan)
 

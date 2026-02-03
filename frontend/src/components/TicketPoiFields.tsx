@@ -10,7 +10,7 @@ const { TextArea } = Input
 export default function TicketPoiFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#fff7e6', borderRadius: 8, border: '1px solid #ffd591' }}>
-            <h4 style={{ marginBottom: 16, color: '#fa8c16' }}>🏞️ 景区POI通用信息（所有景区资源共享）</h4>
+            <h4 style={{ marginBottom: 16, color: '#fa8c16' }}>🏞️ 景区资源通用信息（所有景区子资源共享）</h4>
 
             {/* 入园信息 */}
             <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 4 }}>

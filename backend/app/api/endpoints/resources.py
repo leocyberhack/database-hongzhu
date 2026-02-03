@@ -113,20 +113,20 @@ async def create_poi(
     
     # poi_type必填校验
     if not payload.poi_type:
-        raise HTTPException(status_code=400, detail="poi_type is required")
+        raise HTTPException(status_code=400, detail="POI 类型不能为空")
     
     # poi_type枚举值校验
     valid_types = ["景区", "酒店", "餐饮", "交通"]
     if payload.poi_type not in valid_types:
         raise HTTPException(
             status_code=400, 
-            detail=f"Invalid poi_type. Must be one of: {', '.join(valid_types)}"
+            detail=f"无效的 POI 类型，必须是: {', '.join(valid_types)}"
         )
     
     # Unique check by name（全局不重复，编辑未改名允许）
     exists = await db.scalar(select(Poi).where(Poi.poi_name == payload.poi_name))
     if exists:
-        raise HTTPException(status_code=400, detail="POI name already exists")
+        raise HTTPException(status_code=400, detail="POI 名称已存在")
     
     # 1. 为新POI创建独立的根级文件夹（parent_id = NULL）
     # 文件夹名称格式：POI_{poi_name}
@@ -191,13 +191,13 @@ async def update_poi(
 ):
     poi = await db.get(Poi, poi_id)
     if not poi:
-        raise HTTPException(status_code=404, detail="POI not found")
+        raise HTTPException(status_code=404, detail="POI 不存在")
 
     # Name uniqueness：同名其他记录不允许
     if payload.poi_name:
         dup = await db.scalar(select(Poi).where(Poi.poi_name == payload.poi_name, Poi.id != poi_id))
         if dup:
-            raise HTTPException(status_code=400, detail="POI name already exists")
+            raise HTTPException(status_code=400, detail="POI 名称已存在")
     
     # poi_type变更校验：如果要修改poi_type，需要检查是否有关联资源
     if payload.poi_type and payload.poi_type != poi.poi_type:
@@ -216,7 +216,7 @@ async def update_poi(
         if payload.poi_type not in valid_types:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Invalid poi_type. Must be one of: {', '.join(valid_types)}"
+                detail=f"无效的 POI 类型，必须是: {', '.join(valid_types)}"
             )
     
     # Capture before state (include poi_type and attrs)
@@ -288,7 +288,7 @@ async def delete_poi(
 ):
     poi = await db.get(Poi, poi_id)
     if not poi:
-        raise HTTPException(status_code=404, detail="POI not found")
+        raise HTTPException(status_code=404, detail="POI 不存在")
 
     # Block deletion if POI still has resources
     resource_count = await db.scalar(
@@ -345,8 +345,8 @@ async def batch_delete_poi(
     if usage_map:
         blocked = sorted(usage_map.keys())
         preview = ", ".join(str(i) for i in blocked[:10])
-        suffix = f" ? {len(blocked)} ?POI" if len(blocked) > 10 else ""
-        raise HTTPException(status_code=400, detail=f"??POI???????????: {preview}{suffix}")
+        suffix = f" 等 {len(blocked)} 个 POI" if len(blocked) > 10 else ""
+        raise HTTPException(status_code=400, detail=f"以下 POI 存在资源，无法删除: {preview}{suffix}")
 
     pois = []
     folder_ids: set[int] = set()
@@ -388,21 +388,21 @@ async def batch_update_poi(
     if len(pois) != len(poi_ids):
         found_ids = {p.id for p in pois}
         missing = [pid for pid in poi_ids if pid not in found_ids]
-        raise HTTPException(status_code=404, detail=f"POI not found: {missing}")
+        raise HTTPException(status_code=404, detail=f"POI 不存在: {missing}")
 
     if "poi_name" in fields:
         if len(poi_ids) > 1:
             raise HTTPException(status_code=400, detail="批量更新不支持同时修改多个POI名称")
         dup = await db.scalar(select(Poi).where(Poi.poi_name == fields["poi_name"], Poi.id != poi_ids[0]))
         if dup:
-            raise HTTPException(status_code=400, detail="POI name already exists")
+            raise HTTPException(status_code=400, detail="POI 名称已存在")
 
     if "poi_type" in fields:
         valid_types = ["景区", "酒店", "餐饮", "交通"]
         if fields["poi_type"] not in valid_types:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid poi_type. Must be one of: {', '.join(valid_types)}",
+                detail=f"无效的 POI 类型，必须是: {', '.join(valid_types)}",
             )
         # Prevent changing type if POI has resources
         resource_counts = await db.execute(
@@ -445,12 +445,12 @@ async def create_resource(
     # 资源名称全局唯一（编辑未改名允许）
     dup = await db.scalar(select(Resource).where(Resource.resource_name == payload.resource_name))
     if dup:
-        raise HTTPException(status_code=400, detail="Resource name already exists")
+        raise HTTPException(status_code=400, detail="资源名称已存在")
     
     # 获取POI信息，自动继承poi_type作为resource_type
     poi = await db.get(Poi, payload.poi_id)
     if not poi:
-        raise HTTPException(status_code=404, detail="POI not found")
+        raise HTTPException(status_code=404, detail="POI 不存在")
     
     # 强制：resource_type必须与POI的poi_type一致
     # 如果payload中提供了resource_type，检查是否一致
@@ -505,17 +505,17 @@ async def update_resource(
 ):
     resource = await db.get(Resource, resource_id)
     if not resource:
-        raise HTTPException(status_code=404, detail="Resource not found")
+        raise HTTPException(status_code=404, detail="资源不存在")
 
     if payload.resource_name:
         dup = await db.scalar(select(Resource).where(Resource.resource_name == payload.resource_name, Resource.id != resource_id))
         if dup:
-            raise HTTPException(status_code=400, detail="Resource name already exists")
+            raise HTTPException(status_code=400, detail="资源名称已存在")
 
     if payload.poi_id and payload.poi_id != resource.poi_id:
         new_poi = await db.get(Poi, payload.poi_id)
         if not new_poi:
-            raise HTTPException(status_code=404, detail="POI not found")
+            raise HTTPException(status_code=404, detail="POI 不存在")
         if new_poi.poi_type != resource.resource_type:
             raise HTTPException(status_code=400, detail="资源类型必须与POI类型一致")
     
@@ -547,7 +547,7 @@ async def update_resource(
              from app.models import ProductResource
              usage_count = await db.scalar(select(func.count()).where(ProductResource.resource_id == resource_id))
              if usage_count and usage_count > 0:
-                 raise HTTPException(status_code=400, detail="Cannot deactivate resource used by products")
+                 raise HTTPException(status_code=400, detail="资源已被产品使用，无法下架")
 
     for field, value in update_data.items():
         setattr(resource, field, value)
@@ -579,14 +579,14 @@ async def delete_resource(
     
     resource = await db.get(Resource, resource_id)
     if not resource:
-        raise HTTPException(status_code=404, detail="Resource not found")
+        raise HTTPException(status_code=404, detail="资源不存在")
     
     # Only check if resource is referenced by products (ProductResource)
     product_resource_count = await db.scalar(
         select(func.count()).select_from(ProductResource).where(ProductResource.resource_id == resource_id)
     )
     if product_resource_count and product_resource_count > 0:
-        raise HTTPException(status_code=400, detail=f"Cannot delete resource: referenced by {product_resource_count} products. Remove product-resource links first.")
+        raise HTTPException(status_code=400, detail=f"无法删除资源：已被 {product_resource_count} 个产品引用，请先移除产品-资源关联")
     
     # Record audit log before deletion
     audit = AuditLog(
@@ -673,7 +673,7 @@ async def batch_update_resources(
     if len(resources) != len(resource_ids):
         found_ids = {r.id for r in resources}
         missing = [rid for rid in resource_ids if rid not in found_ids]
-        raise HTTPException(status_code=404, detail=f"Resource not found: {missing}")
+        raise HTTPException(status_code=404, detail=f"资源不存在: {missing}")
 
     if "resource_type" in fields:
         raise HTTPException(status_code=400, detail="批量更新不允许修改资源类型")
@@ -685,13 +685,13 @@ async def batch_update_resources(
             select(Resource).where(Resource.resource_name == fields["resource_name"], Resource.id != resource_ids[0])
         )
         if dup:
-            raise HTTPException(status_code=400, detail="Resource name already exists")
+            raise HTTPException(status_code=400, detail="资源名称已存在")
 
     new_poi = None
     if "poi_id" in fields:
         new_poi = await db.get(Poi, fields["poi_id"])
         if not new_poi:
-            raise HTTPException(status_code=404, detail="POI not found")
+            raise HTTPException(status_code=404, detail="POI 不存在")
 
     # Preload usage counts
     usage_counts = await db.execute(
@@ -711,7 +711,7 @@ async def batch_update_resources(
         if blocked:
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot deactivate resources used by products: {blocked}",
+                detail=f"以下资源已被产品使用，无法下架: {blocked}",
             )
 
     if new_poi is not None:

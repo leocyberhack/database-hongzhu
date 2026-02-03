@@ -77,12 +77,12 @@ const POIDetailDrawer: React.FC<POIDetailDrawerProps> = ({
                                 </Form.Item>
                             </Col>
                             <Col span={7}>
-                                <Form.Item name="poi_code" label="POI 编码">
+                                <Form.Item name="poi_code" label="资源编码">
                                     <Input />
                                 </Form.Item>
                             </Col>
                             <Col span={7}>
-                                <Form.Item name="poi_type" label="POI 类型">
+                                <Form.Item name="poi_type" label="资源类型">
                                     <Select disabled>
                                         {POI_TYPES.map(t => <Select.Option key={t} value={t}>{t}</Select.Option>)}
                                     </Select>
@@ -184,7 +184,7 @@ const POIDetailDrawer: React.FC<POIDetailDrawerProps> = ({
         },
         {
             key: 'resources',
-            label: '关联资源',
+            label: '关联子资源',
             children: (
                 <ResourceManager
                     key={poi.id}
@@ -202,7 +202,7 @@ const POIDetailDrawer: React.FC<POIDetailDrawerProps> = ({
 
     return (
         <Drawer
-            title={`POI 详情: ${poi.poi_name}`}
+            title={`资源详情: ${poi.poi_name}`}
             open={true}
             width={960}
             onClose={onClose}

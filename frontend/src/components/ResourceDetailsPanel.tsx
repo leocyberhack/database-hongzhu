@@ -15,7 +15,7 @@ interface ResourceDetailsPanelProps {
  */
 export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsPanelProps) {
     if (!resource) {
-        return <Empty description="无资源信息" />
+        return <Empty description="无子资源信息" />
     }
 
     const resourceAttrs: any = resource.attrs || {}
@@ -68,10 +68,10 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
         return (
             <>
                 <Divider orientation="left" style={{ margin: '12px 0', fontSize: 14, color: '#666' }}>
-                    🧭 POI 通用信息 ({poi.poi_name})
+                    🧭 资源通用信息 ({poi.poi_name})
                 </Divider>
                 <Descriptions bordered size="small" column={3}>
-                    <Descriptions.Item label="POI编码">{poi.poi_code || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="资源编码">{poi.poi_code || '-'}</Descriptions.Item>
                     <Descriptions.Item label="城市">{poi.city}</Descriptions.Item>
                     <Descriptions.Item label="经度">{poi.longitude ?? '-'}</Descriptions.Item>
                     <Descriptions.Item label="纬度">{poi.latitude ?? '-'}</Descriptions.Item>
@@ -226,14 +226,14 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
             {/* 第一部分：POI通用信息 */}
             {renderPoiCommonAttrs()}
 
-            {/* 第二部分：资源基本信息 */}
+            {/* 第二部分：子资源基本信息 */}
             <Divider orientation="left" style={{ margin: '12px 0 12px 0', fontSize: 14, color: '#666' }}>
-                🏷️ 资源基本信息
+                🏷️ 子资源基本信息
             </Divider>
             <Descriptions bordered size="small" column={3}>
-                <Descriptions.Item label="资源名称">{resource.resource_name}</Descriptions.Item>
-                <Descriptions.Item label="资源编码">{resource.resource_code || '-'}</Descriptions.Item>
-                <Descriptions.Item label="资源类型">
+                <Descriptions.Item label="子资源名称">{resource.resource_name}</Descriptions.Item>
+                <Descriptions.Item label="子资源编码">{resource.resource_code || '-'}</Descriptions.Item>
+                <Descriptions.Item label="子资源类型">
                     <Tag color="blue">{resourceType}</Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="状态">
@@ -243,7 +243,7 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                 </Descriptions.Item>
             </Descriptions>
 
-            {/* 第三部分：资源独属详细信息 */}
+            {/* 第三部分：子资源独属详细信息 */}
             {(resourceType === '景区' || resourceType === '酒店' || resourceType === '餐饮' || resourceType === '交通') && (
                 <>
                     <Divider orientation="left" style={{ margin: '12px 0', fontSize: 14, color: '#666' }}>

@@ -8,13 +8,15 @@ from sqlalchemy import and_, func, or_, select, update, desc, cast, Date
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
-from app.models import AuditLog, Approval, Channel, Price, PriceHistory, Sku, Product
+from app.models import AuditLog, Approval, Channel, Price, PriceHistory, Sku, Product, Spu, SkuChannel
 from app.schemas.common import ListResponse, Pagination
 from app.schemas.price import ChannelCreate, ChannelRead, PriceCreate, PriceDecision, PriceRead, PriceHistoryRead
 from pydantic import BaseModel
 
 class PricingSummaryItem(BaseModel):
     sku_id: int
+    spu_id: Optional[int] = None
+    spu_name: Optional[str] = None
     channel_id: int
     sku_name: str
     channel_name: str
@@ -139,7 +141,7 @@ async def list_pricing_summary(
 ):
     # Retrieve all SKUs and Channels
     # Optimization: Filter SKUs first if sku_id is provided
-    sku_stmt = select(Sku).join(Product)
+    sku_stmt = select(Sku, Spu.name.label("spu_name")).join(Product).outerjoin(Spu, Spu.id == Sku.spu_id)
     if sku_id:
         sku_stmt = sku_stmt.where(Sku.id == sku_id)
     
@@ -171,7 +173,7 @@ async def list_pricing_summary(
     # If 1000 SKUs * 5 Channels = 5000 rows. Doable in memory for now.
     
     all_channels = (await db.scalars(select(Channel))).all()
-    all_skus = (await db.scalars(sku_stmt)).all()
+    sku_rows = (await db.execute(sku_stmt)).all()
     
     # Group active prices for bulk lookup
     # Key: (sku_id, channel_id) -> (min, max)
@@ -197,7 +199,7 @@ async def list_pricing_summary(
     # To be safe and fast: Fetch {product_id: allowed_channels} map.
     
     # Extract distinct product IDs from SKUs
-    p_ids = list(set(s.product_id for s in all_skus))
+    p_ids = list(set(row[0].product_id for row in sku_rows))
     # Fetch products
     if p_ids:
         products = (await db.scalars(select(Product).where(Product.id.in_(p_ids)))).all()
@@ -205,7 +207,23 @@ async def list_pricing_summary(
     else:
         p_map = {}
 
-    for sku in all_skus:
+    # Map active SKU-Channel bindings
+    sku_channel_rows = await db.execute(
+        select(SkuChannel.sku_id, SkuChannel.channel_id).where(SkuChannel.status == "active")
+    )
+    sku_channel_map: dict[int, set[int]] = {}
+    for sku_id_val, channel_id_val in sku_channel_rows.all():
+        if channel_id_val is None:
+            continue
+        sku_channel_map.setdefault(int(sku_id_val), set()).add(int(channel_id_val))
+
+    channel_map = {c.id: c for c in all_channels}
+
+    for sku, spu_name in sku_rows:
+        # Only include SKUs that have active channel bindings
+        bound_channels = sku_channel_map.get(sku.id, set())
+        if not bound_channels:
+            continue
         allowed = p_map.get(sku.product_id)
         
         # Normalize allowed_channels to a set of channel IDs (supports list of int or list of dicts with channel_id)
@@ -223,9 +241,9 @@ async def list_pricing_summary(
                         continue
         
         if not allowed_ids:
-            valid_channels = all_channels
+            valid_channels = [channel_map[cid] for cid in bound_channels if cid in channel_map]
         else:
-            valid_channels = [c for c in all_channels if c.id in allowed_ids]
+            valid_channels = [channel_map[cid] for cid in bound_channels if cid in channel_map and cid in allowed_ids]
             
         for ch in valid_channels:
             if channel_id and ch.id != channel_id:
@@ -235,6 +253,8 @@ async def list_pricing_summary(
             
             full_items.append(PricingSummaryItem(
                 sku_id=sku.id,
+                spu_id=sku.spu_id,
+                spu_name=spu_name,
                 channel_id=ch.id,
                 sku_name=sku.sku_name,
                 channel_name=ch.channel_name,
@@ -382,7 +402,7 @@ async def create_price(
                  c.status = 'expired'
                  db.add(c)
              else:
-                 raise HTTPException(status_code=400, detail="Pending price conflicts exist; only admin or super_admin can override")
+                 raise HTTPException(status_code=400, detail="存在待审批价格冲突，仅管理员或超级管理员可覆盖")
         
         # If conflict is ACTIVE, we adjust it
         elif c.status == 'active':
@@ -396,7 +416,7 @@ async def create_price(
         
         # Check permission if overriding a pending record
         if existing_exact.status == 'pending' and user.role not in ['admin', 'super_admin']:
-             raise HTTPException(status_code=400, detail="Pending price exists for this exact date range; only admin can override")
+             raise HTTPException(status_code=400, detail="该时间范围已存在待审批价格，仅管理员或超级管理员可覆盖")
              
         obj = existing_exact
         obj.sale_price = Decimal(str(payload.sale_price))
@@ -490,7 +510,7 @@ async def decide_price(
 ):
     price = await db.get(Price, price_id)
     if not price:
-        raise HTTPException(status_code=404, detail="Price not found")
+        raise HTTPException(status_code=404, detail="价格不存在")
 
     if payload.approve:
         price.status = "active"
@@ -585,12 +605,12 @@ async def get_sku_channel_inventory(
     # Get SKU to find product
     sku = await db.get(Sku, sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU not found")
+        raise HTTPException(status_code=404, detail="SKU 不存在")
     
     # Get Product
     product = await db.get(Product, sku.product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="产品不存在")
     
     # Find channel allocation ratio from product.allowed_channels
     channel_ratio = 0
@@ -599,6 +619,8 @@ async def get_sku_channel_inventory(
             if isinstance(alloc, dict):
                 if alloc.get('channel_id') == channel_id:
                     channel_ratio = alloc.get('stock_ratio', 0) or 0
+                    if alloc.get('stock_ratio') is None:
+                        channel_ratio = 100
                     break
                 continue
             try:
@@ -611,26 +633,26 @@ async def get_sku_channel_inventory(
     
     # If ratio is 0, return empty inventory
     if channel_ratio <= 0:
-        return {"items": [], "message": "No inventory allocated for this channel"}
+        return {"items": [], "message": "该渠道未分配库存"}
     
     # Get all product resources (with quantities)
     resources_stmt = select(ProductResource).where(ProductResource.product_id == product.id)
     product_resources = list(await db.scalars(resources_stmt))
     
     if not product_resources:
-        return {"items": [], "message": "Product has no linked resources"}
+        return {"items": [], "message": "产品未关联任何资源"}
     required_resources = [pr for pr in product_resources if pr.required_flag]
     if not required_resources:
-        return {"items": [], "message": "Product has no required resources"}
+        return {"items": [], "message": "产品未配置必选资源"}
     
     # Parse date range
     try:
         start = datetime.strptime(start_date, "%Y-%m-%d").date()
         end = datetime.strptime(end_date, "%Y-%m-%d").date()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+        raise HTTPException(status_code=400, detail="日期格式错误，应为 YYYY-MM-DD")
     if start > end:
-        raise HTTPException(status_code=400, detail="start_date cannot be later than end_date")
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
     
     # Get all resource IDs needed
     resource_ids = [pr.resource_id for pr in required_resources]
@@ -671,11 +693,14 @@ async def get_sku_channel_inventory(
         product_qty = None
         for pr in required_resources:
             # Determine which inventory pool to use
-            if pr.supplier_id is not None:
-                # Specific supplier bound
-                resource_available = detailed_lookup.get((pr.resource_id, pr.supplier_id, date_str), 0)
+            if pr.supplier_mode == 'locked' and pr.supplier_ids:
+                # Locked mode: only specified suppliers
+                resource_available = sum(
+                    detailed_lookup.get((pr.resource_id, sid, date_str), 0)
+                    for sid in pr.supplier_ids
+                )
             else:
-                # No binding, use accumulated total
+                # Auto mode: use all suppliers
                 resource_available = total_lookup.get((pr.resource_id, date_str), 0)
                 
             if pr.quantity > 0:

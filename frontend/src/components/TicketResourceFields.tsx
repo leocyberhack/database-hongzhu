@@ -19,9 +19,9 @@ export interface ResourceFieldsProps {
 export default function TicketResourceFields({ prefix = ['attrs'], typeOptions, onOptionsChange, onOptionAdd, onOptionDelete, onOptionRename }: ResourceFieldsProps) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#e6f7ff', borderRadius: 8, border: '1px solid #91d5ff' }}>
-            <h4 style={{ marginBottom: 16, color: '#1890ff' }}>🎫 景区资源独属信息</h4>
+            <h4 style={{ marginBottom: 16, color: '#1890ff' }}>🎫 景区子资源独属信息</h4>
             <p style={{ marginBottom: 16, color: '#666', fontSize: 12 }}>
-                提示：通用字段（地址、入园时间、联系电话等）已在POI层设置，此处只需填写该景区特有的属性
+                提示：通用字段（地址、入园时间、联系电话等）已在资源层设置，此处只需填写该景区特有的属性
             </p>
 
             {/* 票种 */}

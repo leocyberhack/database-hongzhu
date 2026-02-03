@@ -37,16 +37,16 @@ async def create_sku_channel(
     # Check if SKU and Channel exist
     sku = await db.get(Sku, payload.sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU not found")
+        raise HTTPException(status_code=404, detail="SKU 不存在")
     
     channel = await db.get(Channel, payload.channel_id)
     if not channel:
-        raise HTTPException(status_code=404, detail="Channel not found")
+        raise HTTPException(status_code=404, detail="渠道不存在")
 
     # Prevent same sku_name binding to same channel
     conflict = await _has_same_name_on_channel(db, payload.channel_id, sku.sku_name, exclude_sku_id=sku.id)
     if conflict:
-        raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
+        raise HTTPException(status_code=400, detail="该渠道下已存在相同 SKU 名称")
 
     sc = SkuChannel(**payload.model_dump())
     db.add(sc)
@@ -55,7 +55,7 @@ async def create_sku_channel(
         await db.refresh(sc)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Binding already exists")
+        raise HTTPException(status_code=400, detail="绑定关系已存在")
     
     # Reload to get related info logic if needed, but for now we manually attach if response model needs it
     # Or rely on lazy loading if async session allows (usually no in async unless eager load)
@@ -114,7 +114,7 @@ async def get_sku_channel(
     stmt = select(SkuChannel).where(SkuChannel.id == id).options(selectinload(SkuChannel.channel), selectinload(SkuChannel.sku))
     sc = await db.scalar(stmt)
     if not sc:
-        raise HTTPException(status_code=404, detail="Binding not found")
+        raise HTTPException(status_code=404, detail="绑定关系不存在")
     
     item = SkuChannelResponse.model_validate(sc)
     if sc.channel:
@@ -133,12 +133,12 @@ async def update_sku_channel(
 ):
     sc = await db.get(SkuChannel, id)
     if not sc:
-        raise HTTPException(status_code=404, detail="Binding not found")
+        raise HTTPException(status_code=404, detail="绑定关系不存在")
 
     if payload.channel_id is not None:
         channel = await db.get(Channel, payload.channel_id)
         if not channel:
-            raise HTTPException(status_code=404, detail="Channel not found")
+            raise HTTPException(status_code=404, detail="渠道不存在")
 
     # If channel changes, ensure no duplicate sku_name on that channel
     target_channel = payload.channel_id if payload.channel_id is not None else sc.channel_id
@@ -146,7 +146,7 @@ async def update_sku_channel(
         sku = await db.get(Sku, sc.sku_id)
         conflict = await _has_same_name_on_channel(db, target_channel, sku.sku_name, exclude_sku_id=sku.id)
         if conflict:
-            raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
+            raise HTTPException(status_code=400, detail="该渠道下已存在相同 SKU 名称")
 
     update_data = payload.model_dump(exclude_unset=True)
     for k, v in update_data.items():
@@ -157,7 +157,7 @@ async def update_sku_channel(
         await db.refresh(sc)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Update failed")
+        raise HTTPException(status_code=400, detail="更新失败")
     
     return sc
 
@@ -170,7 +170,7 @@ async def delete_sku_channel(
 ):
     sc = await db.get(SkuChannel, id)
     if not sc:
-        raise HTTPException(status_code=404, detail="Binding not found")
+        raise HTTPException(status_code=404, detail="绑定关系不存在")
     
     await db.delete(sc)
     await db.commit()

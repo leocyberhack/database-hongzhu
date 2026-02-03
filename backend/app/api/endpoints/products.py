@@ -275,7 +275,7 @@ async def create_product(
     # structure_hash unique
     dup = await db.scalar(select(Product).where(Product.structure_hash == payload.structure_hash))
     if dup:
-        raise HTTPException(status_code=400, detail="structure_hash already exists")
+        raise HTTPException(status_code=400, detail="structure_hash 已存在")
 
     # Validate resource uniqueness
     if payload.resources:
@@ -363,7 +363,7 @@ async def update_product(
             select(Product).where(Product.structure_hash == payload.structure_hash, Product.id != product_id)
         )
         if dup_hash:
-            raise HTTPException(status_code=400, detail="structure_hash already exists")
+            raise HTTPException(status_code=400, detail="structure_hash 已存在")
     if payload.resources:
         resource_ids = [r.resource_id for r in payload.resources]
         if len(resource_ids) != len(set(resource_ids)):
@@ -554,7 +554,7 @@ async def batch_update_products(
     if len(products) != len(product_ids):
         found_ids = {p.id for p in products}
         missing = [pid for pid in product_ids if pid not in found_ids]
-        raise HTTPException(status_code=404, detail=f"Product not found: {missing}")
+        raise HTTPException(status_code=404, detail=f"产品不存在: {missing}")
 
     if "status" in fields:
         new_status = fields["status"]

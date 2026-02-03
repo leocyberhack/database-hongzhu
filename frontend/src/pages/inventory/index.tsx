@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from 'react'
+﻿import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Table, Progress, Card, DatePicker, Row, Col, Space, Button, Input, Select, Tag } from 'antd'
 import dayjs, { Dayjs } from 'dayjs'
 import { useData } from '@/contexts/DataContext'
@@ -27,6 +27,10 @@ export default function InventoryPage() {
     const [rows, setRows] = useState<InventoryDay[]>([])
     const [loading, setLoading] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
+    const [sorter, setSorter] = useState<{ field?: string; order?: string }>({
+        field: 'spu_name',
+        order: 'ascend',
+    })
 
     const [filters, setFilters] = useState({
         keyword: '',
@@ -47,6 +51,8 @@ export default function InventoryPage() {
             })
             if (filters.keyword.trim()) params.append('keyword', filters.keyword.trim())
             if (filters.channel_id) params.append('channel_id', String(filters.channel_id))
+            if (sorter.field) params.append('sort_field', sorter.field)
+            if (sorter.order) params.append('sort_order', sorter.order)
             const res = await apiRequest<{ items: InventoryDay[]; pagination: { total: number } }>(
                 `/api/inventory/day?${params.toString()}`
             )
@@ -58,22 +64,62 @@ export default function InventoryPage() {
         } finally {
             setLoading(false)
         }
-    }, [filters.channel_id, filters.keyword, pagination.current, pagination.pageSize, selectedDate])
+    }, [filters.channel_id, filters.keyword, pagination.current, pagination.pageSize, selectedDate, sorter.field, sorter.order])
 
     useEffect(() => {
         fetchData()
     }, [fetchData])
 
+    const groupMeta = useMemo(() => {
+        const spans = new Array(rows.length).fill(0)
+        const colors = new Array(rows.length).fill('')
+        if (rows.length === 0) return { spans, colors }
+
+        const groupColors = ['#f0f5ff', '#fff1f0']
+        let groupIndex = -1
+        let groupStart = 0
+        let lastKey: string | null = null
+
+        const getKey = (row: InventoryDay) => `${row.spu_id ?? 'none'}::${row.spu_name ?? ''}`
+
+        rows.forEach((row, index) => {
+            const key = getKey(row)
+            if (key !== lastKey) {
+                if (lastKey !== null) {
+                    spans[groupStart] = index - groupStart
+                }
+                groupIndex += 1
+                groupStart = index
+                lastKey = key
+            }
+            colors[index] = groupColors[groupIndex % groupColors.length]
+        })
+
+        spans[groupStart] = rows.length - groupStart
+
+        return { spans, colors }
+    }, [rows])
+
     const columns: any = [
         {
             title: '所属SPU',
             dataIndex: 'spu_name',
-            render: (text: string) => <Tag color="geekblue">{text || '-'}</Tag>,
+            render: (text: string, _record: InventoryDay, index?: number) => {
+                if (index === undefined) {
+                    return <Tag color="geekblue">{text || '-'}</Tag>
+                }
+                return {
+                    children: <Tag color="geekblue">{text || '-'}</Tag>,
+                    props: { rowSpan: groupMeta.spans[index] ?? 0 },
+                }
+            },
+            sorter: true,
         },
         {
             title: 'SKU名称',
             dataIndex: 'sku_name',
             render: (v: string) => v || '-',
+            sorter: true,
         },
         {
             title: '渠道',
@@ -180,6 +226,11 @@ export default function InventoryPage() {
                     columns={columns}
                     dataSource={rows}
                     loading={loading}
+                    onRow={(_record, index) => {
+                        if (index === undefined) return {}
+                        const background = groupMeta.colors[index]
+                        return background ? { style: { background } } : {}
+                    }}
                     pagination={{
                         current: pagination.current,
                         pageSize: pagination.pageSize,
@@ -187,6 +238,14 @@ export default function InventoryPage() {
                         showSizeChanger: true,
                         showTotal: (total) => `共 ${total} 条记录`,
                         onChange: (page, pageSize) => setPagination(prev => ({ ...prev, current: page, pageSize: pageSize || prev.pageSize })),
+                    }}
+                    onChange={(p, _filters, sorterInfo) => {
+                        setPagination(prev => ({ ...prev, current: p.current || 1, pageSize: p.pageSize || prev.pageSize }))
+                        const nextSorter = Array.isArray(sorterInfo) ? sorterInfo[0] : sorterInfo
+                        setSorter({
+                            field: (nextSorter?.field as string) || 'spu_name',
+                            order: (nextSorter?.order as string) || 'ascend',
+                        })
                     }}
                 />
             </div>

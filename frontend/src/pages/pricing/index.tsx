@@ -11,6 +11,8 @@ const { Text } = Typography
 
 interface PricingSummaryItem {
     sku_id: number
+    spu_id?: number
+    spu_name?: string
     channel_id: number
     sku_name: string
     channel_name: string
@@ -61,6 +63,7 @@ export default function PricingPage() {
             )
             const list = res.items || []
             const enriched = list.map(item => {
+                if (item.spu_name) return item
                 const sku = skus.find(s => String(s.id) === String(item.sku_id))
                 const spu = sku ? spus.find(s => String(s.id) === String(sku.spu_id)) : null
                 return {
@@ -148,7 +151,7 @@ export default function PricingPage() {
             title: '所属SPU',
             dataIndex: 'spu_name',
             key: 'spu_name',
-            render: (text: string) => <Tag color="geekblue">{text}</Tag>,
+            render: (text: string) => <Tag color="geekblue">{text || '-'}</Tag>,
         },
         {
             title: 'SKU 名称',

@@ -69,7 +69,7 @@ interface BreadcrumbItem {
 
 export default function POIFileManager({
     poiFolderId,
-    entityLabel = 'POI',
+    entityLabel = '资源',
     readonly = false,
     mode = 'manage',
     onSelectionChange,

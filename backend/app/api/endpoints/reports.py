@@ -2,7 +2,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, case, select
+from sqlalchemy import func, case, select, or_
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
@@ -32,8 +32,21 @@ async def report_summary(
         func.sum(Order.sale_amount).label("gmv"),
         func.sum(Order.profit_amount).label("profit"),
         func.count().label("orders"),
-        func.sum(case((Order.status == "verified", 1), else_=0)).label("verified"),
-        func.sum(case((Order.status == "refunded", 1), else_=0)).label("refunded"),
+        func.sum(case((Order.is_verified.is_(True), 1), else_=0)).label("verified"),
+        func.sum(
+            case(
+                (
+                    or_(
+                        Order.is_refund_unverified.is_(True),
+                        Order.is_refund_unreserved.is_(True),
+                        Order.is_refund_verified.is_(True),
+                        Order.is_refund_reserved.is_(True),
+                    ),
+                    1,
+                ),
+                else_=0,
+            )
+        ).label("refunded"),
     ).select_from(Order)
     if start_date:
         stmt = stmt.where(Order.created_at >= start_date)

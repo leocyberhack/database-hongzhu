@@ -56,7 +56,7 @@ async def read_spu(
     result = await db.execute(stmt)
     spu = result.scalar_one_or_none()
     if not spu:
-        raise HTTPException(status_code=404, detail="SPU not found")
+        raise HTTPException(status_code=404, detail="SPU 不存在")
         
     s_dict = {c.name: getattr(spu, c.name) for c in spu.__table__.columns}
     s_dict['sku_count'] = len(spu.skus)
@@ -71,7 +71,7 @@ async def update_spu(
     result = await db.execute(select(Spu).where(Spu.id == spu_id).options(selectinload(Spu.skus)))
     spu = result.scalar_one_or_none()
     if not spu:
-        raise HTTPException(status_code=404, detail="SPU not found")
+        raise HTTPException(status_code=404, detail="SPU 不存在")
         
     update_data = spu_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -94,7 +94,7 @@ async def delete_spu(
 ):
     spu = await db.get(Spu, spu_id)
     if not spu:
-        raise HTTPException(status_code=404, detail="SPU not found")
+        raise HTTPException(status_code=404, detail="SPU 不存在")
     await db.delete(spu)
     await db.commit()
     return {"ok": True}

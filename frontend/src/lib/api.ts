@@ -78,8 +78,8 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
         }
         // 简单中英对照映射
         const map: Record<string, string> = {
-            "POI name already exists": "POI 名称已存在",
-            "Resource name already exists": "资源名称已存在",
+            "POI name already exists": "资源名称已存在",
+            "Resource name already exists": "子资源名称已存在",
             "Product name already exists": "产品名称已存在",
             "Supplier name already exists": "供应商名称已存在",
             "Channel name already exists": "渠道名称已存在",
@@ -88,8 +88,8 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
             "Channel not found": "未找到渠道",
             "Product not found": "未找到产品",
             "Supplier not found": "未找到供应商",
-            "Resource not found": "未找到资源",
-            "POI not found": "未找到 POI",
+            "Resource not found": "未找到子资源",
+            "POI not found": "未找到资源",
             "Invalid date format, expected YYYY-MM-DD": "日期格式错误，应为 YYYY-MM-DD",
             "Inventory record not found": "未找到库存记录",
             "Channel creation failed": "创建渠道失败",

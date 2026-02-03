@@ -10,7 +10,7 @@ const { TextArea } = Input
 export default function HotelPoiFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
-            <h4 style={{ marginBottom: 16, color: '#52c41a' }}>🏨 酒店POI通用信息（所有房型共享）</h4>
+            <h4 style={{ marginBottom: 16, color: '#52c41a' }}>🏨 酒店资源通用信息（所有房型共享）</h4>
 
             {/* 基础信息 */}
             <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 4 }}>

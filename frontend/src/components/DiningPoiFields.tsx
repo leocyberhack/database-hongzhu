@@ -9,7 +9,7 @@ const { TextArea } = Input
 export default function DiningPoiFields({ prefix = ['attrs'] }: { prefix?: (string | number)[] }) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#fff7e6', borderRadius: 8, border: '1px solid #ffd591' }}>
-            <h4 style={{ marginBottom: 16, color: '#fa8c16' }}>🍽️ 餐饮POI通用信息</h4>
+            <h4 style={{ marginBottom: 16, color: '#fa8c16' }}>🍽️ 餐饮资源通用信息</h4>
 
             <Row gutter={16}>
                 <Col span={12}>

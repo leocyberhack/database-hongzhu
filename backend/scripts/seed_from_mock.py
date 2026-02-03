@@ -255,8 +255,19 @@ async def seed(mock_dir: Path):
             item["cost_amount"] = _as_decimal(item.get("cost_amount"))
             item["profit_amount"] = _as_decimal(item.get("profit_amount"))
             item["created_at"] = _as_dt(item.get("created_at"))
-            item["verified_at"] = _as_dt(item.get("verified_at"))
-            item["refunded_at"] = _as_dt(item.get("refunded_at"))
+            status = item.get("status")
+            verified_at = _as_dt(item.get("verified_at"))
+            refunded_at = _as_dt(item.get("refunded_at"))
+            item["verified_at"] = verified_at
+            item["refund_unverified_at"] = refunded_at
+            if status in {"paid", "verified", "refunded"}:
+                item["is_paid"] = True
+            if status == "verified":
+                item["is_verified"] = True
+            if status == "refunded":
+                item["is_refund_unverified"] = True
+            item.pop("status", None)
+            item.pop("refunded_at", None)
         await session.execute(insert(Order), order_rows)
 
         approval_map, approval_rows = build_mapping(data["approvals"])

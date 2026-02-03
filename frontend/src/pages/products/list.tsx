@@ -182,7 +182,7 @@ export default function ProductListPage() {
             render: (_: string, record: Product) => record.category_name || '-',
         },
         {
-            title: '所属POI',
+            title: '所属资源',
             dataIndex: 'poi_name',
             render: (_: string, record: Product) => record.poi_name || '-',
         },
@@ -327,9 +327,9 @@ export default function ProductListPage() {
                             </Form.Item>
                         </Col>
                         <Col span={6}>
-                            <Form.Item label="POI区域" style={{ marginBottom: 0, width: '100%' }}>
+                            <Form.Item label="资源区域" style={{ marginBottom: 0, width: '100%' }}>
                                 <Select
-                                    placeholder="输入POI搜索"
+                                    placeholder="输入资源搜索"
                                     allowClear
                                     showSearch
                                     filterOption={false}
@@ -498,7 +498,7 @@ export default function ProductListPage() {
                 ) : (
                     <div>
                         <p style={{ color: '#666', marginBottom: 16 }}>
-                            产品库存由资源库存自动计算得出（产品库存 = MIN(资源库存 / 资源用量)）
+                            产品库存由子资源库存自动计算得出（产品库存 = MIN(子资源库存 / 子资源用量)）
                         </p>
                         <ProductStockPreviewCalendar
                             stockData={productInventory.reduce((acc, curr) => {

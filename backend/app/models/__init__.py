@@ -388,6 +388,21 @@ class InventoryLog(Base):
     remark: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ResourceInventoryLog(Base):
+    __tablename__ = "resource_inventory_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    supplier_resource_id: Mapped[int] = mapped_column(ForeignKey("supplier_resource.id", ondelete="CASCADE"), nullable=False)
+    inventory_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    change_type: Mapped[str] = mapped_column(String, nullable=False)
+    before_qty: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    after_qty: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    related_order_id: Mapped[int | None] = mapped_column(ForeignKey("order.id", ondelete="SET NULL"), nullable=True)
+    operator: Mapped[str | None] = mapped_column(String, nullable=True)
+    operated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+    remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class Order(Base):
     __tablename__ = "order"
 
@@ -403,11 +418,48 @@ class Order(Base):
     cost_price: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
     cost_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
     profit_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
-    status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'paid'"))
+    is_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    paid_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    paid_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    paid_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_issued: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    issued_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    issued_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    issued_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    verified_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    verified_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     verified_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    refunded_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_reserved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    reserved_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reserved_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    reserved_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_refund_unverified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    refund_unverified_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    refund_unverified_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    refund_unverified_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_refund_unreserved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    refund_unreserved_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    refund_unreserved_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    refund_unreserved_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_refund_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    refund_verified_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    refund_verified_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    refund_verified_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_refund_reserved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    refund_reserved_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    refund_reserved_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    refund_reserved_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    completed_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completed_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    completed_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_disputed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    disputed_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    disputed_amount: Mapped[Numeric | None] = mapped_column(Numeric(12, 2), nullable=True)
+    disputed_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
     remark: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (UniqueConstraint("order_no", "channel_id", name="uq_order_no_channel"),)
@@ -496,6 +548,7 @@ __all__ = [
     "PriceHistory",
     "Inventory",
     "InventoryLog",
+    "ResourceInventoryLog",
     "Order",
     "OrderStatusHistory",
     "Approval",

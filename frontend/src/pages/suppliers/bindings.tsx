@@ -18,7 +18,7 @@ export default function SupplierBindingsPage() {
             render: (v: string) => suppliers.find((s) => s.id === v)?.supplier_name || '-',
         },
         {
-            title: '资源',
+            title: '子资源',
             dataIndex: 'resource_id',
             render: (v: string) => resources.find((r) => r.id === v)?.resource_name || '-',
         },
@@ -39,7 +39,7 @@ export default function SupplierBindingsPage() {
         <div className="page-container">
             <div className="page-header">
                 <h1 className="page-title">供应关系管理</h1>
-                <p className="page-subtitle">供应商与资源绑定关系</p>
+                <p className="page-subtitle">供应商与子资源绑定关系</p>
             </div>
 
             <div className="glass-card" style={{ padding: '24px' }}>

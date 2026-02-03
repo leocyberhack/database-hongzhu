@@ -31,7 +31,7 @@ const POIFileModal: React.FC<POIFileModalProps> = ({ poi, open, onClose }) => {
             destroyOnClose
         >
             <div style={{ marginBottom: 16, padding: 12, background: '#f6ffed', borderRadius: 4, fontSize: 13 }}>
-                ✅ POI <strong>{poi.poi_name}</strong> 已创建成功！您可以在此上传详情图片，也可以跳过此步骤稍后上传。
+                ✅ 资源 <strong>{poi.poi_name}</strong> 已创建成功！您可以在此上传详情图片，也可以跳过此步骤稍后上传。
             </div>
             <POIFileManager
                 poiFolderId={poi.folder_id || null}

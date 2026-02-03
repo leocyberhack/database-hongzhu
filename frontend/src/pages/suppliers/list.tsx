@@ -297,7 +297,7 @@ export default function SupplierPage() {
             dataIndex: 'supplier_name',
         },
         {
-            title: '绑定资源数',
+            title: '绑定子资源数',
             render: (_: any, record: Supplier) => record.resource_count ?? 0,
         },
         {
@@ -338,7 +338,7 @@ export default function SupplierPage() {
                             编辑
                         </Button>
                         {isLocked ? (
-                            <Tooltip title="该供应商已绑定资源(数量不为0)，不可删除">
+                            <Tooltip title="该供应商已绑定子资源(数量不为0)，不可删除">
                                 <Button type="link" danger disabled size="small" icon={<DeleteOutlined />}>
                                     删除
                                 </Button>
@@ -346,7 +346,7 @@ export default function SupplierPage() {
                         ) : (
                             <Popconfirm
                                 title="确定删除该供应商吗？"
-                                description="删除供应商可能影响关联的资源供应，请谨慎操作"
+                                description="删除供应商可能影响关联的子资源供应，请谨慎操作"
                                 onConfirm={() => deleteSupplier(record.id)}
                                 okText="删除"
                                 cancelText="取消"
@@ -374,7 +374,7 @@ export default function SupplierPage() {
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                     <h1 className="page-title">供应商管理</h1>
-                    <p className="page-subtitle">供应商基础信息管理，绑定资源请在资源管理中操作</p>
+                    <p className="page-subtitle">供应商基础信息管理，绑定子资源请在子资源管理中操作</p>
                 </div>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
                     新建供应商
@@ -606,16 +606,16 @@ export default function SupplierPage() {
                             <Descriptions.Item label="业务范围" span={2}>{formatAttrDisplay(selected.attrs?.business_scope)}</Descriptions.Item>
                         </Descriptions>
 
-                        <h4 style={{ margin: '16px 0' }}>已绑定的资源</h4>
+                        <h4 style={{ margin: '16px 0' }}>已绑定的子资源</h4>
                         <Table
                             size="small"
                             pagination={false}
                             rowKey="id"
                             dataSource={supplyList}
-                            locale={{ emptyText: '该供应商暂未绑定任何资源，请在资源管理中创建资源时绑定供应商' }}
+                            locale={{ emptyText: '该供应商暂未绑定任何子资源，请在子资源管理中创建子资源时绑定供应商' }}
                             columns={[
-                                { title: '资源名称', dataIndex: ['resource', 'resource_name'] },
-                                { title: '资源类型', dataIndex: ['resource', 'resource_type'] },
+                                { title: '子资源名称', dataIndex: ['resource', 'resource_name'] },
+                                { title: '子资源类型', dataIndex: ['resource', 'resource_type'] },
                                 { title: '结算价', dataIndex: 'settlement_price', render: (v: number) => v ? `¥${v} ` : '-' },
                                 {
                                     title: '供应状态',
@@ -629,7 +629,7 @@ export default function SupplierPage() {
                         />
 
                         <p style={{ marginTop: 16, color: '#666', fontSize: 12 }}>
-                            📌 供应商与资源的绑定关系在资源管理中维护。创建资源时必须选择至少一个供应商。
+                            📌 供应商与子资源的绑定关系在子资源管理中维护。创建子资源时必须选择至少一个供应商。
                         </p>
                     </>
                 )}

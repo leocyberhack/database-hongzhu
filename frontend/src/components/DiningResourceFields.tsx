@@ -7,7 +7,7 @@ const { TextArea } = Input
 export default function DiningResourceFields({ prefix = ['attrs'], typeOptions, onOptionsChange, onOptionAdd, onOptionDelete, onOptionRename }: ResourceFieldsProps) {
     return (
         <div style={{ marginTop: 16, padding: 16, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
-            <h4 style={{ marginBottom: 16, color: '#52c41a' }}>🍽️ 餐饮资源特定信息</h4>
+            <h4 style={{ marginBottom: 16, color: '#52c41a' }}>🍽️ 餐饮子资源特定信息</h4>
 
             {/* 1. 餐饮类型（多选） */}
             <Form.Item

@@ -388,7 +388,7 @@ export default function SKUListPage() {
             onFilter: (value: string, record: SKU) => String(record.product_id) === String(value),
         },
         {
-            title: '所属区域 (POI)',
+            title: '所属资源',
             dataIndex: 'poi_id',
             render: (_: any, record: SKU) => {
                 // Sourced from product -> poi_id only per user request
@@ -494,6 +494,28 @@ export default function SKUListPage() {
         return spus.find(s => String(s.id) === String(spuIdParam))
     }, [spuIdParam, spus])
 
+    const renderProductSuppliers = (record: any) => {
+        const mode = record?.supplier_mode || 'auto'
+        if (mode === 'auto') {
+            return <Tag color="default">自动(最低价)</Tag>
+        }
+        const ids: Array<string | number> = (record?.supplier_ids && record.supplier_ids.length > 0)
+            ? record.supplier_ids
+            : (record?.supplier_id ? [record.supplier_id] : [])
+        if (!ids.length) {
+            return <Tag color="default">未指定</Tag>
+        }
+        return (
+            <Space size={[4, 4]} wrap>
+                {ids.map((id) => {
+                    const supplier = suppliers.find(s => String(s.id) === String(id))
+                    const label = supplier?.supplier_name || `ID:${id}`
+                    return <Tag key={String(id)}>{label}</Tag>
+                })}
+            </Space>
+        )
+    }
+
     return (
         <div className="page-container">
             {/* ... header ... */}
@@ -557,7 +579,7 @@ export default function SKUListPage() {
                             </Form.Item>
                         </Col>
                         <Col span={6}>
-                            <Form.Item label="POI区域" style={{ marginBottom: 0, width: '100%' }}>
+                            <Form.Item label="资源区域" style={{ marginBottom: 0, width: '100%' }}>
                                 <Select
                                     placeholder="全部区域"
                                     allowClear
@@ -718,9 +740,9 @@ export default function SKUListPage() {
 
                     {/* Product Composition Block */}
                     {selectedProduct && currentProductResources.length > 0 && (
-                        <Card size="small" title="产品资源组成" style={{ marginBottom: 24 }}>
+                        <Card size="small" title="产品子资源组成" style={{ marginBottom: 24 }}>
                             <div style={{ marginBottom: 8, color: '#666', fontSize: 12 }}>
-                                💡 点击行左侧箭头可展开查看资源详细信息（景区、酒店、餐饮、交通等特定字段）
+                                💡 点击行左侧箭头可展开查看子资源详细信息（景区、酒店、餐饮、交通等特定字段）
                             </div>
                             <Table
                                 rowKey="id"
@@ -731,7 +753,7 @@ export default function SKUListPage() {
                                     expandedRowRender: (record) => {
                                         const resource = resources.find(x => String(x.id) === String(record.resource_id))
                                         if (!resource) {
-                                            return <div style={{ padding: 16, color: '#999' }}>加载资源信息...</div>
+                                            return <div style={{ padding: 16, color: '#999' }}>加载子资源信息...</div>
                                         }
                                         return <ResourceDetailsPanel resource={resource} />
                                     },
@@ -739,7 +761,7 @@ export default function SKUListPage() {
                                 }}
                                 columns={[
                                     {
-                                        title: '资源名称',
+                                        title: '子资源名称',
                                         render: (_, r) => resources.find(x => String(x.id) === String(r.resource_id))?.resource_name || r.resource_id
                                     },
                                     {
@@ -751,7 +773,7 @@ export default function SKUListPage() {
                                     },
                                     {
                                         title: '供应商',
-                                        render: (_, r) => suppliers.find(s => String(s.id) === String(r.supplier_id))?.supplier_name || '-'
+                                        render: (_, r) => renderProductSuppliers(r)
                                     },
                                     {
                                         title: '数量',
@@ -783,6 +805,7 @@ export default function SKUListPage() {
                             skuId={editingSku?.id ? Number(editingSku.id) : undefined}
                             channelId={selectedChannelId ? Number(selectedChannelId) : undefined}
                             stockLimitData={channelStockLimitMap}
+                            readonlyStock
                         />
                     </div>
 

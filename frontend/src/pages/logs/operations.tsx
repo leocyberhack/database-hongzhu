@@ -19,14 +19,14 @@ interface OperationLog {
 }
 
 const TABLE_NAME_MAP: Record<string, string> = {
-    'poi': 'POI',
-    'resource': '资源',
+    'poi': '资源',
+    'resource': '子资源',
     'supplier': '供应商',
-    'supplier_resource': '供应商资源绑定',
-    'resource_inventory': '资源库存',
+    'supplier_resource': '供应商子资源绑定',
+    'resource_inventory': '子资源库存',
     'product': '产品',
     'product_category': '产品分类',
-    'sku': 'SKU',
+    'sku': 'SKU(规格)',
     'channel': '渠道',
     'price': 'SKU价格',
     'inventory': 'SKU库存',
@@ -34,11 +34,11 @@ const TABLE_NAME_MAP: Record<string, string> = {
     'approval': '审批',
     'file': '文件',
     'folder': '文件夹',
-    'supplier_resource_agreements': 'Supplier Agreements',
-    'supplier_resource_price_history': 'Supplier Price History',
-    'price_history': 'SKU Price History',
-    'order_status_history': 'Order Status History',
-    'inventory_log': 'Inventory Log',
+    'supplier_resource_agreements': '供应商协议',
+    'supplier_resource_price_history': '供应商结算价历史',
+    'price_history': 'SKU价格历史',
+    'order_status_history': '订单状态历史',
+    'inventory_log': '库存日志',
 }
 
 const OPERATION_MAP: Record<string, { label: string; color: string }> = {
@@ -50,16 +50,102 @@ const OPERATION_MAP: Record<string, { label: string; color: string }> = {
     'STATUS_CHANGE': { label: '状态变更', color: 'orange' },
 }
 
+const ACTION_VALUE_MAP: Record<string, string> = {
+    'verify': '核销',
+    'refund': '退款',
+    'refund_unverified': '未核销退款',
+    'refund_unreserved': '未预约退款',
+    'refund_verified': '已核销退款',
+    'refund_reserved': '已预约退款',
+    'freeze': '冻结库存',
+    'consume': '扣减库存',
+    'release': '释放库存',
+    'return': '退回库存',
+}
+
+const TYPE_VALUE_MAP: Record<string, string> = {
+    'settlement_price_change': '结算价调整',
+    'manual_adjust': '手动调整',
+}
+
+const SUPPLIER_MODE_MAP: Record<string, string> = {
+    'locked': '锁定供应商',
+    'auto': '自动选择',
+}
+
 const FIELD_NAME_MAP: Record<string, string> = {
-    'poi_name': 'POI名称',
+    'order_no': '订单号',
+    'order_id': '订单ID',
+    'sku_id': 'SKU编号',
+    'spu_id': 'SPU编号',
+    'spu_name': 'SPU名称',
+    'product_name': '产品名称',
+    'travel_date': '出行日期',
+    'quantity': '数量',
+    'sale_amount': '销售金额',
+    'cost_amount': '成本金额',
+    'profit_amount': '利润',
+    'remark': '备注',
+    'created_by': '创建人',
+    'created_at': '创建时间',
+    'before_status': '变更前状态',
+    'after_status': '变更后状态',
+    'reason': '原因',
+    'action': '操作',
+    'qty': '数量',
+    'amount': '金额',
+    'at': '时间',
+
+    'is_paid': '是否支付',
+    'paid_qty': '支付数量',
+    'paid_amount': '支付金额',
+    'paid_at': '支付时间',
+    'is_issued': '是否出票/发码/发短信',
+    'issued_qty': '出票/发码数量',
+    'issued_amount': '出票/发码金额',
+    'issued_at': '出票/发码时间',
+    'is_verified': '是否核销',
+    'verified_qty': '核销数量',
+    'verified_amount': '核销金额',
+    'verified_at': '核销时间',
+    'is_reserved': '是否预约',
+    'reserved_qty': '预约数量',
+    'reserved_amount': '预约金额',
+    'reserved_at': '预约时间',
+    'is_refund_unverified': '是否支付后未核销退款',
+    'refund_unverified_qty': '未核销退款数量',
+    'refund_unverified_amount': '未核销退款金额',
+    'refund_unverified_at': '未核销退款时间',
+    'is_refund_unreserved': '是否支付后未预约退款',
+    'refund_unreserved_qty': '未预约退款数量',
+    'refund_unreserved_amount': '未预约退款金额',
+    'refund_unreserved_at': '未预约退款时间',
+    'is_refund_verified': '是否支付后已核销退款',
+    'refund_verified_qty': '已核销退款数量',
+    'refund_verified_amount': '已核销退款金额',
+    'refund_verified_at': '已核销退款时间',
+    'is_refund_reserved': '是否支付后已预约退款',
+    'refund_reserved_qty': '已预约退款数量',
+    'refund_reserved_amount': '已预约退款金额',
+    'refund_reserved_at': '已预约退款时间',
+    'is_completed': '是否完成',
+    'completed_qty': '完成数量',
+    'completed_amount': '完成金额',
+    'completed_at': '完成时间',
+    'is_disputed': '是否产生纠纷',
+    'disputed_qty': '纠纷数量',
+    'disputed_amount': '纠纷金额',
+    'disputed_at': '纠纷时间',
+
+    'poi_name': '资源名称',
     'province': '省份',
     'city': '城市',
     'district': '区/县',
     'address': '地址',
     'status': '状态',
-    'resource_name': '资源名称',
-    'resource_type': '资源类型',
-    'poi_id': '所属POI',
+    'resource_name': '子资源名称',
+    'resource_type': '子资源类型',
+    'poi_id': '所属资源',
     'supplier_id': '供应商',
     'settlement_price': '结算价',
     'supplier_name': '供应商名称',
@@ -71,11 +157,10 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'license_no': '营业执照号',
     'legal_person': '法人信息',
     'credit_code': '信用代码',
-    'product_name': '产品名称',
     'category_id': '分类',
     'description': '描述',
     'suggested_price': '建议零售价',
-    'structure_hash': '资源组合哈希',
+    'structure_hash': '子资源组合哈希',
     'name': '名称',
     'sku_name': 'SKU名称',
     'product_id': '关联产品',
@@ -86,9 +171,16 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'sale_price': '销售价',
     'cost_price': '成本价',
     'date_range': '日期范围',
+    'start_at': '开始日期',
+    'end_at': '结束日期',
+    'price': '价格',
     'total_qty': '总库存',
     'before': '修改前',
     'after': '修改后',
+    'message': '消息',
+    
+    'result': '结果',
+    'comment': '备注',
     'type': '类型',
     'before_price': '修改前价格',
     'after_price': '修改后价格',
@@ -101,12 +193,14 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'before_sum_qty': '修改前总库存',
     'after_sum_qty': '修改后总库存',
     'change_qty': '库存变化',
-    'resources': '资源详情',
-    'resource_id': '资源ID',
-    'quantity': '数量',
+    'resources': '子资源详情',
+    'resource_id': '子资源ID',
     'before_prices': '原有价格详情(被覆盖)',
     'allowed_channels': '渠道配置',
     'stock_ratio': '库存配额(%)',
+    'supplier_mode': '供应商选择方式',
+    'supplier_ids': '供应商列表',
+    'required_flag': '是否必选',
     'hotel_type': '酒店类型',
     'star_rating': '星级',
     'check_in_time': '入住时间',
@@ -126,39 +220,39 @@ const FIELD_NAME_MAP: Record<string, string> = {
     'parking': '停车场信息',
     'reservation_required': '需要预约',
     'filename': '文件名',
-    'folder_id': 'Folder',
+    'folder_id': '文件夹',
     'object_name': '对象路径',
     'content_type': '类型',
     'size': '大小',
     'url': '链接',
     'parent_id': '父文件夹',
     'has_password': '密码状态',
-    'poi_code': 'POI Code',
-    'resource_code': 'Resource Code',
-    'poi_type': 'POI Type',
-    'tags': 'Tags',
-    'type_options': 'Type Options',
-    'longitude': 'Longitude',
-    'latitude': 'Latitude',
-    'supply_status': 'Supply Status',
-    'currency': 'Currency',
-    'rule': 'Rule',
-    'priority': 'Priority',
-    'supplier_resource_id': 'Supplier Resource ID',
-    'inventory_date': 'Inventory Date',
-    'frozen_qty': 'Frozen Qty',
-    'sold_qty': 'Sold Qty',
-    'agreement_name': 'Agreement Name',
-    'start_date': 'Start Date',
-    'end_date': 'End Date',
-    'signing_date': 'Signing Date',
-    'payment_method': 'Payment Method',
-    'requires_invoice': 'Requires Invoice',
-    'invoice_type': 'Invoice Type',
-    'discount_methods': 'Discount Methods',
-    'discount_policy': 'Discount Policy',
-    'attached_files': 'Attachments',
-    'settlement_cycle': 'Settlement Cycle',
+    'poi_code': '资源编码',
+    'resource_code': '子资源编码',
+    'poi_type': '资源类型',
+    'tags': '标签',
+    'type_options': '类型选项',
+    'longitude': '经度',
+    'latitude': '纬度',
+    'supply_status': '供给状态',
+    'currency': '货币',
+    'rule': '规则',
+    'priority': '优先级',
+    'supplier_resource_id': '供应商子资源ID',
+    'inventory_date': '库存日期',
+    'frozen_qty': '冻结库存',
+    'sold_qty': '已售库存',
+    'agreement_name': '协议名称',
+    'start_date': '开始日期',
+    'end_date': '结束日期',
+    'signing_date': '签署日期',
+    'payment_method': '付款方式',
+    'requires_invoice': '是否需要发票',
+    'invoice_type': '发票类型',
+    'discount_methods': '优惠方式',
+    'discount_policy': '优惠政策',
+    'attached_files': '附件',
+    'settlement_cycle': '结算周期',
 }
 
 const FIELD_ORDER = Object.keys(FIELD_NAME_MAP)
@@ -178,6 +272,8 @@ const sortFieldKeys = (keys: string[]) => {
 const STATUS_MAP: Record<string, string> = {
     'active': '启用',
     'inactive': '停用',
+    'draft': '草稿',
+    'normal': '正常',
     'pending': '待审批',
     'approved': '已通过',
     'rejected': '已拒绝',
@@ -225,7 +321,7 @@ export default function OperationLogsPage() {
             setLogs(res.items || [])
             setPagination(prev => ({ ...prev, total: res.pagination?.total || 0 }))
         } catch (err: any) {
-            console.error('Failed to fetch logs:', err)
+            console.error('获取日志失败:', err)
         } finally {
             setLoading(false)
         }
@@ -268,17 +364,55 @@ export default function OperationLogsPage() {
 
         try {
             const parts: string[] = []
-            const formatValue = (key: string, value: any) => {
-                if (key === 'status' && typeof value === 'string') {
-                    return STATUS_MAP[value] || value
+            const mapObjectKeys = (value: any): any => {
+                if (Array.isArray(value)) {
+                    return value.map((item) => mapObjectKeys(item))
                 }
-                if (key === 'requires_invoice' && typeof value === 'boolean') {
-                    return value ? '是' : '否'
-                }
-                if (typeof value === 'object' && value !== null) {
-                    return JSON.stringify(value, null, 2)
+                if (value && typeof value === 'object') {
+                    const mapped: Record<string, any> = {}
+                    Object.keys(value).forEach((k) => {
+                        const mappedKey = FIELD_NAME_MAP[k] || k
+                        mapped[mappedKey] = translateValue(k, value[k])
+                    })
+                    return mapped
                 }
                 return value
+            }
+            const translateValue = (key: string, value: any): any => {
+                if (value === null || value === undefined) {
+                    return '-'
+                }
+                if (typeof value === 'boolean') {
+                    return value ? '是' : '否'
+                }
+                if (typeof value === 'string') {
+                    if (key === 'status' || key === 'before_status' || key === 'after_status' || key.endsWith('_status')) {
+                        return ACTION_VALUE_MAP[value] || STATUS_MAP[value] || value
+                    }
+                    if (key === 'action') {
+                        return ACTION_VALUE_MAP[value] || value
+                    }
+                    if (key === 'type') {
+                        return TYPE_VALUE_MAP[value] || value
+                    }
+                    if (key === 'supplier_mode') {
+                        return SUPPLIER_MODE_MAP[value] || value
+                    }
+                }
+                if (Array.isArray(value)) {
+                    return value.map((item) => translateValue(key, item))
+                }
+                if (typeof value === 'object' && value !== null) {
+                    return mapObjectKeys(value)
+                }
+                return value
+            }
+            const formatValue = (key: string, value: any) => {
+                const translated = translateValue(key, value)
+                if (translated && typeof translated === 'object') {
+                    return JSON.stringify(translated, null, 2)
+                }
+                return translated
             }
             const pushFields = (label: string, payload: Record<string, any>) => {
                 parts.push(label)
@@ -293,13 +427,13 @@ export default function OperationLogsPage() {
             }
 
             if (data.type) {
-                parts.push(`${FIELD_NAME_MAP['type'] || '类型'}: ${data.type}`)
+                parts.push(`${FIELD_NAME_MAP['type'] || '类型'}: ${formatValue('type', data.type)}`)
             }
 
             if (data.stats) {
                 parts.push('【统计信息】')
                 sortFieldKeys(Object.keys(data.stats)).forEach((key) => {
-                    const value = data.stats[key]
+                    const value = formatValue(key, data.stats[key])
                     const fieldName = FIELD_NAME_MAP[key] || key
                     parts.push(`${fieldName}: ${value}`)
                 })

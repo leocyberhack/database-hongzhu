@@ -86,10 +86,10 @@ export default function ResourceManager({
                 method: 'PUT',
                 body: JSON.stringify({ type_options: newTypeOptions })
             })
-            message.success('已更新资源字段选项')
+            message.success('已更新子资源字段选项')
             await refreshData()
         } catch {
-            message.error('更新资源字段选项失败')
+            message.error('更新子资源字段选项失败')
         }
     }
 
@@ -117,10 +117,10 @@ export default function ResourceManager({
                 method: 'PUT',
                 body: JSON.stringify({ type_options: newTypeOptions })
             })
-            message.success('已更新资源字段选项')
+            message.success('已更新子资源字段选项')
             await refreshData()
         } catch {
-            message.error('更新资源字段选项失败')
+            message.error('更新子资源字段选项失败')
         }
     }
 
@@ -230,7 +230,7 @@ export default function ResourceManager({
         try {
             const resolvedPoiId = poiId ?? values.poi_id
             if (!resolvedPoiId) {
-                message.warning('请选择POI')
+                message.warning('请选择资源')
                 return
             }
             const resolvedResourceType = resourceType ?? values.resource_type
@@ -285,9 +285,9 @@ export default function ResourceManager({
                 }
             }
 
-            message.success('资源创建成功')
+            message.success('子资源创建成功')
             if (agreementErrors.length > 0) {
-                message.warning(`资源已创建，但有 ${agreementErrors.length} 份协议创建失败`)
+                message.warning(`子资源已创建，但有 ${agreementErrors.length} 份协议创建失败`)
             }
             setCreateModalVisible(false)
             form.resetFields()
@@ -298,7 +298,7 @@ export default function ResourceManager({
             await refreshData()
         } catch (err: any) {
             if (err.message?.includes('duplicate')) {
-                message.warning('该POI下已存在同名同类型的资源')
+                message.warning('该资源下已存在同名同类型的子资源')
             } else {
                 message.error(err.message || '创建失败')
             }
@@ -368,7 +368,7 @@ export default function ResourceManager({
                             method: 'POST',
                             body: JSON.stringify({
                                 settlement_price: binding.settlement_price,
-                                reason: '资源编辑时修改结算价'
+                                reason: '子资源编辑时修改结算价'
                             })
                         })
                     }
@@ -401,9 +401,9 @@ export default function ResourceManager({
                 }
             }
 
-            message.success('资源已更新')
+            message.success('子资源已更新')
             if (agreementErrors.length > 0) {
-                message.warning(`资源已更新，但有 ${agreementErrors.length} 份协议创建失败`)
+                message.warning(`子资源已更新，但有 ${agreementErrors.length} 份协议创建失败`)
             }
             setEditModalVisible(false)
             setSelectedResource(null)
@@ -419,7 +419,7 @@ export default function ResourceManager({
     const deleteResource = async (id: string) => {
         try {
             await apiRequest(`/api/resources/${id}`, { method: 'DELETE' })
-            message.success('资源已删除')
+            message.success('子资源已删除')
             await refreshData()
         } catch (err: any) {
             message.error(err.message || '删除失败')
@@ -433,7 +433,7 @@ export default function ResourceManager({
                 method: 'POST',
                 body: JSON.stringify(selectedRowKeys)
             })
-            message.success(`已删除 ${selectedRowKeys.length} 个资源`)
+            message.success(`已删除 ${selectedRowKeys.length} 个子资源`)
             setSelectedRowKeys([])
             await refreshData()
         } catch (err: any) {
@@ -460,7 +460,7 @@ export default function ResourceManager({
                     fields
                 })
             })
-            message.success(`已更新 ${selectedRowKeys.length} 个资源`)
+            message.success(`已更新 ${selectedRowKeys.length} 个子资源`)
             setBatchUpdateVisible(false)
             batchUpdateForm.resetFields()
             setSelectedRowKeys([])
@@ -503,7 +503,7 @@ export default function ResourceManager({
 
     const baseColumns: any = [
         {
-            title: '资源名称',
+            title: '子资源名称',
             dataIndex: 'resource_name',
             sorter: (a: Resource, b: Resource) => a.resource_name.localeCompare(b.resource_name),
             filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
@@ -536,14 +536,14 @@ export default function ResourceManager({
                 record.resource_name.toLowerCase().includes(value.toLowerCase()),
         },
         {
-            title: '资源类型',
+            title: '子资源类型',
             dataIndex: 'resource_type',
             render: (v: string) => <Tag color="blue">{v}</Tag>,
             filters: RESOURCE_TYPES.map(t => ({ text: t, value: t })),
             onFilter: (value: string, record: Resource) => record.resource_type === value,
         },
         {
-            title: '关联POI',
+            title: '关联资源',
             dataIndex: 'poi_id',
             render: (v: string) => poiList.find((p) => p.id === v)?.poi_name || '-',
             sorter: (a: Resource, b: Resource) => {
@@ -671,15 +671,15 @@ export default function ResourceManager({
                             编辑
                         </Button>
                         {isLocked ? (
-                            <Tooltip title="该资源已被产品使用(属于已创建产品)，不可删除">
+                            <Tooltip title="该子资源已被产品使用(属于已创建产品)，不可删除">
                                 <Button type="link" danger disabled size="small" icon={<DeleteOutlined />}>
                                     删除
                                 </Button>
                             </Tooltip>
                         ) : (
                             <Popconfirm
-                                title="确定删除该资源吗？"
-                                description="删除资源会同时删除所有关联的供应商绑定信息"
+                                title="确定删除该子资源吗？"
+                                description="删除子资源会同时删除所有关联的供应商绑定信息"
                                 onConfirm={() => deleteResource(record.id)}
                                 okText="删除"
                                 cancelText="取消"
@@ -703,22 +703,22 @@ export default function ResourceManager({
             {!isEmbedded && (
                 <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                        <h1 className="page-title">资源管理</h1>
-                        <p className="page-subtitle">管理所有资源，可按需绑定供应商与结算价</p>
+                        <h1 className="page-title">子资源管理</h1>
+                        <p className="page-subtitle">管理所有子资源，可按需绑定供应商与结算价</p>
                     </div>
                     <Space>
 
                         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
-                            新建资源
+                            新建子资源
                         </Button>
                     </Space>
                 </div>
             )}
             {isEmbedded && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <h3 style={{ margin: 0 }}>资源列表</h3>
+                    <h3 style={{ margin: 0 }}>子资源列表</h3>
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
-                        新建资源
+                        新建子资源
                     </Button>
                 </div>
             )}
@@ -731,7 +731,7 @@ export default function ResourceManager({
                             <Col span={6}>
                                 <Form.Item label="关键词" style={{ marginBottom: 0, width: '100%' }}>
                                     <Input
-                                        placeholder="搜索资源名称"
+                                        placeholder="搜索子资源名称"
                                         prefix={<SearchOutlined style={{ color: '#ccc' }} />}
                                         value={filters.keyword}
                                         onChange={e => setFilters({ ...filters, keyword: e.target.value })}
@@ -740,9 +740,9 @@ export default function ResourceManager({
                                 </Form.Item>
                             </Col>
                             <Col span={6}>
-                                <Form.Item label="关联POI" style={{ marginBottom: 0, width: '100%' }}>
+                                <Form.Item label="关联资源" style={{ marginBottom: 0, width: '100%' }}>
                                     <Select
-                                        placeholder="全部POI"
+                                        placeholder="全部资源"
                                         showSearch
                                         allowClear
                                         optionFilterProp="label"
@@ -775,7 +775,7 @@ export default function ResourceManager({
                                             批量修改
                                         </Button>
                                         <Popconfirm
-                                            title={`确定删除选中的 ${selectedRowKeys.length} 个资源吗？`}
+                                            title={`确定删除选中的 ${selectedRowKeys.length} 个子资源吗？`}
                                             onConfirm={handleBatchDelete}
                                             okText="确定删除"
                                             cancelText="取消"
@@ -789,7 +789,7 @@ export default function ResourceManager({
                                 )}
                             </Col>
                             <Col span={24}>
-                                <Form.Item label="资源类型" style={{ marginBottom: 0 }}>
+                                <Form.Item label="子资源类型" style={{ marginBottom: 0 }}>
                                     <Checkbox.Group
                                         options={RESOURCE_TYPES}
                                         value={filters.types}
@@ -824,9 +824,9 @@ export default function ResourceManager({
                 />
             </div>
 
-            {/* 创建资源Modal */}
+            {/* 创建子资源Modal */}
             <Modal
-                title="创建资源"
+                title="创建子资源"
                 open={createModalVisible}
                 onCancel={() => {
                     setCreateModalVisible(false)
@@ -841,9 +841,9 @@ export default function ResourceManager({
             >
                 {/* ... existing form content ... */}
                 <Form form={form} layout="vertical" onFinish={handleCreateResource}>
-                    <Form.Item name="poi_id" label="所属POI" rules={[{ required: true, message: '请选择POI' }]}>
+                    <Form.Item name="poi_id" label="所属资源" rules={[{ required: true, message: '请选择资源' }]}>
                         <Select
-                            placeholder="选择POI"
+                            placeholder="选择资源"
                             showSearch
                             allowClear={!poiId}
                             optionFilterProp="label"
@@ -871,13 +871,13 @@ export default function ResourceManager({
                             }}
                         />
                     </Form.Item>
-                    <Form.Item name="resource_name" label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
+                    <Form.Item name="resource_name" label="子资源名称" rules={[{ required: true, message: '请输入子资源名称' }]}>
                         <Input placeholder="例如：标准双床房" />
                     </Form.Item>
-                    <Form.Item name="resource_code" label="资源编码">
+                    <Form.Item name="resource_code" label="子资源编码">
                         <Input placeholder="例如：RES-001" />
                     </Form.Item>
-                    <Form.Item name="resource_type" label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
+                    <Form.Item name="resource_type" label="子资源类型" rules={[{ required: true, message: '请选择子资源类型' }]}>
                         <Select
                             placeholder="选择类型"
                             disabled={isTypeLocked || Boolean(poiId)}
@@ -930,7 +930,7 @@ export default function ResourceManager({
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定（可选）</h4>
                         <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
-                            可先创建资源，再视需要绑定供应商。同一资源可以绑定多个供应商，每个供应商有独立的结算价。
+                            可先创建子资源，再视需要绑定供应商。同一子资源可以绑定多个供应商，每个供应商有独立的结算价。
                         </p>
                         <Form.List name="supplier_bindings">
                             {(fields, { add, remove }, { errors }) => (
@@ -1032,7 +1032,7 @@ export default function ResourceManager({
                                 取消
                             </Button>
                             <Button type="primary" htmlType="submit">
-                                创建资源
+                                创建子资源
                             </Button>
                         </Space>
                     </Form.Item>
@@ -1041,9 +1041,9 @@ export default function ResourceManager({
 
 
 
-            {/* 编辑资源Modal */}
+            {/* 编辑子资源Modal */}
             <Modal
-                title={`编辑资源: ${selectedResource?.resource_name}`}
+                title={`编辑子资源: ${selectedResource?.resource_name}`}
                 open={editModalVisible}
                 onCancel={() => {
                     setEditModalVisible(false)
@@ -1057,22 +1057,22 @@ export default function ResourceManager({
                 width={720}
             >
                 <Form form={editForm} layout="vertical" onFinish={handleUpdateResource}>
-                    <Form.Item name="poi_id" label="所属POI" rules={[{ required: true, message: '请选择POI' }]}>
+                    <Form.Item name="poi_id" label="所属资源" rules={[{ required: true, message: '请选择资源' }]}>
                         <Select
-                            placeholder="选择POI"
+                            placeholder="选择资源"
                             showSearch
                             optionFilterProp="label"
                             disabled={Boolean(poiId)}
                             options={poiList.map((p) => ({ value: p.id, label: `${p.poi_name} (${p.city})` }))}
                         />
                     </Form.Item>
-                    <Form.Item name="resource_name" label="资源名称" rules={[{ required: true, message: '请输入资源名称' }]}>
+                    <Form.Item name="resource_name" label="子资源名称" rules={[{ required: true, message: '请输入子资源名称' }]}>
                         <Input placeholder="例如：标准双床房" />
                     </Form.Item>
-                    <Form.Item name="resource_code" label="资源编码">
+                    <Form.Item name="resource_code" label="子资源编码">
                         <Input placeholder="例如：RES-001" />
                     </Form.Item>
-                    <Form.Item name="resource_type" label="资源类型" rules={[{ required: true, message: '请选择资源类型' }]}>
+                    <Form.Item name="resource_type" label="子资源类型" rules={[{ required: true, message: '请选择子资源类型' }]}>
                         <Select
                             placeholder="选择类型"
                             disabled
@@ -1124,7 +1124,7 @@ export default function ResourceManager({
                     <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
                         <h4 style={{ marginBottom: 12 }}>供应商绑定（可选）</h4>
                         <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
-                            管理资源的供应商和结算价。修改结算价会自动创建价格调整记录。
+                            管理子资源的供应商和结算价。修改结算价会自动创建价格调整记录。
                         </p>
                         <Form.List name="supplier_bindings">
                             {(fields, { add, remove }) => (
@@ -1261,7 +1261,7 @@ export default function ResourceManager({
 
             {/* 批量更新 Modal */}
             <Modal
-                title={`批量修改已选的 ${selectedRowKeys.length} 个资源`}
+                title={`批量修改已选的 ${selectedRowKeys.length} 个子资源`}
                 open={batchUpdateVisible}
                 onCancel={() => setBatchUpdateVisible(false)}
                 footer={null}
@@ -1313,7 +1313,7 @@ export default function ResourceManager({
                             {!selectedSupplierId && <span style={{ color: 'red', marginLeft: 8 }}>请先选择一个供应商来管理库存</span>}
                         </div>
                         <p style={{ color: '#666', marginBottom: 8 }}>
-                            请在日历上设置每天的库存数量。库存数据是基于“供应商+资源”的组合。
+                            请在日历上设置每天的库存数量。库存数据是基于“供应商+子资源”的组合。
                         </p>
 
                         {(() => {
@@ -1339,7 +1339,7 @@ export default function ResourceManager({
             </Modal>
 
 
-            {/* 资源详情Drawer */}
+            {/* 子资源详情Drawer */}
             <Drawer
                 title={selectedResource?.resource_name}
                 open={viewDrawerVisible}
@@ -1352,12 +1352,12 @@ export default function ResourceManager({
                 {selectedResource && (
                     <>
                         <Descriptions column={2} bordered size="small" style={{ marginBottom: 16 }}>
-                            <Descriptions.Item label="资源名称">{selectedResource.resource_name}</Descriptions.Item>
-                            <Descriptions.Item label="资源编码">{selectedResource.resource_code || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="资源类型">
+                            <Descriptions.Item label="子资源名称">{selectedResource.resource_name}</Descriptions.Item>
+                            <Descriptions.Item label="子资源编码">{selectedResource.resource_code || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="子资源类型">
                                 <Tag color="blue">{selectedResource.resource_type}</Tag>
                             </Descriptions.Item>
-                            <Descriptions.Item label="所属POI">
+                            <Descriptions.Item label="所属资源">
                                 {poiList.find((p) => p.id === selectedResource.poi_id)?.poi_name || '-'}
                             </Descriptions.Item>
                             <Descriptions.Item label="状态">

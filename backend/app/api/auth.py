@@ -39,13 +39,13 @@ async def get_current_user(
             username: str | None = payload.get("sub")
             role: str | None = payload.get("role") or "guest"
             if not username:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效的令牌")
             return User(username=username, role=role)
         except JWTError:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="令牌无效或已过期")
 
     if not x_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未提供认证信息")
     db_user = await db.scalar(select(UserModel).where(UserModel.username == x_user))
     role = db_user.role if db_user else (x_role or "guest")
     return User(username=x_user, role=role)
@@ -58,7 +58,7 @@ def require_roles(roles: list[str]):
             return user
             
         if user.role not in roles:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")
         return user
 
     return checker

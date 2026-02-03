@@ -379,9 +379,46 @@ SKU在特定渠道的上架关系。
 | sale_amount | Numeric | 是 | - | 销售总额 | |
 | cost_amount | Numeric | 否 | - | 成本总额 | |
 | profit_amount | Numeric | 否 | - | 利润总额 | |
-| status | String | 是 | 'paid' | 状态 | pending, paid, confirmed, completed, cancelled, refunded |
+| is_paid | Boolean | 是 | false | 是否支付 | |
+| paid_qty | Integer | 否 | - | 支付数量 | |
+| paid_amount | Numeric | 否 | - | 支付金额 | |
+| paid_at | DateTime | 否 | - | 支付时间 | |
+| is_issued | Boolean | 是 | false | 是否出票/发码/发短信 | |
+| issued_qty | Integer | 否 | - | 出票数量 | |
+| issued_amount | Numeric | 否 | - | 出票金额 | |
+| issued_at | DateTime | 否 | - | 出票时间 | |
+| is_verified | Boolean | 是 | false | 是否核销 | |
+| verified_qty | Integer | 否 | - | 核销数量 | |
+| verified_amount | Numeric | 否 | - | 核销金额 | |
 | verified_at | DateTime | 否 | - | 核销时间 | |
-| refunded_at | DateTime | 否 | - | 退款时间 | |
+| is_reserved | Boolean | 是 | false | 是否预约 | |
+| reserved_qty | Integer | 否 | - | 预约数量 | |
+| reserved_amount | Numeric | 否 | - | 预约金额 | |
+| reserved_at | DateTime | 否 | - | 预约时间 | |
+| is_refund_unverified | Boolean | 是 | false | 支付后未核销全额退款 | |
+| refund_unverified_qty | Integer | 否 | - | 未核销退款数量 | |
+| refund_unverified_amount | Numeric | 否 | - | 未核销退款金额 | |
+| refund_unverified_at | DateTime | 否 | - | 未核销退款时间 | |
+| is_refund_unreserved | Boolean | 是 | false | 支付后未预约全额退款 | |
+| refund_unreserved_qty | Integer | 否 | - | 未预约退款数量 | |
+| refund_unreserved_amount | Numeric | 否 | - | 未预约退款金额 | |
+| refund_unreserved_at | DateTime | 否 | - | 未预约退款时间 | |
+| is_refund_verified | Boolean | 是 | false | 支付后已核销全部/部分退款 | |
+| refund_verified_qty | Integer | 否 | - | 已核销退款数量 | |
+| refund_verified_amount | Numeric | 否 | - | 已核销退款金额 | |
+| refund_verified_at | DateTime | 否 | - | 已核销退款时间 | |
+| is_refund_reserved | Boolean | 是 | false | 支付后已预约全部/部分退款 | |
+| refund_reserved_qty | Integer | 否 | - | 已预约退款数量 | |
+| refund_reserved_amount | Numeric | 否 | - | 已预约退款金额 | |
+| refund_reserved_at | DateTime | 否 | - | 已预约退款时间 | |
+| is_completed | Boolean | 是 | false | 是否完成 | |
+| completed_qty | Integer | 否 | - | 完成数量 | |
+| completed_amount | Numeric | 否 | - | 完成金额 | |
+| completed_at | DateTime | 否 | - | 完成时间 | |
+| is_disputed | Boolean | 是 | false | 完成后订单产生纠纷 | |
+| disputed_qty | Integer | 否 | - | 纠纷数量 | |
+| disputed_amount | Numeric | 否 | - | 纠纷金额 | |
+| disputed_at | DateTime | 否 | - | 纠纷时间 | |
 
 ### 6.2 订单状态历史 (Order Status History)
 表名: `order_status_history`
@@ -417,3 +454,20 @@ SKU在特定渠道的上架关系。
 | diff_data | JSONB | 否 | - | 差异数据 | 保存变更字段的内容 |
 | operator | String | 否 | - | 操作人 | |
 | operated_at | DateTime | 是 | Now | 操作时间 | |
+
+## Resource Inventory Log
+
+Table: `resource_inventory_log`
+
+| Field | Type | Required | Default | Description | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| id | BigInteger | Yes | Auto Inc | ID | PK |
+| supplier_resource_id | BigInteger | Yes | - | Supplier resource | FK -> supplier_resource.id |
+| inventory_date | Date | Yes | - | Inventory date | YYYY-MM-DD |
+| change_type | String | Yes | - | Action type | freeze/consume/release/return |
+| before_qty | JSONB | Yes | - | Before snapshot | {total,frozen,sold} |
+| after_qty | JSONB | Yes | - | After snapshot | {total,frozen,sold} |
+| related_order_id | BigInteger | No | - | Related order | FK -> order.id |
+| operator | String | No | - | Operator | |
+| operated_at | DateTime | No | Now | Operated at | |
+| remark | Text | No | - | Remark | |

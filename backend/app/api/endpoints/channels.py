@@ -23,7 +23,7 @@ async def create_channel(
 ):
     dup = await db.scalar(select(Channel).where(Channel.channel_name == payload.channel_name))
     if dup:
-        raise HTTPException(status_code=400, detail="Channel name already exists")
+        raise HTTPException(status_code=400, detail="渠道名称已存在")
 
     if current_user.role not in ["admin", "super_admin"]:
         # Create Channel Approval
@@ -70,7 +70,7 @@ async def create_channel(
         await db.refresh(channel)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Channel creation failed")
+        raise HTTPException(status_code=400, detail="渠道创建失败")
     
     return channel
 
@@ -114,7 +114,7 @@ async def get_channel(
 ):
     channel = await db.get(Channel, channel_id)
     if not channel:
-        raise HTTPException(status_code=404, detail="Channel not found")
+        raise HTTPException(status_code=404, detail="渠道不存在")
     return channel
 
 
@@ -127,12 +127,12 @@ async def update_channel(
 ):
     channel = await db.get(Channel, channel_id)
     if not channel:
-        raise HTTPException(status_code=404, detail="Channel not found")
+        raise HTTPException(status_code=404, detail="渠道不存在")
 
     if payload.channel_name:
         dup = await db.scalar(select(Channel).where(Channel.channel_name == payload.channel_name, Channel.id != channel_id))
         if dup:
-            raise HTTPException(status_code=400, detail="Channel name already exists")
+            raise HTTPException(status_code=400, detail="渠道名称已存在")
 
     # Capture before state
     before_data = {"channel_name": channel.channel_name, "channel_type": channel.channel_type, "commission_rate": str(channel.commission_rate) if channel.commission_rate else None}
@@ -182,7 +182,7 @@ async def update_channel(
         await db.refresh(channel)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Update failed")
+        raise HTTPException(status_code=400, detail="更新失败")
     
     return channel
 
@@ -195,7 +195,7 @@ async def delete_channel(
 ):
     channel = await db.get(Channel, channel_id)
     if not channel:
-        raise HTTPException(status_code=404, detail="Channel not found")
+        raise HTTPException(status_code=404, detail="渠道不存在")
     
     if user.role not in ["admin", "super_admin"]:
         # Delete Channel Approval
@@ -220,11 +220,11 @@ async def delete_channel(
     # Check if there are sub-channels
     sub_count = await db.scalar(select(func.count()).where(Channel.parent_id == channel_id))
     if sub_count and sub_count > 0:
-         raise HTTPException(status_code=400, detail="Cannot delete channel with sub-channels")
+         raise HTTPException(status_code=400, detail="存在子渠道，无法删除")
 
     order_count = await db.scalar(select(func.count()).select_from(Order).where(Order.channel_id == channel_id))
     if order_count and order_count > 0:
-        raise HTTPException(status_code=400, detail=f"Cannot delete channel with orders: {order_count}")
+        raise HTTPException(status_code=400, detail=f"该渠道存在 {order_count} 条订单，无法删除")
 
     # Record audit log before deletion
     audit = AuditLog(

@@ -55,7 +55,7 @@ async def batch_delete_skus(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Batch delete failed")
+        raise HTTPException(status_code=400, detail="批量删除失败")
 
 
 @router.post("/batch-update", status_code=200)
@@ -68,13 +68,13 @@ async def batch_update_skus(
     fields = payload.get("fields", {})
     
     if not ids or not fields:
-        raise HTTPException(status_code=400, detail="Missing IDs or fields")
+        raise HTTPException(status_code=400, detail="缺少ID或更新字段")
 
     # Validate fields
     try:
         update_data = SkuUpdate(**fields).model_dump(exclude_unset=True)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid update fields: {str(e)}")
+        raise HTTPException(status_code=400, detail="更新字段无效")
 
     ids = list(dict.fromkeys(ids))
     stmt = select(Sku).where(Sku.id.in_(ids))
@@ -82,7 +82,7 @@ async def batch_update_skus(
     if len(skus) != len(ids):
         found_ids = {sku.id for sku in skus}
         missing = [sid for sid in ids if sid not in found_ids]
-        raise HTTPException(status_code=404, detail=f"SKU not found: {missing}")
+        raise HTTPException(status_code=404, detail=f"SKU 不存在: {missing}")
 
     if not skus:
         return {"updated": 0, "pending": 0, "skipped": 0, "errors": []}
@@ -120,7 +120,7 @@ async def batch_update_skus(
             for sku in affected_skus:
                 channels = list(channel_map.get(sku.id, set()))
                 if await _has_channel_name_conflict(db, sku.id, new_name, channels):
-                    raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
+                    raise HTTPException(status_code=400, detail="该渠道下已存在相同 SKU 名称")
 
     changed_items: list[tuple[Sku, dict]] = []
     skipped_count = 0
@@ -194,7 +194,7 @@ async def batch_update_skus(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Batch update failed")
+        raise HTTPException(status_code=400, detail="批量更新失败")
 
     return {
         "updated": updated_count,
@@ -213,16 +213,16 @@ async def create_sku(
     # Verify Product exists
     product = await db.get(Product, payload.product_id)
     if not product:
-        raise HTTPException(status_code=404, detail=f"Product with id {payload.product_id} not found")
+        raise HTTPException(status_code=404, detail=f"产品不存在: {payload.product_id}")
 
     # Verify SPU exists
     spu = await db.get(Spu, payload.spu_id)
     if not spu:
-        raise HTTPException(status_code=404, detail=f"SPU with id {payload.spu_id} not found")
+        raise HTTPException(status_code=404, detail=f"SPU 不存在: {payload.spu_id}")
         
     # Logic Lock 3: Inactive products cannot be associated with SKUs
     if product.status != "active":
-         raise HTTPException(status_code=400, detail="Cannot create SKU for inactive product")
+         raise HTTPException(status_code=400, detail="产品未上架，无法创建 SKU")
 
     sku = Sku(**payload.model_dump())
     sku.created_by = current_user.username  # Record creator
@@ -248,7 +248,7 @@ async def create_sku(
         await db.refresh(sku)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="SKU creation failed")
+        raise HTTPException(status_code=400, detail="SKU 创建失败")
     
     return sku
 
@@ -312,7 +312,7 @@ async def get_sku(
 ):
     sku = await db.get(Sku, sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU not found")
+        raise HTTPException(status_code=404, detail="SKU 不存在")
     return sku
 
 
@@ -325,7 +325,7 @@ async def update_sku(
 ):
     sku = await db.get(Sku, sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU not found")
+        raise HTTPException(status_code=404, detail="SKU 不存在")
 
     # Capture before state
     before_data = {"sku_name": sku.sku_name, "status": sku.status, "product_id": sku.product_id}
@@ -335,7 +335,7 @@ async def update_sku(
     if "sku_name" in update_data and update_data["sku_name"] and update_data["sku_name"] != sku.sku_name:
         channel_ids = await _get_sku_channel_ids(db, sku_id)
         if await _has_channel_name_conflict(db, sku_id, update_data["sku_name"], channel_ids):
-            raise HTTPException(status_code=400, detail="SKU name already exists on this channel")
+            raise HTTPException(status_code=400, detail="该渠道下已存在相同 SKU 名称")
 
     # Check for approval requirement
     needs_approval = False
@@ -390,7 +390,7 @@ async def update_sku(
         await db.refresh(sku)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Update failed")
+        raise HTTPException(status_code=400, detail="更新失败")
     
     return sku
 
@@ -403,7 +403,7 @@ async def delete_sku(
 ):
     sku = await db.get(Sku, sku_id)
     if not sku:
-        raise HTTPException(status_code=404, detail="SKU not found")
+        raise HTTPException(status_code=404, detail="SKU 不存在")
     
     # In a real system, you might want to check for dependencies (orders, price, inventory)
     # For now, we rely on DB foreign key constraints (ON DELETE RESTRICT is common for sensitive data)
@@ -425,6 +425,6 @@ async def delete_sku(
         await db.commit()
     except IntegrityError:
          await db.rollback()
-         raise HTTPException(status_code=400, detail="Cannot delete SKU, it might be referenced by other records")
+         raise HTTPException(status_code=400, detail="无法删除 SKU，可能已被其他记录引用")
     
     return None
