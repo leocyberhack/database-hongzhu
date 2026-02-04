@@ -235,7 +235,7 @@ export interface Order {
     cost_price?: number
     cost_amount?: number
     profit_amount?: number
-    travel_date: string
+    travel_date?: string
     is_paid: boolean
     paid_qty?: number
     paid_amount?: number

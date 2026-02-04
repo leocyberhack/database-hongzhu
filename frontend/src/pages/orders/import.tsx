@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { UploadProps } from 'antd'
 import { Upload, Card, message, Alert, Button, Space } from 'antd'
 import { InboxOutlined, DownloadOutlined } from '@ant-design/icons'
-import { getToken } from '@/lib/api'
+import { getToken, handleAuthExpiredResponse } from '@/lib/api'
 
 const { Dragger } = Upload
 
@@ -31,6 +31,9 @@ export default function OrderImportPage() {
                 headers: { Authorization: `Bearer ${getToken()}` },
                 body: formData,
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
             const data = await response.json()
             if (!response.ok) throw new Error(data.detail || '导入失败')
 
@@ -57,6 +60,9 @@ export default function OrderImportPage() {
                 method: 'GET',
                 headers: { Authorization: `Bearer ${getToken()}` },
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
             if (!response.ok) {
                 let errMsg = '下载失败'
                 try {

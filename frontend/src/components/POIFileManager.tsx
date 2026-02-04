@@ -28,7 +28,7 @@ import {
     FileZipOutlined
 } from '@ant-design/icons'
 import type { UploadProps, TreeProps } from 'antd'
-import { getToken, apiRequest, api } from '@/lib/api'
+import { getToken, apiRequest, api, handleAuthExpiredResponse } from '@/lib/api'
 
 interface POIFileManagerProps {
     poiFolderId: number | null
@@ -207,6 +207,9 @@ export default function POIFileManager({
                 },
                 body: formData
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
 
             const result = await response.json()
 
@@ -287,6 +290,9 @@ export default function POIFileManager({
                 },
                 body: JSON.stringify({ folder_ids: selectedFolderIds })
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
             if (!response.ok) {
                 const err = await response.json()
                 throw new Error(err.detail || '下载失败')
@@ -320,6 +326,9 @@ export default function POIFileManager({
                 },
                 body: JSON.stringify({ file_ids: selectedFileIds })
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
             if (!response.ok) {
                 const err = await response.json()
                 throw new Error(err.detail || '下载失败')
@@ -390,6 +399,9 @@ export default function POIFileManager({
             const response = await fetch(`${apiBase}/api/files/folders/${folder.id}/download`, {
                 headers: { 'Authorization': `Bearer ${getToken()}` }
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
             if (!response.ok) {
                 const err = await response.json()
                 throw new Error(err.detail || '下载失败')

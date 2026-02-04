@@ -10,6 +10,17 @@ const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
 const LOGIN_TIME_KEY = 'auth_login_time'
 const AUTH_EXPIRY_HOURS = 24
+const AUTH_EXPIRED_EVENT = 'auth:expired'
+
+function notifyAuthExpired(reason?: string) {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { reason } }))
+}
+
+function handleAuthExpired(reason?: string) {
+    clearAuth()
+    notifyAuthExpired(reason)
+}
 
 function getStoredAuth() {
     const token = localStorage.getItem(TOKEN_KEY) || undefined
@@ -23,8 +34,8 @@ function getStoredAuth() {
         const expiryMs = AUTH_EXPIRY_HOURS * 60 * 60 * 1000
 
         if (now - loginTimestamp > expiryMs) {
-            // 已超过24小时，清除认证
-            clearAuth()
+            // 已超过24小时，清除认证并通知
+            handleAuthExpired('time')
             return { token: undefined, role: undefined }
         }
     }
@@ -103,6 +114,9 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
             "用户名或密码错误": "用户名或密码错误", // 确保后端返回中文时也能匹配（虽然本身就是中文）
         }
         if (map[errMsg]) errMsg = map[errMsg]
+        if (res.status === 401) {
+            handleAuthExpired('unauthorized')
+        }
         // Removed forced 401 overwrite to allow backend details (like 'Wrong password') to show through
         throw new Error(errMsg)
     }
@@ -129,6 +143,14 @@ export function clearAuth() {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     localStorage.removeItem(LOGIN_TIME_KEY)
+}
+
+export function handleAuthExpiredResponse(res: Response) {
+    if (res.status === 401) {
+        handleAuthExpired('unauthorized')
+        return true
+    }
+    return false
 }
 
 export function getAuthUser() {

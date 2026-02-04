@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, exists
 
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
@@ -34,7 +34,7 @@ from app.models import (
     ResourceInventoryLog,
 )
 from app.schemas.common import ListResponse, Pagination
-from app.schemas.order import OrderCreate, OrderDecision, OrderRead
+from app.schemas.order import OrderCreate, OrderDecision, OrderRead, OrderResourceCreate
 
 router = APIRouter()
 
@@ -81,14 +81,63 @@ STATUS_FIELDS = [
     "disputed_at",
 ]
 
+RESOURCE_STATUS_FIELDS = [
+    "is_issued",
+    "issued_qty",
+    "issued_amount",
+    "issued_at",
+    "issued_remark",
+    "is_verified",
+    "verified_qty",
+    "verified_amount",
+    "verified_at",
+    "verified_remark",
+    "is_refund_unverified",
+    "refund_unverified_qty",
+    "refund_unverified_amount",
+    "refund_unverified_at",
+    "refund_unverified_remark",
+    "is_refund_unreserved",
+    "refund_unreserved_qty",
+    "refund_unreserved_amount",
+    "refund_unreserved_at",
+    "refund_unreserved_remark",
+    "is_refund_verified",
+    "refund_verified_qty",
+    "refund_verified_amount",
+    "refund_verified_at",
+    "refund_verified_remark",
+    "is_refund_reserved",
+    "refund_reserved_qty",
+    "refund_reserved_amount",
+    "refund_reserved_at",
+    "refund_reserved_remark",
+    "is_completed",
+    "completed_qty",
+    "completed_amount",
+    "completed_at",
+    "completed_remark",
+    "is_disputed",
+    "disputed_qty",
+    "disputed_amount",
+    "disputed_at",
+    "disputed_remark",
+    "is_mid_disputed",
+    "mid_disputed_qty",
+    "mid_disputed_amount",
+    "mid_disputed_at",
+    "mid_disputed_remark",
+]
+
+RESOURCE_STATUS_FLAG_FIELDS = [field for field in RESOURCE_STATUS_FIELDS if field.startswith("is_")]
+
 STATUS_IMPORT_META = {
-    "issued": {"label": "是否出票/发码/发短信", "time_label": "出票/发码时间"},
-    "verified": {"label": "是否核销", "time_label": "核销时间"},
-    "reserved": {"label": "是否预约", "time_label": "预约时间"},
-    "refund_unverified": {"label": "是否支付后未核销全部退款", "time_label": "未核销退款时间"},
-    "refund_unreserved": {"label": "是否支付后未预约全部退款", "time_label": "未预约退款时间"},
-    "refund_verified": {"label": "是否支付后已核销全部/部分退款", "time_label": "已核销退款时间"},
-    "refund_reserved": {"label": "是否支付后已预约全部/部分退款", "time_label": "已预约退款时间"},
+    "issued": {"label": "是否出票/预约（资源可用）", "time_label": "出票/预约时间"},
+    "verified": {"label": "是否核销/消耗", "time_label": "核销/消耗时间"},
+    "refund_unverified": {"label": "是否支付后未核销/消耗全部退款", "time_label": "未核销/消耗退款时间"},
+    "refund_unreserved": {"label": "是否支付后未出票/预约全部退款", "time_label": "未出票/预约退款时间"},
+    "refund_verified": {"label": "是否支付后已核销/消耗全部/部分退款", "time_label": "已核销/消耗退款时间"},
+    "refund_reserved": {"label": "是否支付后已出票/预约全部/部分退款", "time_label": "已出票/预约退款时间"},
     "completed": {"label": "是否完成", "time_label": "完成时间"},
     "disputed": {"label": "是否完成后订单产生纠纷", "time_label": "纠纷时间"},
 }
@@ -96,28 +145,28 @@ STATUS_IMPORT_META = {
 STATUS_IMPORT_KEYS = list(STATUS_IMPORT_META.keys())
 
 STATUS_TEMPLATE_FIELDS = [
-    ("issued", "出票数量", "出票金额"),
-    ("verified", "核销数量", "核销金额"),
-    ("reserved", "预约数量", "预约金额"),
-    ("refund_unverified", "未核销退款数量", "未核销退款金额"),
-    ("refund_unreserved", "未预约退款数量", "未预约退款金额"),
-    ("refund_verified", "已核销退款数量", "已核销退款金额"),
-    ("refund_reserved", "已预约退款数量", "已预约退款金额"),
+    ("issued", "出票/预约数量", "出票/预约金额"),
+    ("verified", "核销/消耗数量", "核销/消耗金额"),
+    ("refund_unverified", "未核销/消耗退款数量", "未核销/消耗退款金额"),
+    ("refund_unreserved", "未出票/预约退款数量", "未出票/预约退款金额"),
+    ("refund_verified", "已核销/消耗退款数量", "已核销/消耗退款金额"),
+    ("refund_reserved", "已出票/预约退款数量", "已出票/预约退款金额"),
     ("completed", "完成数量", "完成金额"),
     ("disputed", "纠纷数量", "纠纷金额"),
 ]
 
 STATUS_META = {
     "paid": {"label": "支付", "time_label": "支付时间", "amount_label": "支付金额"},
-    "issued": {"label": "出票/发码/发短信", "time_label": "出票/发码时间", "amount_label": "出票金额"},
-    "verified": {"label": "核销", "time_label": "核销时间", "amount_label": "核销金额"},
-    "reserved": {"label": "预约", "time_label": "预约时间", "amount_label": "预约金额"},
-    "refund_unverified": {"label": "未核销退款", "time_label": "未核销退款时间", "amount_label": "未核销退款金额"},
-    "refund_unreserved": {"label": "未预约退款", "time_label": "未预约退款时间", "amount_label": "未预约退款金额"},
-    "refund_verified": {"label": "已核销退款", "time_label": "已核销退款时间", "amount_label": "已核销退款金额"},
-    "refund_reserved": {"label": "已预约退款", "time_label": "已预约退款时间", "amount_label": "已预约退款金额"},
+    "issued": {"label": "出票/预约（资源可用）", "time_label": "出票/预约时间", "amount_label": "出票/预约金额"},
+    "verified": {"label": "核销/消耗", "time_label": "核销/消耗时间", "amount_label": "核销/消耗金额"},
+    "reserved": {"label": "出票/预约（资源可用）", "time_label": "出票/预约时间", "amount_label": "出票/预约金额"},
+    "refund_unverified": {"label": "未核销/消耗退款", "time_label": "未核销/消耗退款时间", "amount_label": "未核销/消耗退款金额"},
+    "refund_unreserved": {"label": "未出票/预约退款", "time_label": "未出票/预约退款时间", "amount_label": "未出票/预约退款金额"},
+    "refund_verified": {"label": "已核销/消耗退款", "time_label": "已核销/消耗退款时间", "amount_label": "已核销/消耗退款金额"},
+    "refund_reserved": {"label": "已出票/预约退款", "time_label": "已出票/预约退款时间", "amount_label": "已出票/预约退款金额"},
     "completed": {"label": "完成", "time_label": "完成时间", "amount_label": "完成金额"},
     "disputed": {"label": "纠纷", "time_label": "纠纷时间", "amount_label": "纠纷金额"},
+    "mid_disputed": {"label": "中途纠纷", "time_label": "中途纠纷时间", "amount_label": "中途纠纷金额"},
 }
 
 STATUS_RULES = [
@@ -131,6 +180,18 @@ STATUS_RULES = [
     ("refund_reserved", "is_refund_reserved", "refund_reserved_qty", "refund_reserved_amount", "refund_reserved_at"),
     ("completed", "is_completed", "completed_qty", "completed_amount", "completed_at"),
     ("disputed", "is_disputed", "disputed_qty", "disputed_amount", "disputed_at"),
+]
+
+RESOURCE_STATUS_RULES = [
+    ("issued", "is_issued", "issued_qty", "issued_amount", "issued_at"),
+    ("verified", "is_verified", "verified_qty", "verified_amount", "verified_at"),
+    ("refund_unverified", "is_refund_unverified", "refund_unverified_qty", "refund_unverified_amount", "refund_unverified_at"),
+    ("refund_unreserved", "is_refund_unreserved", "refund_unreserved_qty", "refund_unreserved_amount", "refund_unreserved_at"),
+    ("refund_verified", "is_refund_verified", "refund_verified_qty", "refund_verified_amount", "refund_verified_at"),
+    ("refund_reserved", "is_refund_reserved", "refund_reserved_qty", "refund_reserved_amount", "refund_reserved_at"),
+    ("completed", "is_completed", "completed_qty", "completed_amount", "completed_at"),
+    ("disputed", "is_disputed", "disputed_qty", "disputed_amount", "disputed_at"),
+    ("mid_disputed", "is_mid_disputed", "mid_disputed_qty", "mid_disputed_amount", "mid_disputed_at"),
 ]
 
 
@@ -183,6 +244,7 @@ def _effective_qty(is_flag: bool, qty: Optional[int], total_qty: int) -> int:
 def _validate_status_fields_for_create(payload: OrderCreate, sale_amount: Decimal):
     total_qty = payload.quantity
     paid_amount = _to_decimal(payload.paid_amount)
+    issued_amount = _to_decimal(payload.issued_amount)
     verified_amount = _to_decimal(payload.verified_amount)
     reserved_amount = _to_decimal(payload.reserved_amount)
 
@@ -196,32 +258,93 @@ def _validate_status_fields_for_create(payload: OrderCreate, sale_amount: Decima
         "refund_unverified": (paid_amount or sale_amount, "支付金额" if paid_amount else "销售金额"),
         "refund_unreserved": (paid_amount or sale_amount, "支付金额" if paid_amount else "销售金额"),
         "refund_verified": (verified_amount or sale_amount, "核销金额" if verified_amount else "销售金额"),
-        "refund_reserved": (reserved_amount or sale_amount, "预约金额" if reserved_amount else "销售金额"),
+        "refund_reserved": (issued_amount or reserved_amount or sale_amount, "出票/预约金额" if (issued_amount or reserved_amount) else "销售金额"),
     }
 
     for key, is_field, qty_field, amount_field, at_field in STATUS_RULES:
         is_flag = bool(getattr(payload, is_field))
-        _require_time_if_yes(key, is_flag, getattr(payload, at_field, None))
         _validate_qty_range(key, getattr(payload, qty_field, None), total_qty)
         amount_val = _to_decimal(getattr(payload, amount_field, None))
         max_amount, max_label = amount_limits.get(key, (sale_amount, "销售金额"))
         _validate_amount_range(key, amount_val, max_amount, max_label)
 
+    issued_qty = _effective_qty(payload.is_issued, payload.issued_qty, total_qty)
     verified_qty = _effective_qty(payload.is_verified, payload.verified_qty, total_qty)
     reserved_qty = _effective_qty(payload.is_reserved, payload.reserved_qty, total_qty)
+    effective_reserved_qty = reserved_qty if reserved_qty > 0 else issued_qty
     refund_verified_qty = _effective_qty(payload.is_refund_verified, payload.refund_verified_qty, total_qty)
     refund_reserved_qty = _effective_qty(payload.is_refund_reserved, payload.refund_reserved_qty, total_qty)
     refund_unverified_qty = _effective_qty(payload.is_refund_unverified, payload.refund_unverified_qty, total_qty)
     refund_unreserved_qty = _effective_qty(payload.is_refund_unreserved, payload.refund_unreserved_qty, total_qty)
 
     if refund_verified_qty > 0:
-        _ensure_refund_limit(refund_verified_qty, verified_qty, "核销")
+        _ensure_refund_limit(refund_verified_qty, verified_qty, "核销/消耗")
     if refund_reserved_qty > 0:
-        _ensure_refund_limit(refund_reserved_qty, reserved_qty, "预约")
+        _ensure_refund_limit(refund_reserved_qty, effective_reserved_qty, "出票/预约")
     if refund_unverified_qty > 0:
-        _ensure_unprocessed_refund_limit(refund_unverified_qty, max(0, total_qty - verified_qty), "核销")
+        _ensure_unprocessed_refund_limit(refund_unverified_qty, max(0, total_qty - verified_qty), "核销/消耗")
     if refund_unreserved_qty > 0:
-        _ensure_unprocessed_refund_limit(refund_unreserved_qty, max(0, total_qty - reserved_qty), "预约")
+        _ensure_unprocessed_refund_limit(refund_unreserved_qty, max(0, total_qty - effective_reserved_qty), "出票/预约")
+
+
+def _validate_status_fields_for_resource(payload: object, sale_amount: Decimal, total_qty: int):
+    issued_amount = _to_decimal(getattr(payload, "issued_amount", None))
+    verified_amount = _to_decimal(getattr(payload, "verified_amount", None))
+    reserved_amount = _to_decimal(getattr(payload, "reserved_amount", None))
+
+    amount_limits: dict[str, tuple[Optional[Decimal], str]] = {
+        "issued": (sale_amount, "销售金额"),
+        "verified": (sale_amount, "销售金额"),
+        "reserved": (sale_amount, "销售金额"),
+        "completed": (sale_amount, "销售金额"),
+        "disputed": (sale_amount, "销售金额"),
+        "mid_disputed": (sale_amount, "销售金额"),
+        "refund_unverified": (sale_amount, "销售金额"),
+        "refund_unreserved": (sale_amount, "销售金额"),
+        "refund_verified": (verified_amount or sale_amount, "核销金额" if verified_amount else "销售金额"),
+        "refund_reserved": (issued_amount or reserved_amount or sale_amount, "出票/预约金额" if (issued_amount or reserved_amount) else "销售金额"),
+    }
+
+    for key, is_field, qty_field, amount_field, at_field in RESOURCE_STATUS_RULES:
+        is_flag = bool(getattr(payload, is_field))
+        _validate_qty_range(key, getattr(payload, qty_field, None), total_qty)
+        amount_val = _to_decimal(getattr(payload, amount_field, None))
+        max_amount, max_label = amount_limits.get(key, (sale_amount, "销售金额"))
+        _validate_amount_range(key, amount_val, max_amount, max_label)
+
+    issued_qty = _effective_qty(getattr(payload, "is_issued", False), getattr(payload, "issued_qty", None), total_qty)
+    verified_qty = _effective_qty(getattr(payload, "is_verified", False), getattr(payload, "verified_qty", None), total_qty)
+    reserved_qty = _effective_qty(getattr(payload, "is_reserved", False), getattr(payload, "reserved_qty", None), total_qty)
+    effective_reserved_qty = reserved_qty if reserved_qty > 0 else issued_qty
+    refund_verified_qty = _effective_qty(
+        getattr(payload, "is_refund_verified", False),
+        getattr(payload, "refund_verified_qty", None),
+        total_qty,
+    )
+    refund_reserved_qty = _effective_qty(
+        getattr(payload, "is_refund_reserved", False),
+        getattr(payload, "refund_reserved_qty", None),
+        total_qty,
+    )
+    refund_unverified_qty = _effective_qty(
+        getattr(payload, "is_refund_unverified", False),
+        getattr(payload, "refund_unverified_qty", None),
+        total_qty,
+    )
+    refund_unreserved_qty = _effective_qty(
+        getattr(payload, "is_refund_unreserved", False),
+        getattr(payload, "refund_unreserved_qty", None),
+        total_qty,
+    )
+
+    if refund_verified_qty > 0:
+        _ensure_refund_limit(refund_verified_qty, verified_qty, "核销/消耗")
+    if refund_reserved_qty > 0:
+        _ensure_refund_limit(refund_reserved_qty, effective_reserved_qty, "出票/预约")
+    if refund_unverified_qty > 0:
+        _ensure_unprocessed_refund_limit(refund_unverified_qty, max(0, total_qty - verified_qty), "核销/消耗")
+    if refund_unreserved_qty > 0:
+        _ensure_unprocessed_refund_limit(refund_unreserved_qty, max(0, total_qty - effective_reserved_qty), "出票/预约")
 
 
 def _normalize_header(value: str) -> str:
@@ -305,65 +428,93 @@ def _build_header_aliases() -> dict[str, str]:
     add("remark", "remark")
 
     # Status aliases
-    add("是否出票/发码/发短信", "is_issued")
-    add("是否出票(景区)/是否发二维码/是否发短信", "is_issued")
-    add("是否出票", "is_issued")
-    add("是否发码", "is_issued")
-    add("是否发二维码", "is_issued")
-    add("是否发短信", "is_issued")
-    add("出票数量", "issued_qty")
-    add("发码数量", "issued_qty")
-    add("发短信数量", "issued_qty")
-    add("出票金额", "issued_amount")
-    add("发码金额", "issued_amount")
-    add("发短信金额", "issued_amount")
-    add("出票时间", "issued_at")
-    add("发码时间", "issued_at")
-    add("发短信时间", "issued_at")
+    add("????/??/???", "is_issued")
+    add("????(??)/??????/?????", "is_issued")
+    add("????/????????", "is_issued")
+    add("????/??", "is_issued")
+    add("????", "is_issued")
+    add("????", "is_issued")
+    add("??????", "is_issued")
+    add("?????", "is_issued")
+    add("????", "is_issued")
+    add("????", "issued_qty")
+    add("????", "issued_qty")
+    add("?????", "issued_qty")
+    add("????", "issued_qty")
+    add("??/????", "issued_qty")
+    add("????", "issued_amount")
+    add("????", "issued_amount")
+    add("?????", "issued_amount")
+    add("????", "issued_amount")
+    add("??/????", "issued_amount")
+    add("????", "issued_at")
+    add("????", "issued_at")
+    add("?????", "issued_at")
+    add("????", "issued_at")
+    add("??/????", "issued_at")
 
-    add("是否核销", "is_verified")
-    add("核销数量", "verified_qty")
-    add("核销金额", "verified_amount")
-    add("核销时间", "verified_at")
+    add("????", "is_verified")
+    add("????/??", "is_verified")
+    add("????", "verified_qty")
+    add("??/????", "verified_qty")
+    add("????", "verified_amount")
+    add("??/????", "verified_amount")
+    add("????", "verified_at")
+    add("??/????", "verified_at")
 
-    add("是否预约", "is_reserved")
-    add("预约数量", "reserved_qty")
-    add("预约金额", "reserved_amount")
-    add("预约时间", "reserved_at")
+    add("????????????", "is_refund_unverified")
+    add("????????/??????", "is_refund_unverified")
+    add("?????", "is_refund_unverified")
+    add("???/????", "is_refund_unverified")
+    add("???????", "refund_unverified_qty")
+    add("???/??????", "refund_unverified_qty")
+    add("???????", "refund_unverified_amount")
+    add("???/??????", "refund_unverified_amount")
+    add("???????", "refund_unverified_at")
+    add("???/??????", "refund_unverified_at")
 
-    add("是否支付后未核销全部退款", "is_refund_unverified")
-    add("未核销退款", "is_refund_unverified")
-    add("未核销退款数量", "refund_unverified_qty")
-    add("未核销退款金额", "refund_unverified_amount")
-    add("未核销退款时间", "refund_unverified_at")
+    add("????????????", "is_refund_unreserved")
+    add("????????/??????", "is_refund_unreserved")
+    add("?????", "is_refund_unreserved")
+    add("???/????", "is_refund_unreserved")
+    add("???????", "refund_unreserved_qty")
+    add("???/??????", "refund_unreserved_qty")
+    add("???????", "refund_unreserved_amount")
+    add("???/??????", "refund_unreserved_amount")
+    add("???????", "refund_unreserved_at")
+    add("???/??????", "refund_unreserved_at")
 
-    add("是否支付后未预约全部退款", "is_refund_unreserved")
-    add("未预约退款", "is_refund_unreserved")
-    add("未预约退款数量", "refund_unreserved_qty")
-    add("未预约退款金额", "refund_unreserved_amount")
-    add("未预约退款时间", "refund_unreserved_at")
+    add("??????????/????", "is_refund_verified")
+    add("????????/????/????", "is_refund_verified")
+    add("?????", "is_refund_verified")
+    add("???/????", "is_refund_verified")
+    add("???????", "refund_verified_qty")
+    add("???/??????", "refund_verified_qty")
+    add("???????", "refund_verified_amount")
+    add("???/??????", "refund_verified_amount")
+    add("???????", "refund_verified_at")
+    add("???/??????", "refund_verified_at")
 
-    add("是否支付后已核销全部/部分退款", "is_refund_verified")
-    add("已核销退款", "is_refund_verified")
-    add("已核销退款数量", "refund_verified_qty")
-    add("已核销退款金额", "refund_verified_amount")
-    add("已核销退款时间", "refund_verified_at")
+    add("??????????/????", "is_refund_reserved")
+    add("????????/????/????", "is_refund_reserved")
+    add("?????", "is_refund_reserved")
+    add("???/????", "is_refund_reserved")
+    add("???????", "refund_reserved_qty")
+    add("???/??????", "refund_reserved_qty")
+    add("???????", "refund_reserved_amount")
+    add("???/??????", "refund_reserved_amount")
+    add("???????", "refund_reserved_at")
+    add("???/??????", "refund_reserved_at")
 
-    add("是否支付后已预约全部/部分退款", "is_refund_reserved")
-    add("已预约退款", "is_refund_reserved")
-    add("已预约退款数量", "refund_reserved_qty")
-    add("已预约退款金额", "refund_reserved_amount")
-    add("已预约退款时间", "refund_reserved_at")
+    add("????", "is_completed")
+    add("????", "completed_qty")
+    add("????", "completed_amount")
+    add("????", "completed_at")
 
-    add("是否完成", "is_completed")
-    add("完成数量", "completed_qty")
-    add("完成金额", "completed_amount")
-    add("完成时间", "completed_at")
-
-    add("是否完成后订单产生纠纷", "is_disputed")
-    add("纠纷数量", "disputed_qty")
-    add("纠纷金额", "disputed_amount")
-    add("纠纷时间", "disputed_at")
+    add("???????????", "is_disputed")
+    add("????", "disputed_qty")
+    add("????", "disputed_amount")
+    add("????", "disputed_at")
 
     # Canonical status keys
     for key in STATUS_FIELDS:
@@ -758,63 +909,105 @@ async def _apply_resource_inventory(
     if not resources:
         return
 
+    by_resource: dict[tuple[int, date], list[tuple[OrderResource, SupplierResource]]] = {}
     for order_resource, supplier_resource in resources:
+        travel_date = order_resource.travel_date or order.travel_date
+        if not travel_date:
+            continue
+        by_resource.setdefault((order_resource.resource_id, travel_date), []).append((order_resource, supplier_resource))
+
+    for (resource_id, travel_date), items in by_resource.items():
         if order.quantity <= 0:
             continue
-        per_unit = order_resource.quantity / order.quantity
-        if int(per_unit) != per_unit:
+        total_qty = sum(or_rec.quantity for or_rec, _ in items)
+        if total_qty <= 0:
+            continue
+        if total_qty % order.quantity != 0:
             raise HTTPException(status_code=400, detail="资源数量与订单数量不匹配")
-        resource_qty = int(per_unit) * qty
-        if resource_qty <= 0:
+
+        per_order_unit = total_qty // order.quantity
+        resource_total_needed = per_order_unit * qty
+        if resource_total_needed <= 0:
             continue
 
-        inv = await db.scalar(
-            select(ResourceInventory)
-            .where(
-                ResourceInventory.supplier_resource_id == supplier_resource.id,
-                ResourceInventory.inventory_date == order.travel_date,
+        allocations = []
+        allocated = 0
+        for order_resource, supplier_resource in items:
+            raw = (Decimal(order_resource.quantity) * Decimal(resource_total_needed)) / Decimal(total_qty)
+            base_qty = int(raw)
+            frac = raw - base_qty
+            allocations.append(
+                {
+                    "order_resource": order_resource,
+                    "supplier_resource": supplier_resource,
+                    "qty": base_qty,
+                    "frac": frac,
+                }
             )
-            .with_for_update()
-        )
-        if not inv:
-            raise HTTPException(status_code=400, detail="资源库存未初始化")
+            allocated += base_qty
 
-        available = inv.total_qty - inv.frozen_qty - inv.sold_qty
-        before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
+        remainder = resource_total_needed - allocated
+        if remainder > 0 and allocations:
+            allocations.sort(
+                key=lambda x: (x["frac"], x["supplier_resource"].supplier_id),
+                reverse=True,
+            )
+            for i in range(remainder):
+                allocations[i % len(allocations)]["qty"] += 1
 
-        if action == "freeze":
-            if available < resource_qty:
-                raise HTTPException(status_code=400, detail="资源库存不足，无法冻结")
-            inv.frozen_qty += resource_qty
-        elif action == "consume":
-            if inv.frozen_qty < resource_qty:
-                raise HTTPException(status_code=400, detail="资源冻结库存不足")
-            inv.frozen_qty -= resource_qty
-            inv.sold_qty += resource_qty
-        elif action == "release":
-            if inv.frozen_qty < resource_qty:
-                raise HTTPException(status_code=400, detail="资源冻结库存不足")
-            inv.frozen_qty -= resource_qty
-        elif action == "return":
-            if inv.sold_qty < resource_qty:
-                raise HTTPException(status_code=400, detail="资源已售库存不足")
-            inv.sold_qty -= resource_qty
-        else:
-            raise HTTPException(status_code=400, detail="不支持的资源库存操作")
+        for alloc in allocations:
+            resource_qty = alloc["qty"]
+            if resource_qty <= 0:
+                continue
+            supplier_resource = alloc["supplier_resource"]
 
-        inv.updated_at = now_china().isoformat()
-        after = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
-        log = ResourceInventoryLog(
-            supplier_resource_id=supplier_resource.id,
-            inventory_date=order.travel_date,
-            change_type=action,
-            before_qty=before,
-            after_qty=after,
-            related_order_id=order.id,
-            operator=operator,
-            operated_at=now_china(),
-        )
-        db.add_all([inv, log])
+            inv = await db.scalar(
+                select(ResourceInventory)
+                .where(
+                    ResourceInventory.supplier_resource_id == supplier_resource.id,
+                    ResourceInventory.inventory_date == travel_date,
+                )
+                .with_for_update()
+            )
+            if not inv:
+                raise HTTPException(status_code=400, detail="资源库存未初始化")
+
+            available = inv.total_qty - inv.frozen_qty - inv.sold_qty
+            before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
+
+            if action == "freeze":
+                if available < resource_qty:
+                    raise HTTPException(status_code=400, detail="资源库存不足，无法冻结")
+                inv.frozen_qty += resource_qty
+            elif action == "consume":
+                if inv.frozen_qty < resource_qty:
+                    raise HTTPException(status_code=400, detail="资源冻结库存不足")
+                inv.frozen_qty -= resource_qty
+                inv.sold_qty += resource_qty
+            elif action == "release":
+                if inv.frozen_qty < resource_qty:
+                    raise HTTPException(status_code=400, detail="资源冻结库存不足")
+                inv.frozen_qty -= resource_qty
+            elif action == "return":
+                if inv.sold_qty < resource_qty:
+                    raise HTTPException(status_code=400, detail="资源已售库存不足")
+                inv.sold_qty -= resource_qty
+            else:
+                raise HTTPException(status_code=400, detail="不支持的资源库存操作")
+
+            inv.updated_at = now_china().isoformat()
+            after = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
+            log = ResourceInventoryLog(
+                supplier_resource_id=supplier_resource.id,
+                inventory_date=travel_date,
+                change_type=action,
+                before_qty=before,
+                after_qty=after,
+                related_order_id=order.id,
+                operator=operator,
+                operated_at=now_china(),
+            )
+            db.add_all([inv, log])
 
 
 @router.get("/orders", response_model=ListResponse)
@@ -849,7 +1042,14 @@ async def list_orders(
     if channel_id:
         stmt = stmt.where(Order.channel_id == channel_id)
     if travel_date:
-        stmt = stmt.where(Order.travel_date == travel_date)
+        stmt = stmt.where(
+            exists(
+                select(1).where(
+                    OrderResource.order_id == Order.id,
+                    OrderResource.travel_date == travel_date,
+                )
+            )
+        )
     if paid_date:
         start_dt = datetime.combine(paid_date, time.min)
         end_dt = datetime.combine(paid_date, time.max)
@@ -861,6 +1061,19 @@ async def list_orders(
         stmt.order_by(Spu.id.asc(), Order.id.desc()).offset((page - 1) * page_size).limit(page_size)
     )
     rows = result.all()
+    order_ids = [order.id for order, *_ in rows]
+    resource_summary: dict[int, dict] = {}
+    if order_ids:
+        res_rows = await db.scalars(select(OrderResource).where(OrderResource.order_id.in_(order_ids)))
+        for res in res_rows:
+            summary = resource_summary.setdefault(res.order_id, {"travel_date": None, "flags": {}})
+            if res.travel_date:
+                if summary["travel_date"] is None or res.travel_date < summary["travel_date"]:
+                    summary["travel_date"] = res.travel_date
+            for flag in RESOURCE_STATUS_FLAG_FIELDS:
+                if getattr(res, flag, False):
+                    summary["flags"][flag] = True
+
     items = []
     for order, channel_name, sku_name, product_name, spu_id, spu_name in rows:
         payload = OrderRead.model_validate(order).model_dump()
@@ -869,6 +1082,13 @@ async def list_orders(
         payload["product_name"] = product_name
         payload["spu_id"] = spu_id
         payload["spu_name"] = spu_name
+        summary = resource_summary.get(order.id)
+        if summary:
+            if summary.get("travel_date"):
+                payload["travel_date"] = summary["travel_date"]
+            flags = summary.get("flags", {})
+            for flag in RESOURCE_STATUS_FLAG_FIELDS:
+                payload[flag] = bool(flags.get(flag, False))
         items.append(payload)
     return ListResponse(
         items=items,
@@ -900,10 +1120,6 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
         raise HTTPException(status_code=400, detail="SKU 未到售卖期，无法下单")
     if sku.sale_end and now_date > sku.sale_end:
         raise HTTPException(status_code=400, detail="SKU 已过售卖期，无法下单")
-    if sku.travel_start and payload.travel_date < sku.travel_start:
-        raise HTTPException(status_code=400, detail="出行日期早于可用范围")
-    if sku.travel_end and payload.travel_date > sku.travel_end:
-        raise HTTPException(status_code=400, detail="出行日期晚于可用范围")
 
     sku_channel = await db.scalar(
         select(SkuChannel).where(
@@ -953,16 +1169,64 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
     pres = await db.scalars(select(ProductResource).where(ProductResource.product_id == product_id))
     pres = list(pres)
     
-    calculated_cost = Decimal("0.00")
-    order_resources_data = [] # List of dicts to create OrderResource
-    
+    total_cost = Decimal("0.00")
+    order_resources_data = []  # List of dicts to create OrderResource
+
     # Manual selection map: resource_id -> supplier_id
     selections = payload.resource_selections or {}
+
+    resource_input_map: dict[int, OrderResourceCreate] = {}
+    if payload.resource_items:
+        for item in payload.resource_items:
+            if item.resource_id in resource_input_map:
+                raise HTTPException(status_code=400, detail=f"资源 {item.resource_id} 重复设置")
+            resource_input_map[item.resource_id] = item
+        valid_resource_ids = {line.resource_id for line in pres}
+        unknown_ids = [rid for rid in resource_input_map.keys() if rid not in valid_resource_ids]
+        if unknown_ids:
+            raise HTTPException(status_code=400, detail=f"资源 {unknown_ids[0]} 不属于该产品")
+    else:
+        if not payload.travel_date:
+            raise HTTPException(status_code=400, detail="出行日期不能为空")
+        default_status = {}
+        for field in RESOURCE_STATUS_FIELDS:
+            value = getattr(payload, field, None)
+            if field.startswith("is_") and value is None:
+                value = False
+            default_status[field] = value
+        for line in pres:
+            resource_input_map[line.resource_id] = OrderResourceCreate(
+                resource_id=line.resource_id,
+                travel_date=payload.travel_date,
+                **default_status,
+            )
+
+    if payload.paid_at is None:
+        raise HTTPException(status_code=400, detail="支付时间不能为空")
+    for item in resource_input_map.values():
+        if getattr(item, "is_verified", False) and not getattr(item, "is_issued", False):
+            raise HTTPException(status_code=400, detail="核销/消耗前必须先出票/预约")
+
+    resource_dates = [item.travel_date for item in resource_input_map.values() if item.travel_date]
+    if not resource_dates and payload.travel_date:
+        resource_dates = [payload.travel_date]
+    if sku.travel_start and any(d < sku.travel_start for d in resource_dates):
+        raise HTTPException(status_code=400, detail="出行日期早于可用范围")
+    if sku.travel_end and any(d > sku.travel_end for d in resource_dates):
+        raise HTTPException(status_code=400, detail="出行日期晚于可用范围")
+    primary_travel_date = min(resource_dates) if resource_dates else None
 
     for line in pres:
         qty_needed = line.quantity * payload.quantity
         if qty_needed <= 0:
             continue
+
+        resource_input = resource_input_map.get(line.resource_id)
+        if not resource_input:
+            raise HTTPException(status_code=400, detail=f"资源 {line.resource_id} 未设置出行日期")
+        travel_date = resource_input.travel_date
+        if not travel_date:
+            raise HTTPException(status_code=400, detail="资源出行日期不能为空")
             
         # Determine candidate suppliers
         candidates = []
@@ -989,16 +1253,15 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
         if not candidates:
             raise HTTPException(status_code=400, detail=f"资源 {line.resource_id} 没有可用供应商")
 
-        # Fetch effective prices for candidates on travel_date
-        # We also need to check stock availability here or later. For now, we prefer those with stock.
-        candidate_prices = [] # (supplier_id, price, has_stock, supplier_resource_id)
+        # Fetch effective prices and available stock for candidates on travel_date
+        candidate_prices = []  # supplier_id, price, available, supplier_resource_id
         
         for cand in candidates:
             # Check ResourceInventory
             inv = await db.scalar(
                 select(ResourceInventory).where(
                     ResourceInventory.supplier_resource_id == cand.id,
-                    ResourceInventory.inventory_date == payload.travel_date
+                    ResourceInventory.inventory_date == travel_date
                 )
             )
             
@@ -1007,90 +1270,98 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
             if inv and inv.settlement_price is not None:
                 price = inv.settlement_price
             
-            # Determine stock
-            # available = total - frozen - sold
-            has_stock = False
+            available = 0
             if inv:
-                avail = inv.total_qty - inv.frozen_qty - inv.sold_qty
-                if avail >= qty_needed:
-                    has_stock = True
-            
+                available = max(0, inv.total_qty - inv.frozen_qty - inv.sold_qty)
+
             candidate_prices.append({
                 "supplier_id": cand.supplier_id,
-                "price": price or Decimal(0),
-                "has_stock": has_stock,
+                "price": price if price is not None else Decimal(0),
+                "available": available,
                 "supplier_resource_id": cand.id,
-                "cand_obj": cand
             })
 
-        # Filter: If manual selection exists, force it
-        selected_cand = None
+        # Filter: If manual selection exists, force it (no split)
         if line.resource_id in selections:
             target_sid = selections[line.resource_id]
             # Find in candidates
             found = [c for c in candidate_prices if c["supplier_id"] == target_sid]
             if not found:
-                 raise HTTPException(status_code=400, detail=f"所选供应商不适用于资源 {line.resource_id}")
+                raise HTTPException(status_code=400, detail=f"所选供应商不适用于资源 {line.resource_id}")
             selected_cand = found[0]
-            if not selected_cand["has_stock"]:
-                 # We might raise error or allow overbooking? Let's be strict.
-                 pass # Will fail at freeze step if we don't catch here.
+            if selected_cand["available"] < qty_needed:
+                raise HTTPException(status_code=400, detail=f"资源库存不足（资源 {line.resource_id}，供应商 {target_sid}）")
+            allocations = [(selected_cand, qty_needed)]
         else:
-            # Auto selection:
-            # 1. Prefer has_stock
-            # 2. Lowest price
-            valid_cands = [c for c in candidate_prices if c["has_stock"]]
-            if not valid_cands:
-                # Fallback to any candidate to report "Out of Stock" properly later? 
-                # Or pick lowest price one and let it fail at freeze.
-                # Let's pick lowest price among ALL to attempt.
-                valid_cands = candidate_prices
-            
-            if not valid_cands:
-                 raise HTTPException(status_code=400, detail=f"资源 {line.resource_id} 没有可用供应商")
-                 
-            # Sort by price
-            valid_cands.sort(key=lambda x: x["price"])
-            selected_cand = valid_cands[0]
-            
-        # Add to order resources
-        unit_cost = selected_cand["price"]
-        line_cost = unit_cost * Decimal(line.quantity) # Cost per product unit
-        calculated_cost += line_cost
-        
-        order_resources_data.append({
-            "resource_id": line.resource_id,
-            "supplier_id": selected_cand["supplier_id"],
-            "supplier_resource_id": selected_cand["supplier_resource_id"],
-            "quantity": line.quantity * payload.quantity, # Total qty for whole order
-            "settlement_price": unit_cost,
-            "cost_amount": unit_cost * Decimal(line.quantity * payload.quantity)
-        })
+            available_cands = [c for c in candidate_prices if c["available"] > 0]
+            if not available_cands:
+                raise HTTPException(status_code=400, detail=f"资源库存不足（资源 {line.resource_id}）")
 
-    calculated_cost = calculated_cost * Decimal(payload.quantity) # Total Cost
+            total_available = sum(c["available"] for c in available_cands)
+            if total_available < qty_needed:
+                raise HTTPException(status_code=400, detail=f"资源库存不足，无法拆分满足订单（资源 {line.resource_id}）")
 
-    active_price = await _active_price(db, payload.sku_id, payload.channel_id, payload.travel_date)
+            # Sort by price asc, then available asc (库存少优先), then supplier_id
+            available_cands.sort(key=lambda x: (x["price"], x["available"], x["supplier_id"]))
+            allocations = []
+            remaining = qty_needed
+            for cand in available_cands:
+                if remaining <= 0:
+                    break
+                take = min(cand["available"], remaining)
+                if take <= 0:
+                    continue
+                allocations.append((cand, take))
+                remaining -= take
+            if remaining > 0:
+                raise HTTPException(status_code=400, detail=f"资源库存不足，无法拆分满足订单（资源 {line.resource_id}）")
+
+        # Add to order resources (support split)
+        for cand, take_qty in allocations:
+            unit_cost = cand["price"]
+            cost_amount = unit_cost * Decimal(take_qty)
+            total_cost += cost_amount
+            status_payload = {field: getattr(resource_input, field) for field in RESOURCE_STATUS_FIELDS}
+            order_resources_data.append({
+                "resource_id": line.resource_id,
+                "supplier_id": cand["supplier_id"],
+                "supplier_resource_id": cand["supplier_resource_id"],
+                "quantity": take_qty,  # Resource qty for whole order (may be split)
+                "settlement_price": unit_cost,
+                "cost_amount": cost_amount,
+                "travel_date": travel_date,
+                "status_payload": status_payload,
+            })
+
+    if not primary_travel_date:
+        raise HTTPException(status_code=400, detail="出行日期不能为空")
+    active_price = await _active_price(db, payload.sku_id, payload.channel_id, primary_travel_date)
     if payload.sale_price is None:
         if not active_price or active_price.sale_price is None:
             raise HTTPException(status_code=400, detail="未找到该渠道有效价格，请填写销售金额或先配置价格")
     sale_price = Decimal(str(payload.sale_price if payload.sale_price is not None else active_price.sale_price))
     
     # Use calculated dynamic cost if payload doesn't provide it
-    cost_price = Decimal(str(payload.cost_price)) if payload.cost_price is not None else (calculated_cost / Decimal(payload.quantity) if payload.quantity > 0 else 0)
+    cost_price = Decimal(str(payload.cost_price)) if payload.cost_price is not None else (total_cost / Decimal(payload.quantity) if payload.quantity > 0 else 0)
     
     sale_amount, cost_amount, profit_amount = _calc_amounts(sale_price, cost_price, payload.quantity)
     if sale_amount <= 0:
         raise HTTPException(status_code=400, detail="销售金额必须大于 0")
 
-    _validate_status_fields_for_create(payload, sale_amount)
+    if payload.resource_items:
+        for item in payload.resource_items:
+            _validate_status_fields_for_resource(item, sale_amount, payload.quantity)
+    else:
+        _validate_status_fields_for_create(payload, sale_amount)
 
     # 3. Create Order
+    order_travel_date = primary_travel_date or payload.travel_date
     order = Order(
         order_no=payload.order_no,
         channel_id=payload.channel_id,
         sku_id=payload.sku_id,
         product_id=product_id,
-        travel_date=payload.travel_date,
+        travel_date=order_travel_date,
         quantity=payload.quantity,
         sale_price=sale_price,
         sale_amount=sale_amount,
@@ -1105,48 +1376,78 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
     db.add(order)
     await db.flush()
 
-    # 4. Freeze SKU Inventory (if used)
-    # We still do this for backward compatibility or if they use SKU-level limits
+    # 4. Freeze/Consume SKU Inventory (per distinct travel_date)
+    issued_dates = sorted({item.travel_date for item in resource_input_map.values() if item.travel_date and item.is_issued})
+    verified_dates = sorted({item.travel_date for item in resource_input_map.values() if item.travel_date and item.is_verified})
     try:
-        await _freeze_inventory(db, payload.sku_id, payload.channel_id, payload.travel_date, payload.quantity, user.username, order.id)
+        for travel_date in issued_dates:
+            await _freeze_inventory(
+                db,
+                payload.sku_id,
+                payload.channel_id,
+                travel_date,
+                payload.quantity,
+                user.username,
+                order.id,
+            )
+        for travel_date in verified_dates:
+            await _consume_inventory(
+                db,
+                payload.sku_id,
+                travel_date,
+                payload.quantity,
+                user.username,
+                order.id,
+                "verify",
+            )
     except HTTPException as e:
-        # It's possible SKU inventory isn't initialized if we only use ResourceInventory
-        # But for now, let's assume if it fails, we shouldn't block if we successfully froze resources?
-        # NO, if the system was using SKU inventory, we must respect it.
-        # But if the user didn't initialize SKU inventory, this might fail.
-        # Let's keep it strict for now as per previous logic.
         raise e
 
-    # 5. Create Order Resources and Freeze Resource Inventory
+    # 5. Create Order Resources and Freeze/Consume Resource Inventory
     for item in order_resources_data:
+        status_payload = item.get("status_payload") or {}
+        freeze_required = bool(status_payload.get("is_issued"))
+        consume_required = bool(status_payload.get("is_verified"))
+        if consume_required and not freeze_required:
+            raise HTTPException(status_code=400, detail="核销/消耗前必须先出票/预约")
         # Create DB record
         or_rec = OrderResource(
             order_id=order.id,
             resource_id=item["resource_id"],
             supplier_id=item["supplier_id"],
+            travel_date=item.get("travel_date"),
             quantity=item["quantity"],
             settlement_price=item["settlement_price"],
-            cost_amount=item["cost_amount"]
+            cost_amount=item["cost_amount"],
+            **status_payload,
         )
         db.add(or_rec)
-        
-        # Freeze Resource Inventory
+        if not freeze_required and not consume_required:
+            continue
+
         # Look up inventory again to lock
         inv = await db.scalar(
             select(ResourceInventory).where(
                 ResourceInventory.supplier_resource_id == item["supplier_resource_id"],
-                ResourceInventory.inventory_date == payload.travel_date
+                ResourceInventory.inventory_date == item.get("travel_date")
             ).with_for_update()
         )
-        
+
         if not inv:
-             raise HTTPException(status_code=400, detail=f"资源库存未初始化（资源 {item['resource_id']}，供应商 {item['supplier_id']}）")
-        
+            raise HTTPException(status_code=400, detail=f"资源库存未初始化（资源 {item['resource_id']}，供应商 {item['supplier_id']}）")
+
         avail = inv.total_qty - inv.frozen_qty - inv.sold_qty
-        if avail < item["quantity"]:
-             raise HTTPException(status_code=400, detail=f"资源库存不足（资源 {item['resource_id']}，供应商 {item['supplier_id']}）")
-             
-        inv.frozen_qty += item["quantity"]
+        if freeze_required:
+            if avail < item["quantity"]:
+                raise HTTPException(status_code=400, detail=f"资源库存不足（资源 {item['resource_id']}，供应商 {item['supplier_id']}）")
+            inv.frozen_qty += item["quantity"]
+
+        if consume_required:
+            if inv.frozen_qty < item["quantity"]:
+                raise HTTPException(status_code=400, detail="资源冻结库存不足")
+            inv.frozen_qty -= item["quantity"]
+            inv.sold_qty += item["quantity"]
+
         inv.updated_at = now_china().isoformat()
         db.add(inv)
 
@@ -1223,46 +1524,42 @@ async def download_import_template(
     guide.append(["数量", "是", "整数", "2", "必须大于 0"])
     guide.append(["销售金额", "是", "数字（总金额）", "199.00", "总销售金额；系统会按 数量 自动换算单价"])
     guide.append(["出行日期", "是", "日期 YYYY-MM-DD", "2026-02-02", "仅日期，不包含时间"])
-    guide.append(["支付时间", "是", "时间 YYYY-MM-DD HH:mm", "2026-02-02 10:30", "精确到分钟"])
+    guide.append(["支付时间", "是", "时间 YYYY-MM-DD HH:mm", "2026-02-02 10:30", "必须填写，用于记录支付时间"])
     guide.append(["备注", "否", "文本", "客户补差价", "可选"])
     guide.append(["支付数量", "否", "整数", "2", "仅在需要记录支付数量时填写"])
     guide.append(["支付金额", "否", "数字", "199.00", "仅在需要记录支付金额时填写"])
-    guide.append(["是否出票/发码/发短信", "否", "是/否", "是", "若为“是”，需填写“出票/发码时间”"])
-    guide.append(["出票数量", "否", "整数", "2", "仅当已出票时可填"])
-    guide.append(["出票金额", "否", "数字", "199.00", "仅当已出票时可填"])
-    guide.append(["出票/发码时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-02 11:00", "与“是否出票/发码/发短信”关联"])
-    guide.append(["是否核销", "否", "是/否", "否", "若为“是”，需填写“核销时间”"])
-    guide.append(["核销数量", "否", "整数", "2", "仅当已核销时可填"])
-    guide.append(["核销金额", "否", "数字", "199.00", "仅当已核销时可填"])
-    guide.append(["核销时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-03 09:00", "与“是否核销”关联"])
-    guide.append(["是否预约", "否", "是/否", "否", "若为“是”，需填写“预约时间”"])
-    guide.append(["预约数量", "否", "整数", "2", "仅当已预约时可填"])
-    guide.append(["预约金额", "否", "数字", "199.00", "仅当已预约时可填"])
-    guide.append(["预约时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-02 12:00", "与“是否预约”关联"])
-    guide.append(["是否支付后未核销全部退款", "否", "是/否", "否", "若为“是”，需填写“未核销退款时间”"])
-    guide.append(["未核销退款数量", "否", "整数", "2", "仅当该退款发生时可填"])
-    guide.append(["未核销退款金额", "否", "数字", "199.00", "仅当该退款发生时可填"])
-    guide.append(["未核销退款时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-04 10:00", "与“是否支付后未核销全部退款”关联"])
-    guide.append(["是否支付后未预约全部退款", "否", "是/否", "否", "若为“是”，需填写“未预约退款时间”"])
-    guide.append(["未预约退款数量", "否", "整数", "2", "仅当该退款发生时可填"])
-    guide.append(["未预约退款金额", "否", "数字", "199.00", "仅当该退款发生时可填"])
-    guide.append(["未预约退款时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-04 10:30", "与“是否支付后未预约全部退款”关联"])
-    guide.append(["是否支付后已核销全部/部分退款", "否", "是/否", "否", "若为“是”，需填写“已核销退款时间”"])
-    guide.append(["已核销退款数量", "否", "整数", "1", "仅当该退款发生时可填"])
-    guide.append(["已核销退款金额", "否", "数字", "99.50", "仅当该退款发生时可填"])
-    guide.append(["已核销退款时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-05 09:30", "与“是否支付后已核销全部/部分退款”关联"])
-    guide.append(["是否支付后已预约全部/部分退款", "否", "是/否", "否", "若为“是”，需填写“已预约退款时间”"])
-    guide.append(["已预约退款数量", "否", "整数", "1", "仅当该退款发生时可填"])
-    guide.append(["已预约退款金额", "否", "数字", "99.50", "仅当该退款发生时可填"])
-    guide.append(["已预约退款时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-05 10:00", "与“是否支付后已预约全部/部分退款”关联"])
-    guide.append(["是否完成", "否", "是/否", "否", "若为“是”，需填写“完成时间”"])
+    guide.append(["是否出票/预约（资源可用）", "否", "是/否", "是", "若为“是”，可填写“出票/预约时间”"])
+    guide.append(["出票/预约数量", "否", "整数", "2", "仅当已出票/预约时可填"])
+    guide.append(["出票/预约金额", "否", "数字", "199.00", "仅当已出票/预约时可填"])
+    guide.append(["出票/预约时间", "否", "时间 YYYY-MM-DD HH:mm", "2026-02-02 11:00", "可选"])
+    guide.append(["是否核销/消耗", "否", "是/否", "否", "若为“是”，可填写“核销/消耗时间”"])
+    guide.append(["核销/消耗数量", "否", "整数", "2", "仅当已核销/消耗时可填"])
+    guide.append(["核销/消耗金额", "否", "数字", "199.00", "仅当已核销/消耗时可填"])
+    guide.append(["核销/消耗时间", "否", "时间 YYYY-MM-DD HH:mm", "2026-02-03 09:00", "可选"])
+    guide.append(["是否支付后未核销/消耗全部退款", "否", "是/否", "否", "若为“是”，可填写“未核销/消耗退款时间”"])
+    guide.append(["未核销/消耗退款数量", "否", "整数", "2", "仅当该退款发生时可填"])
+    guide.append(["未核销/消耗退款金额", "否", "数字", "199.00", "仅当该退款发生时可填"])
+    guide.append(["未核销/消耗退款时间", "否", "时间 YYYY-MM-DD HH:mm", "2026-02-04 10:00", "可选"])
+    guide.append(["是否支付后未出票/预约全部退款", "否", "是/否", "否", "若为“是”，可填写“未出票/预约退款时间”"])
+    guide.append(["未出票/预约退款数量", "否", "整数", "2", "仅当该退款发生时可填"])
+    guide.append(["未出票/预约退款金额", "否", "数字", "199.00", "仅当该退款发生时可填"])
+    guide.append(["未出票/预约退款时间", "否", "时间 YYYY-MM-DD HH:mm", "2026-02-04 10:30", "可选"])
+    guide.append(["是否支付后已核销/消耗全部/部分退款", "否", "是/否", "否", "若为“是”，可填写“已核销/消耗退款时间”"])
+    guide.append(["已核销/消耗退款数量", "否", "整数", "1", "仅当该退款发生时可填"])
+    guide.append(["已核销/消耗退款金额", "否", "数字", "99.50", "仅当该退款发生时可填"])
+    guide.append(["已核销/消耗退款时间", "否", "时间 YYYY-MM-DD HH:mm", "2026-02-05 09:30", "可选"])
+    guide.append(["是否支付后已出票/预约全部/部分退款", "否", "是/否", "否", "若为“是”，可填写“已出票/预约退款时间”"])
+    guide.append(["已出票/预约退款数量", "否", "整数", "1", "仅当该退款发生时可填"])
+    guide.append(["已出票/预约退款金额", "否", "数字", "99.50", "仅当该退款发生时可填"])
+    guide.append(["已出票/预约退款时间", "否", "时间 YYYY-MM-DD HH:mm", "2026-02-05 10:00", "可选"])
+    guide.append(["是否完成", "否", "是/否", "否", "若为“是”，可填写“完成时间”"])
     guide.append(["完成数量", "否", "整数", "2", "仅当已完成时可填"])
     guide.append(["完成金额", "否", "数字", "199.00", "仅当已完成时可填"])
-    guide.append(["完成时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-06 18:00", "与“是否完成”关联"])
-    guide.append(["是否完成后订单产生纠纷", "否", "是/否", "否", "若为“是”，需填写“纠纷时间”"])
+    guide.append(["完成时间", "否", "时间 YYYY-MM-DD HH:mm", "2026-02-06 18:00", "可选"])
+    guide.append(["是否完成后订单产生纠纷", "否", "是/否", "否", "若为“是”，可填写“纠纷时间”"])
     guide.append(["纠纷数量", "否", "整数", "1", "仅当产生纠纷时可填"])
     guide.append(["纠纷金额", "否", "数字", "50.00", "仅当产生纠纷时可填"])
-    guide.append(["纠纷时间", "若是则必填", "时间 YYYY-MM-DD HH:mm", "2026-02-07 09:00", "与“是否完成后订单产生纠纷”关联"])
+    guide.append(["纠纷时间", "否", "时间 YYYY-MM-DD HH:mm", "2026-02-07 09:00", "可选"])
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
@@ -1425,22 +1722,28 @@ async def import_orders(
             if not travel_date:
                 raise ValueError("出行日期不能为空或格式错误")
 
-            paid_at = _parse_datetime(data.get("paid_at"))
+            paid_at_raw = data.get("paid_at")
+            if not paid_at_raw:
+                raise ValueError("支付时间不能为空")
+            paid_at = _parse_datetime(paid_at_raw)
             if not paid_at:
-                raise ValueError("支付时间不能为空或格式错误")
+                raise ValueError("支付时间格式错误")
 
             remark = data.get("remark")
 
-            status_payload: dict[str, object] = {
-                "is_paid": True,
-                "paid_at": paid_at,
-            }
+            status_payload: dict[str, object] = {}
             paid_qty = _parse_int(data.get("paid_qty"))
             if paid_qty is not None:
                 status_payload["paid_qty"] = paid_qty
             paid_amount = _parse_decimal(data.get("paid_amount"))
             if paid_amount is not None:
                 status_payload["paid_amount"] = float(paid_amount)
+            has_paid_info = paid_at is not None or paid_qty is not None or paid_amount is not None
+            status_payload = {
+                "is_paid": bool(has_paid_info),
+                "paid_at": paid_at,
+                **status_payload,
+            }
 
             for key in STATUS_IMPORT_KEYS:
                 bool_val = _parse_bool(data.get(f"is_{key}"))
@@ -1454,12 +1757,6 @@ async def import_orders(
                     else:
                         bool_val = False
 
-                if bool_val and at_val is None:
-                    meta = STATUS_IMPORT_META.get(key, {})
-                    label = meta.get("label", key)
-                    time_label = meta.get("time_label", "时间")
-                    raise ValueError(f"{label}选择是但未提供{time_label}")
-
                 status_payload[f"is_{key}"] = bool_val
                 if qty_val is not None:
                     status_payload[f"{key}_qty"] = qty_val
@@ -1467,6 +1764,9 @@ async def import_orders(
                     status_payload[f"{key}_amount"] = float(amount_val)
                 if at_val is not None:
                     status_payload[f"{key}_at"] = at_val
+
+            if status_payload.get("is_verified") and not status_payload.get("is_issued"):
+                raise ValueError("核销/消耗前必须先出票/预约")
 
             order_payload = OrderCreate(
                 order_no=order_no,
@@ -1507,6 +1807,10 @@ async def decide_order(
     order = await db.get(Order, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="订单不存在")
+    order_resources = list(await db.scalars(select(OrderResource).where(OrderResource.order_id == order.id)))
+    travel_dates = sorted({r.travel_date for r in order_resources if r.travel_date})
+    if not travel_dates and order.travel_date:
+        travel_dates = [order.travel_date]
     action = payload.action
     if action == "refund":
         action = "refund_unverified"
@@ -1537,38 +1841,46 @@ async def decide_order(
             base_amount = _to_decimal(order.paid_amount) or _to_decimal(order.sale_amount)
             max_label = "支付金额" if order.paid_amount is not None else "销售金额"
             if base_amount is not None and amount_val > base_amount:
-                raise HTTPException(status_code=400, detail=f"核销金额不能超过{max_label}")
+                raise HTTPException(status_code=400, detail=f"核销/消耗金额不能超过{max_label}")
         if delta_qty > 0:
-            await _consume_inventory(db, order.sku_id, order.travel_date, delta_qty, user.username, order.id, "verify")
+            for travel_date in travel_dates:
+                await _consume_inventory(db, order.sku_id, travel_date, delta_qty, user.username, order.id, "verify")
             await _apply_resource_inventory(db, order, delta_qty, user.username, "consume")
         order.is_verified = True
         order.verified_at = event_time
         order.verified_qty = target_qty
         if payload.amount is not None:
             order.verified_amount = payload.amount
+        for res in order_resources:
+            res.is_verified = True
+            res.verified_at = event_time
+            res.verified_qty = target_qty
+            if payload.amount is not None:
+                res.verified_amount = payload.amount
     elif action in {"refund_unverified", "refund_unreserved"}:
         field_qty = order.refund_unverified_qty if action == "refund_unverified" else order.refund_unreserved_qty
         target_qty, delta_qty = _resolve_qty(order, payload.qty, field_qty)
         if action == "refund_unverified":
             verified_qty = order.verified_qty if order.verified_qty is not None else (order.quantity if order.is_verified else 0)
             max_allowed = max(0, order.quantity - verified_qty)
-            _ensure_unprocessed_refund_limit(target_qty, max_allowed, "核销")
+            _ensure_unprocessed_refund_limit(target_qty, max_allowed, "核销/消耗")
             if amount_val is not None:
                 base_amount = _to_decimal(order.paid_amount) or _to_decimal(order.sale_amount)
                 max_label = "支付金额" if order.paid_amount is not None else "销售金额"
                 if base_amount is not None and amount_val > base_amount:
-                    raise HTTPException(status_code=400, detail=f"未核销退款金额不能超过{max_label}")
+                    raise HTTPException(status_code=400, detail=f"未核销/消耗退款金额不能超过{max_label}")
         else:
-            reserved_qty = order.reserved_qty if order.reserved_qty is not None else (order.quantity if order.is_reserved else 0)
-            max_allowed = max(0, order.quantity - reserved_qty)
-            _ensure_unprocessed_refund_limit(target_qty, max_allowed, "预约")
+            issued_qty = order.issued_qty if order.issued_qty is not None else (order.quantity if order.is_issued else 0)
+            max_allowed = max(0, order.quantity - issued_qty)
+            _ensure_unprocessed_refund_limit(target_qty, max_allowed, "出票/预约")
             if amount_val is not None:
                 base_amount = _to_decimal(order.paid_amount) or _to_decimal(order.sale_amount)
                 max_label = "支付金额" if order.paid_amount is not None else "销售金额"
                 if base_amount is not None and amount_val > base_amount:
-                    raise HTTPException(status_code=400, detail=f"未预约退款金额不能超过{max_label}")
+                    raise HTTPException(status_code=400, detail=f"未出票/预约退款金额不能超过{max_label}")
         if delta_qty > 0:
-            await _consume_inventory(db, order.sku_id, order.travel_date, delta_qty, user.username, order.id, "refund")
+            for travel_date in travel_dates:
+                await _consume_inventory(db, order.sku_id, travel_date, delta_qty, user.username, order.id, "refund")
             await _apply_resource_inventory(db, order, delta_qty, user.username, "release")
         if action == "refund_unverified":
             order.is_refund_unverified = True
@@ -1576,46 +1888,72 @@ async def decide_order(
             order.refund_unverified_qty = target_qty
             if payload.amount is not None:
                 order.refund_unverified_amount = payload.amount
+            for res in order_resources:
+                res.is_refund_unverified = True
+                res.refund_unverified_at = event_time
+                res.refund_unverified_qty = target_qty
+                if payload.amount is not None:
+                    res.refund_unverified_amount = payload.amount
         else:
             order.is_refund_unreserved = True
             order.refund_unreserved_at = event_time
             order.refund_unreserved_qty = target_qty
             if payload.amount is not None:
                 order.refund_unreserved_amount = payload.amount
+            for res in order_resources:
+                res.is_refund_unreserved = True
+                res.refund_unreserved_at = event_time
+                res.refund_unreserved_qty = target_qty
+                if payload.amount is not None:
+                    res.refund_unreserved_amount = payload.amount
     elif action == "refund_verified":
         target_qty, delta_qty = _resolve_qty(order, payload.qty, order.refund_verified_qty)
         max_allowed = order.verified_qty if order.verified_qty is not None else (order.quantity if order.is_verified else 0)
-        _ensure_refund_limit(target_qty, max_allowed, "核销")
+        _ensure_refund_limit(target_qty, max_allowed, "核销/消耗")
         if amount_val is not None:
             base_amount = _to_decimal(order.verified_amount) or _to_decimal(order.sale_amount)
-            max_label = "核销金额" if order.verified_amount is not None else "销售金额"
+            max_label = "核销/消耗金额" if order.verified_amount is not None else "销售金额"
             if base_amount is not None and amount_val > base_amount:
-                raise HTTPException(status_code=400, detail=f"已核销退款金额不能超过{max_label}")
+                raise HTTPException(status_code=400, detail=f"已核销/消耗退款金额不能超过{max_label}")
         if delta_qty > 0:
-            await _return_inventory(db, order.sku_id, order.travel_date, delta_qty, user.username, order.id)
+            for travel_date in travel_dates:
+                await _return_inventory(db, order.sku_id, travel_date, delta_qty, user.username, order.id)
             await _apply_resource_inventory(db, order, delta_qty, user.username, "return")
         order.is_refund_verified = True
         order.refund_verified_at = event_time
         order.refund_verified_qty = target_qty
         if payload.amount is not None:
             order.refund_verified_amount = payload.amount
+        for res in order_resources:
+            res.is_refund_verified = True
+            res.refund_verified_at = event_time
+            res.refund_verified_qty = target_qty
+            if payload.amount is not None:
+                res.refund_verified_amount = payload.amount
     elif action == "refund_reserved":
         target_qty, delta_qty = _resolve_qty(order, payload.qty, order.refund_reserved_qty)
-        max_allowed = order.reserved_qty if order.reserved_qty is not None else (order.quantity if order.is_reserved else 0)
-        _ensure_refund_limit(target_qty, max_allowed, "预约")
+        max_allowed = order.issued_qty if order.issued_qty is not None else (order.quantity if order.is_issued else 0)
+        _ensure_refund_limit(target_qty, max_allowed, "出票/预约")
         if amount_val is not None:
-            base_amount = _to_decimal(order.reserved_amount) or _to_decimal(order.sale_amount)
-            max_label = "预约金额" if order.reserved_amount is not None else "销售金额"
+            base_amount = _to_decimal(order.issued_amount) or _to_decimal(order.sale_amount)
+            max_label = "出票/预约金额" if order.issued_amount is not None else "销售金额"
             if base_amount is not None and amount_val > base_amount:
-                raise HTTPException(status_code=400, detail=f"已预约退款金额不能超过{max_label}")
+                raise HTTPException(status_code=400, detail=f"已出票/预约退款金额不能超过{max_label}")
         if delta_qty > 0:
-            await _return_inventory(db, order.sku_id, order.travel_date, delta_qty, user.username, order.id)
+            for travel_date in travel_dates:
+                await _return_inventory(db, order.sku_id, travel_date, delta_qty, user.username, order.id)
             await _apply_resource_inventory(db, order, delta_qty, user.username, "return")
         order.is_refund_reserved = True
         order.refund_reserved_at = event_time
         order.refund_reserved_qty = target_qty
         if payload.amount is not None:
             order.refund_reserved_amount = payload.amount
+        for res in order_resources:
+            res.is_refund_reserved = True
+            res.refund_reserved_at = event_time
+            res.refund_reserved_qty = target_qty
+            if payload.amount is not None:
+                res.refund_reserved_amount = payload.amount
     else:
         raise HTTPException(status_code=400, detail="不支持的操作")
 

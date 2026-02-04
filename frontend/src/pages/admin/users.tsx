@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Form, Input, Button, Select, Table, message, Space, Modal, Tag, Popconfirm, Row, Col } from 'antd'
+import { Form, Input, Button, Select, Table, message, Space, Modal, Tag, Popconfirm, Row, Col, Tooltip } from 'antd'
 import { PlusOutlined, EditOutlined, KeyOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons'
 import { useAuth } from '@/contexts/AuthContext'
 import { apiRequest } from '@/lib/api'
@@ -149,6 +149,10 @@ export default function UserAdminPage() {
     }
 
     const openEditModal = (record: UserRow) => {
+        if (record.username === 'admin' && record.role === 'super_admin') {
+            message.warning('admin 账号的超级管理员角色不可修改')
+            return
+        }
         setEditingUser(record)
         editForm.setFieldsValue({ role: record.role })
         setEditModalVisible(true)
@@ -185,16 +189,20 @@ export default function UserAdminPage() {
             title: '操作',
             render: (_: any, record: UserRow) => {
                 const isSelf = record.username === user.username
+                const isProtectedAdmin = record.username === 'admin' && record.role === 'super_admin'
                 return (
                     <Space>
-                        <Button
-                            type="link"
-                            size="small"
-                            icon={<EditOutlined />}
-                            onClick={() => openEditModal(record)}
-                        >
-                            修改角色
-                        </Button>
+                        <Tooltip title={isProtectedAdmin ? 'admin 账号的超级管理员角色不可修改' : ''}>
+                            <Button
+                                type="link"
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => openEditModal(record)}
+                                disabled={isProtectedAdmin}
+                            >
+                                修改角色
+                            </Button>
+                        </Tooltip>
                         <Button
                             type="link"
                             size="small"

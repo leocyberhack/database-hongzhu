@@ -1,14 +1,15 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Dayjs } from 'dayjs'
 import { Table, Tag, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Radio, Divider, Card, Row, Col } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
-import type { Order } from '@/types'
+import type { Order, ProductResource, Resource, SKUChannel } from '@/types'
 
 interface OptionItem {
     value: string
     label: string
+    productId?: string
 }
 
 interface OrderFilters {
@@ -28,16 +29,23 @@ interface StatusGroup {
     tagColor: string
 }
 
+interface ResourceRow {
+    resource_id: string
+    resource_name: string
+    quantity: number
+    required_flag: boolean
+}
+
 const STATUS_GROUPS: StatusGroup[] = [
-    { key: 'issued', label: '是否出票/发码/发短信', timeLabel: '出票/发码时间', tagLabel: '已出票/发码', tagColor: 'cyan' },
-    { key: 'verified', label: '是否核销', timeLabel: '核销时间', tagLabel: '已核销', tagColor: 'green' },
-    { key: 'reserved', label: '是否预约', timeLabel: '预约时间', tagLabel: '已预约', tagColor: 'gold' },
-    { key: 'refund_unverified', label: '是否支付后未核销全部退款', timeLabel: '未核销退款时间', tagLabel: '未核销退款', tagColor: 'red' },
-    { key: 'refund_unreserved', label: '是否支付后未预约全部退款', timeLabel: '未预约退款时间', tagLabel: '未预约退款', tagColor: 'red' },
-    { key: 'refund_verified', label: '是否支付后已核销全部/部分退款', timeLabel: '已核销退款时间', tagLabel: '已核销退款', tagColor: 'volcano' },
-    { key: 'refund_reserved', label: '是否支付后已预约全部/部分退款', timeLabel: '已预约退款时间', tagLabel: '已预约退款', tagColor: 'volcano' },
+    { key: 'issued', label: '是否出票/预约（资源可用）', timeLabel: '出票/预约时间', tagLabel: '已出票/预约', tagColor: 'cyan' },
+    { key: 'verified', label: '是否核销/消耗', timeLabel: '核销/消耗时间', tagLabel: '已核销/消耗', tagColor: 'green' },
+    { key: 'refund_unverified', label: '是否支付后未核销/消耗全部退款', timeLabel: '未核销/消耗退款时间', tagLabel: '未核销/消耗退款', tagColor: 'red' },
+    { key: 'refund_unreserved', label: '是否支付后未出票/预约全部退款', timeLabel: '未出票/预约退款时间', tagLabel: '未出票/预约退款', tagColor: 'red' },
+    { key: 'refund_verified', label: '是否支付后已核销/消耗全部/部分退款', timeLabel: '已核销/消耗退款时间', tagLabel: '已核销/消耗退款', tagColor: 'volcano' },
+    { key: 'refund_reserved', label: '是否支付后已出票/预约全部/部分退款', timeLabel: '已出票/预约退款时间', tagLabel: '已出票/预约退款', tagColor: 'volcano' },
     { key: 'completed', label: '是否完成', timeLabel: '完成时间', tagLabel: '已完成', tagColor: 'green' },
-    { key: 'disputed', label: '是否完成后订单产生纠纷', timeLabel: '纠纷时间', tagLabel: '纠纷', tagColor: 'default' },
+    { key: 'disputed', label: '是否完成后订单产生纠纷', timeLabel: '纠纷时间', tagLabel: '完成后纠纷', tagColor: 'default' },
+    { key: 'mid_disputed', label: '是否在订单中途产生纠纷', timeLabel: '中途纠纷时间', tagLabel: '中途纠纷', tagColor: 'orange' },
 ]
 
 const INITIAL_FILTERS: OrderFilters = {
@@ -52,8 +60,9 @@ export default function OrdersPage() {
     const { data, loadData } = useData()
     const channels = data.channels ?? []
     const spus = data.spus ?? []
-    const { RangePicker } = DatePicker
-
+    const resources = (data.resources ?? []) as Resource[]
+    const productResources = (data.product_resources ?? []) as ProductResource[]
+    const skuChannels = (data.sku_channels ?? []) as SKUChannel[]
     const [rows, setRows] = useState<Order[]>([])
     const [loading, setLoading] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
@@ -64,11 +73,15 @@ export default function OrdersPage() {
     const [skuOptions, setSkuOptions] = useState<OptionItem[]>([])
     const [skuLoading, setSkuLoading] = useState(false)
     const [selectedSpuId, setSelectedSpuId] = useState<string | undefined>(undefined)
+    const [selectedSkuId, setSelectedSkuId] = useState<string | undefined>(undefined)
+    const [selectedProductId, setSelectedProductId] = useState<string | undefined>(undefined)
+    const [skuProductMap, setSkuProductMap] = useState<Record<string, string>>({})
+    const [resourceRows, setResourceRows] = useState<ResourceRow[]>([])
     const [filterSkuOptions, setFilterSkuOptions] = useState<OptionItem[]>([])
     const [filterSkuLoading, setFilterSkuLoading] = useState(false)
 
     useEffect(() => {
-        loadData(['channels', 'spus'])
+        loadData(['channels', 'spus', 'resources', 'product_resources', 'sku_channels'])
     }, [loadData])
 
     const updateFilters = useCallback((next: Partial<OrderFilters>) => {
@@ -124,8 +137,15 @@ export default function OrdersPage() {
         try {
             const params = new URLSearchParams({ page: '1', page_size: '50', spu_id: spuId })
             if (keyword && keyword.trim()) params.append('keyword', keyword.trim())
-            const res = await apiRequest<{ items: { id: string; sku_name: string }[] }>(`/api/skus?${params.toString()}`)
-            setSkuOptions((res.items || []).map(item => ({ value: String(item.id), label: item.sku_name })))
+            const res = await apiRequest<{ items: { id: string; sku_name: string; product_id: string }[] }>(`/api/skus?${params.toString()}`)
+            const nextMap: Record<string, string> = {}
+            const nextOptions = (res.items || []).map((item) => {
+                const key = String(item.id)
+                nextMap[key] = String(item.product_id)
+                return { value: key, label: item.sku_name, productId: String(item.product_id) }
+            })
+            setSkuProductMap(nextMap)
+            setSkuOptions(nextOptions)
         } finally {
             setSkuLoading(false)
         }
@@ -148,29 +168,115 @@ export default function OrdersPage() {
         }
     }, [filters.spu_id])
 
-    const statusInitialValues = STATUS_GROUPS.reduce<Record<string, boolean>>((acc, group) => {
-        acc[`is_${group.key}`] = false
-        return acc
-    }, {})
+    const statusInitialValues = useMemo(() => {
+        return STATUS_GROUPS.reduce<Record<string, boolean>>((acc, group) => {
+            acc[`is_${group.key}`] = false
+            return acc
+        }, {})
+    }, [])
+
+    const resourceNameMap = useMemo(() => {
+        return new Map(resources.map((item) => [String(item.id), item.resource_name]))
+    }, [resources])
+
+    const allowedOrderChannels = useMemo(() => {
+        if (!selectedSkuId) return []
+        const channelIds = skuChannels
+            .filter((item) => String(item.sku_id) === String(selectedSkuId) && item.status === 'active')
+            .map((item) => String(item.channel_id))
+        const uniqueIds = Array.from(new Set(channelIds))
+        return channels.filter((item) => uniqueIds.includes(String(item.id)))
+    }, [selectedSkuId, skuChannels, channels])
+
+    useEffect(() => {
+        if (!selectedSkuId) return
+        if (allowedOrderChannels.length === 1) {
+            const onlyId = String(allowedOrderChannels[0].id)
+            const current = form.getFieldValue('channel_id')
+            if (!current) {
+                form.setFieldValue('channel_id', onlyId)
+            }
+        }
+    }, [selectedSkuId, allowedOrderChannels, form])
+
+    useEffect(() => {
+        if (!selectedProductId) {
+            setResourceRows([])
+            form.setFieldsValue({ resource_items: [] })
+            return
+        }
+        const rows = productResources
+            .filter((item) => String(item.product_id) === String(selectedProductId))
+            .map((item) => ({
+                resource_id: String(item.resource_id),
+                resource_name: resourceNameMap.get(String(item.resource_id)) || `资源 ${item.resource_id}`,
+                quantity: item.quantity,
+                required_flag: item.required_flag,
+            }))
+        setResourceRows(rows)
+        const initialItems = rows.map((row) => ({
+            resource_id: row.resource_id,
+            travel_date: null,
+            ...statusInitialValues,
+        }))
+        form.setFieldsValue({ resource_items: initialItems })
+    }, [selectedProductId, productResources, resourceNameMap, form, statusInitialValues])
 
     const handleCreateOrder = async (values: any) => {
         try {
-            const { spu_id, ...rest } = values
+            const { spu_id, resource_items, ...rest } = values
+            const itemsInput = resource_items || []
+            if (!values.paid_at) {
+                message.error('支付时间不能为空')
+                return
+            }
+            for (const item of itemsInput) {
+                if (item?.is_verified && !item?.is_issued) {
+                    message.error('核销/消耗前必须先出票/预约')
+                    return
+                }
+                if (item?.is_issued && !item?.travel_date) {
+                    message.error('选择出票/预约时必须填写出行日期')
+                    return
+                }
+            }
             const saleAmountInput = Number(values.sale_price || 0)
             const qty = Number(values.quantity || 1)
             const unitPrice = qty > 0 ? saleAmountInput / qty : saleAmountInput
             const payload: any = {
                 ...rest,
-                travel_date: values.travel_date.format('YYYY-MM-DD'),
                 sale_price: unitPrice,
-                paid_at: values.paid_at.format('YYYY-MM-DD HH:mm'),
             }
-            STATUS_GROUPS.forEach((group) => {
-                const timeKey = `${group.key}_at`
-                if (values[timeKey]) {
-                    payload[timeKey] = values[timeKey].format('YYYY-MM-DD HH:mm')
+            if (values.paid_at) {
+                payload.paid_at = values.paid_at.format('YYYY-MM-DD HH:mm')
+            }
+            const items = (resource_items || []).map((item: any) => {
+                const row: any = {
+                    resource_id: item.resource_id,
+                    travel_date: item.travel_date ? item.travel_date.format('YYYY-MM-DD') : undefined,
                 }
+                STATUS_GROUPS.forEach((group) => {
+                    row[`is_${group.key}`] = !!item[`is_${group.key}`]
+                    if (item[`${group.key}_qty`] !== undefined) {
+                        row[`${group.key}_qty`] = item[`${group.key}_qty`]
+                    }
+                    if (item[`${group.key}_amount`] !== undefined) {
+                        row[`${group.key}_amount`] = item[`${group.key}_amount`]
+                    }
+                    if (item[`${group.key}_at`]) {
+                        row[`${group.key}_at`] = item[`${group.key}_at`].format('YYYY-MM-DD HH:mm')
+                    }
+                    if (item[`${group.key}_remark`]) {
+                        row[`${group.key}_remark`] = item[`${group.key}_remark`]
+                    }
+                })
+                return row
             })
+            if (items.length === 0) {
+                message.error('请先选择 SKU 并设置资源出行日期')
+                return
+            }
+            payload.resource_items = items
             await apiRequest('/api/orders', {
                 method: 'POST',
                 body: JSON.stringify(payload),
@@ -179,7 +285,11 @@ export default function OrdersPage() {
             setCreateModalVisible(false)
             form.resetFields()
             setSelectedSpuId(undefined)
+            setSelectedSkuId(undefined)
+            setSelectedProductId(undefined)
             setSkuOptions([])
+            setResourceRows([])
+            form.setFieldsValue({ resource_items: [] })
             await fetchOrders()
         } catch (err: any) {
             message.error(err.message || '创建失败')
@@ -365,7 +475,7 @@ export default function OrdersPage() {
         },
         { title: '数量', dataIndex: 'quantity' },
         { title: '销售金额', dataIndex: 'sale_amount', render: (v: number) => `¥${v}` },
-        { title: '出行日期', dataIndex: 'travel_date' },
+        { title: '出行日期', dataIndex: 'travel_date', render: (v?: string) => v || '-' },
         { title: '支付日期', dataIndex: 'paid_at', render: (v?: string) => v || '-' },
         {
             title: '状态',
@@ -531,7 +641,11 @@ export default function OrdersPage() {
                     setCreateModalVisible(false)
                     form.resetFields()
                     setSelectedSpuId(undefined)
+                    setSelectedSkuId(undefined)
+                    setSelectedProductId(undefined)
                     setSkuOptions([])
+                    setResourceRows([])
+                    form.setFieldsValue({ resource_items: [] })
                 }}
                 footer={null}
                 width={600}
@@ -541,17 +655,18 @@ export default function OrdersPage() {
                     form={form}
                     layout="vertical"
                     onFinish={handleCreateOrder}
-                    initialValues={{ quantity: 1, ...statusInitialValues }}
+                    initialValues={{ quantity: 1 }}
                 >
                     <Form.Item name="order_no" label="订单号" rules={[{ required: true, message: '请输入订单号' }]}>
                         <Input placeholder="例如：ORD20240101001" />
                     </Form.Item>
                     <Form.Item name="channel_id" label="渠道" rules={[{ required: true, message: '请选择渠道' }]}>
                         <Select
-                            placeholder="选择渠道"
+                            placeholder={selectedSkuId ? '选择渠道' : '请先选择 SKU'}
                             showSearch
                             optionFilterProp="label"
-                            options={channels.map((c) => ({ value: c.id, label: c.channel_name }))}
+                            disabled={!selectedSkuId || allowedOrderChannels.length === 0}
+                            options={allowedOrderChannels.map((c) => ({ value: c.id, label: c.channel_name }))}
                         />
                     </Form.Item>
                     <Form.Item name="spu_id" label="SPU" rules={[{ required: true, message: '请选择SPU' }]}>
@@ -567,8 +682,13 @@ export default function OrdersPage() {
                             onChange={(value) => {
                                 const next = value ? String(value) : undefined
                                 setSelectedSpuId(next)
+                                setSelectedSkuId(undefined)
+                                setSelectedProductId(undefined)
+                                form.setFieldValue('channel_id', undefined)
                                 form.setFieldValue('sku_id', undefined)
                                 setSkuOptions([])
+                                setResourceRows([])
+                                form.setFieldsValue({ resource_items: [] })
                                 if (next) {
                                     fetchSkuOptions(undefined, next)
                                 }
@@ -582,6 +702,24 @@ export default function OrdersPage() {
                             filterOption={false}
                             disabled={!selectedSpuId}
                             onSearch={(value) => fetchSkuOptions(value)}
+                            onChange={(value) => {
+                                const skuId = value ? String(value) : undefined
+                                const productId = skuProductMap[String(value)]
+                                setSelectedSkuId(skuId)
+                                setSelectedProductId(productId)
+                                form.setFieldValue('channel_id', undefined)
+                                if (skuId) {
+                                    const channelIds = skuChannels
+                                        .filter((item) => String(item.sku_id) === String(skuId) && item.status === 'active')
+                                        .map((item) => String(item.channel_id))
+                                    const uniqueIds = Array.from(new Set(channelIds))
+                                    if (uniqueIds.length === 1) {
+                                        form.setFieldValue('channel_id', uniqueIds[0])
+                                    } else if (uniqueIds.length === 0) {
+                                        message.error('该 SKU 未绑定可用渠道')
+                                    }
+                                }
+                            }}
                             onFocus={() => {
                                 if (!selectedSpuId) {
                                     message.warning('请先选择SPU')
@@ -602,83 +740,147 @@ export default function OrdersPage() {
                     <Form.Item name="paid_at" label="支付时间" rules={[{ required: true, message: '请选择支付时间' }]}>
                         <DatePicker style={{ width: '100%' }} showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" />
                     </Form.Item>
-                    <Form.Item name="travel_date" label="出行日期" rules={[{ required: true, message: '请选择出行日期' }]}>
-                        <DatePicker style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Divider style={{ margin: '8px 0 16px' }}>状态字段</Divider>
-                    {STATUS_GROUPS.map((group) => (
-                        <div
-                            key={group.key}
-                            style={{
-                                marginBottom: 16,
-                                padding: 12,
-                                border: '1px solid #f0f0f0',
-                                borderRadius: 8,
-                                background: '#fafafa',
-                            }}
-                        >
-                            <Form.Item
-                                name={`is_${group.key}`}
-                                label={group.label}
-                                rules={[{ required: true, message: `请选择${group.label}` }]}
-                            >
-                                <Radio.Group
-                                    options={[
-                                        { label: '是', value: true },
-                                        { label: '否', value: false },
-                                    ]}
-                                    onChange={(e) => {
-                                        if (!e.target.value) {
-                                            form.setFieldsValue({
-                                                [`${group.key}_qty`]: undefined,
-                                                [`${group.key}_amount`]: undefined,
-                                                [`${group.key}_at`]: undefined,
-                                            })
-                                        }
-                                    }}
-                                />
-                            </Form.Item>
-                            <Form.Item shouldUpdate={(prev, cur) => prev[`is_${group.key}`] !== cur[`is_${group.key}`]} noStyle>
-                                {({ getFieldValue }) =>
-                                    getFieldValue(`is_${group.key}`) ? (
-                                        <div
-                                            style={{
-                                                display: 'grid',
-                                                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                                                gap: 12,
-                                                marginLeft: 8,
-                                            }}
-                                        >
-                                            <Form.Item name={`${group.key}_qty`} label="数量">
-                                                <InputNumber min={0} style={{ width: '100%' }} />
-                                            </Form.Item>
-                                            <Form.Item name={`${group.key}_amount`} label="金额">
-                                                <InputNumber min={0} style={{ width: '100%' }} prefix="¥" />
-                                            </Form.Item>
-                                            <Form.Item
-                                                name={`${group.key}_at`}
-                                                label={group.timeLabel}
-                                                rules={[{ required: true, message: `请选择${group.timeLabel}` }]}
+                    <Divider style={{ margin: '8px 0 16px' }}>资源状态</Divider>
+                    {resourceRows.length === 0 ? (
+                        <div style={{ color: '#999', padding: '8px 0' }}>请先选择 SKU 以加载资源组成</div>
+                    ) : (
+                        <Form.List name="resource_items">
+                            {(fields) => (
+                                <>
+                                    {fields.map((field, index) => {
+                                        const row = resourceRows[index]
+                                        return (
+                                            <Card
+                                                key={field.key}
+                                                size="small"
+                                                title={`${row?.resource_name || '资源'} × ${row?.quantity ?? '-'}`}
+                                                style={{ marginBottom: 16 }}
                                             >
-                                                <DatePicker
-                                                    style={{ width: '100%' }}
-                                                    showTime={{ format: 'HH:mm' }}
-                                                    format="YYYY-MM-DD HH:mm"
-                                                />
-                                            </Form.Item>
-                                        </div>
-                                    ) : null
-                                }
-                            </Form.Item>
-                        </div>
-                    ))}
+                                                <Form.Item name={[field.name, 'resource_id']} hidden>
+                                                    <Input />
+                                                </Form.Item>
+                                                <Form.Item
+                                                    name={[field.name, 'travel_date']}
+                                                    label="出行日期"
+                                                    rules={[{ required: true, message: '请选择出行日期' }]}
+                                                >
+                                                    <DatePicker style={{ width: '100%' }} />
+                                                </Form.Item>
+                                                {STATUS_GROUPS.map((group) => (
+                                                    <div
+                                                        key={`${field.key}-${group.key}`}
+                                                        style={{
+                                                            marginBottom: 12,
+                                                            padding: 12,
+                                                            border: '1px solid #f0f0f0',
+                                                            borderRadius: 8,
+                                                            background: '#fafafa',
+                                                        }}
+                                                    >
+                                                        <Form.Item
+                                                            name={[field.name, `is_${group.key}`]}
+                                                            label={group.label}
+                                                            rules={[{ required: true, message: `请选择${group.label}` }]}
+                                                        >
+                                                            <Radio.Group
+                                                                options={[
+                                                                    { label: '是', value: true },
+                                                                    { label: '否', value: false },
+                                                                ]}
+                                                                onChange={(e) => {
+                                                                    const nextValue = e.target.value
+                                                                    if (group.key === 'issued' && nextValue) {
+                                                                        const travelDate = form.getFieldValue(['resource_items', field.name, 'travel_date'])
+                                                                        if (!travelDate) {
+                                                                            message.error('请先选择出行日期')
+                                                                            form.setFieldValue(['resource_items', field.name, `is_${group.key}`], false)
+                                                                            return
+                                                                        }
+                                                                    }
+                                                                    if (group.key === 'verified' && nextValue) {
+                                                                        const issued = form.getFieldValue(['resource_items', field.name, 'is_issued'])
+                                                                        if (!issued) {
+                                                                            message.error('核销/消耗前必须先出票/预约')
+                                                                            form.setFieldValue(['resource_items', field.name, `is_${group.key}`], false)
+                                                                            return
+                                                                        }
+                                                                    }
+                                                                    if (!nextValue) {
+                                                                        if (group.key === 'issued') {
+                                                                            form.setFieldValue(['resource_items', field.name, 'is_verified'], false)
+                                                                            form.setFieldValue(['resource_items', field.name, 'verified_qty'], undefined)
+                                                                            form.setFieldValue(['resource_items', field.name, 'verified_amount'], undefined)
+                                                                            form.setFieldValue(['resource_items', field.name, 'verified_at'], undefined)
+                                                                            form.setFieldValue(['resource_items', field.name, 'verified_remark'], undefined)
+                                                                        }
+                                                                        form.setFieldValue(['resource_items', field.name, `${group.key}_qty`], undefined)
+                                                                        form.setFieldValue(['resource_items', field.name, `${group.key}_amount`], undefined)
+                                                                        form.setFieldValue(['resource_items', field.name, `${group.key}_at`], undefined)
+                                                                        form.setFieldValue(['resource_items', field.name, `${group.key}_remark`], undefined)
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </Form.Item>
+                                                        <Form.Item
+                                                            shouldUpdate={(prev, cur) =>
+                                                                prev.resource_items?.[field.name]?.[`is_${group.key}`] !==
+                                                                cur.resource_items?.[field.name]?.[`is_${group.key}`]
+                                                            }
+                                                            noStyle
+                                                        >
+                                                            {({ getFieldValue }) =>
+                                                                getFieldValue(['resource_items', field.name, `is_${group.key}`]) ? (
+                                                                    <div
+                                                                        style={{
+                                                                            display: 'grid',
+                                                                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                                                            gap: 12,
+                                                                            marginLeft: 8,
+                                                                        }}
+                                                                    >
+                                                                        <Form.Item name={[field.name, `${group.key}_qty`]} label="数量">
+                                                                            <InputNumber min={0} style={{ width: '100%' }} />
+                                                                        </Form.Item>
+                                                                        <Form.Item name={[field.name, `${group.key}_amount`]} label="金额">
+                                                                            <InputNumber min={0} style={{ width: '100%' }} prefix="¥" />
+                                                                        </Form.Item>
+                                                                        <Form.Item
+                                                                            name={[field.name, `${group.key}_at`]}
+                                                                            label={group.timeLabel}
+                                                                        >
+                                                                            <DatePicker
+                                                                                style={{ width: '100%' }}
+                                                                                showTime={{ format: 'HH:mm' }}
+                                                                                format="YYYY-MM-DD HH:mm"
+                                                                            />
+                                                                        </Form.Item>
+                                                                        <Form.Item name={[field.name, `${group.key}_remark`]} label="备注">
+                                                                            <Input.TextArea rows={1} />
+                                                                        </Form.Item>
+                                                                    </div>
+                                                                ) : null
+                                                            }
+                                                        </Form.Item>
+                                                    </div>
+                                                ))}
+                                            </Card>
+                                        )
+                                    })}
+                                </>
+                            )}
+                        </Form.List>
+                    )}
                     <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
                         <Space style={{ float: 'right' }}>
                             <Button onClick={() => {
                                 setCreateModalVisible(false)
                                 form.resetFields()
                                 setSelectedSpuId(undefined)
+                                setSelectedSkuId(undefined)
+                                setSelectedProductId(undefined)
                                 setSkuOptions([])
+                                setResourceRows([])
+                                form.setFieldsValue({ resource_items: [] })
                             }}>
                                 取消
                             </Button>

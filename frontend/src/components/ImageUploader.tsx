@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Upload, Modal, message, Spin } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import type { UploadFile, UploadProps } from 'antd'
-import { getToken } from '@/lib/api'
+import { getToken, handleAuthExpiredResponse } from '@/lib/api'
 
 interface ImageUploaderProps {
     value?: string[]  // 已上传的图片 URL 列表
@@ -56,6 +56,9 @@ export default function ImageUploader({
                 },
                 body: formData
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
 
             const result = await response.json()
 

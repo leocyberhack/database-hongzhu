@@ -110,7 +110,7 @@ export default function SKUListPage() {
 
 
             let savedSkuId: number;
-            const selectedChannelId = values.channel_id;
+            const nextChannelIds = (values.channel_ids || []).map((id: any) => Number(id));
 
             if (editingSku) {
                 // Update existing
@@ -136,27 +136,33 @@ export default function SKUListPage() {
                 savedSkuId = res.id;
             }
 
-            // Ensure SKU-Channel 绑定存在（单渠道模式，使用/sku_channels维护绑定）
-            if (selectedChannelId) {
-                const existingBinding = (data?.sku_channels || []).find((sc: any) => String(sc.sku_id) === String(savedSkuId));
-                if (existingBinding) {
-                    if (String(existingBinding.channel_id) !== String(selectedChannelId)) {
-                        await apiRequest(`/api/sku_channels/${existingBinding.id}`, {
-                            method: 'PATCH',
-                            body: JSON.stringify({ channel_id: Number(selectedChannelId) })
-                        });
-                    }
-                } else {
+            // Sync SKU-Channel bindings
+            const existingBindings = (data?.sku_channels || []).filter((sc: any) => String(sc.sku_id) === String(savedSkuId));
+            const existingByChannel = new Map(existingBindings.map((sc: any) => [String(sc.channel_id), sc]));
+            const selectedSet = new Set(nextChannelIds.map((id: number) => String(id)));
+
+            for (const binding of existingBindings) {
+                if (!selectedSet.has(String(binding.channel_id))) {
+                    await apiRequest(`/api/sku_channels/${binding.id}`, { method: 'DELETE' });
+                } else if (binding.status && binding.status !== 'active') {
+                    await apiRequest(`/api/sku_channels/${binding.id}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ status: 'active' })
+                    });
+                }
+            }
+            for (const channelId of selectedSet) {
+                if (!existingByChannel.has(String(channelId))) {
                     await apiRequest('/api/sku_channels', {
                         method: 'POST',
-                        body: JSON.stringify({ sku_id: savedSkuId, channel_id: Number(selectedChannelId), status: 'active' })
+                        body: JSON.stringify({ sku_id: savedSkuId, channel_id: Number(channelId), status: 'active' })
                     });
                 }
             }
 
             // Save inventory/prices if any
             if (calendarEditorRef.current) {
-                await calendarEditorRef.current.saveToBackend(savedSkuId, selectedChannelId)
+                await calendarEditorRef.current.saveToBackend(savedSkuId, activeChannelId ? Number(activeChannelId) : undefined)
             }
 
             message.success(editingSku ? 'SKU更新成功' : 'SKU创建成功')
@@ -171,25 +177,26 @@ export default function SKUListPage() {
     }
 
     const [selectedProductId, setSelectedProductId] = useState<string | undefined>()
-    const [selectedChannelId, setSelectedChannelId] = useState<string | undefined>()
+    const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
+    const [activeChannelId, setActiveChannelId] = useState<string | undefined>()
     const [channelStockLimitMap, setChannelStockLimitMap] = useState<Record<string, number>>({})
 
     // Effect: Fetch product inventory and calculate limits when product/channel changes
     useEffect(() => {
         const fetchLimits = async () => {
-            if (!selectedProductId || !selectedChannelId) {
+            if (!selectedProductId || !activeChannelId) {
                 setChannelStockLimitMap({})
                 return
             }
 
             const product = products.find(p => String(p.id) === String(selectedProductId))
-            const channel = channels.find(c => String(c.id) === String(selectedChannelId))
+            const channel = channels.find(c => String(c.id) === String(activeChannelId))
 
             if (!product || !channel) return
 
             // Find ratio
             const allocations = product.allowed_channels || []
-            const allocation = allocations.find((a: any) => String(a.channel_id || a) === String(selectedChannelId))
+            const allocation = allocations.find((a: any) => String(a.channel_id || a) === String(activeChannelId))
             // If allocation object exists, use stock_ratio, otherwise if it's just an ID in list (legacy), assume 100% or 0%? 
             // In new system, it's object. If stock_ratio is 0 or undefined, maybe treat as 0 limit? 
             // But let's assume if it is allowed, and ratio is missing, it might mean "unlimited" (or 100%). 
@@ -243,7 +250,7 @@ export default function SKUListPage() {
             }
         }
         fetchLimits()
-    }, [selectedProductId, selectedChannelId, products, channels])
+    }, [selectedProductId, activeChannelId, products, channels])
 
 
 
@@ -319,21 +326,25 @@ export default function SKUListPage() {
 
         if (record) {
             setSelectedProductId(String(record.product_id))
-            // 通过 sku_channels 绑定获取渠道（SKU 表本身没有 channel_id）
-            const binding = (data?.sku_channels || []).find((sc: any) => String(sc.sku_id) === String(record.id))
-            const channelId = binding ? binding.channel_id : undefined
-            setSelectedChannelId(channelId ? String(channelId) : undefined)
+            // Use sku_channels to load channel_ids for the SKU
+            const bindings = (data?.sku_channels || []).filter((sc: any) => String(sc.sku_id) === String(record.id))
+            const channelIds = bindings.map((sc: any) => Number(sc.channel_id))
+            const channelIdStrings = channelIds.map((id: number) => String(id))
+            const nextActive = channelIdStrings.length > 0 ? channelIdStrings[0] : undefined
+            setSelectedChannelIds(channelIdStrings)
+            setActiveChannelId(nextActive)
 
             form.setFieldsValue({
                 name: record.sku_name,
                 spu_id: record.spu_id,
                 product_id: record.product_id,
                 status: record.status,
-                channel_id: channelId,
+                channel_ids: channelIds,
             })
         } else {
             setSelectedProductId(undefined)
-            setSelectedChannelId(undefined)
+            setSelectedChannelIds([])
+            setActiveChannelId(undefined)
             form.resetFields()
             // Default SPU if filtered
             if (filters.spu_id) {
@@ -468,9 +479,16 @@ export default function SKUListPage() {
 
     // Helper to get channel details
     const selectedChannel = useMemo(() => {
-        if (!selectedChannelId) return null;
-        return channels.find(c => String(c.id) === String(selectedChannelId));
-    }, [selectedChannelId, channels]);
+        if (!activeChannelId) return null;
+        return channels.find(c => String(c.id) === String(activeChannelId));
+    }, [activeChannelId, channels]);
+
+    const selectedChannelOptions = useMemo(() => {
+        return selectedChannelIds.map((id) => {
+            const channel = channels.find(c => String(c.id) === String(id))
+            return { value: id, label: channel?.channel_name || id }
+        })
+    }, [selectedChannelIds, channels]);
 
     // Filter available channels based on product's allowed_channels
     const availableChannels = useMemo(() => {
@@ -686,18 +704,39 @@ export default function SKUListPage() {
                                     showSearch
                                     optionFilterProp="label"
                                     options={products.map((p) => ({ value: p.id, label: p.product_name }))}
-                                    onChange={(v) => setSelectedProductId(v)}
+                                    onChange={(v) => {
+                                        setSelectedProductId(v)
+                                        setSelectedChannelIds([])
+                                        setActiveChannelId(undefined)
+                                        form.setFieldValue('channel_ids', [])
+                                    }}
                                 />
                             </Form.Item>
                         </Col>
                         <Col span={8}>
-                            <Form.Item name="channel_id" label="销售渠道" rules={[{ required: true, message: '请选择渠道' }]}>
+                            <Form.Item name="channel_ids" label="销售渠道" rules={[{ required: true, message: '请选择销售渠道' }]}>
                                 <Select
-                                    placeholder="选择渠道"
+                                    mode="multiple"
+                                    placeholder="选择销售渠道"
                                     showSearch
                                     optionFilterProp="label"
                                     options={availableChannels.map((c: any) => ({ value: c.id, label: c.channel_name }))}
-                                    onChange={(v) => setSelectedChannelId(v)}
+                                    onChange={(values) => {
+                                        const ids = (values || []).map((v: any) => String(v))
+                                        setSelectedChannelIds(ids)
+                                        if (!ids.includes(activeChannelId || '')) {
+                                            setActiveChannelId(ids[0])
+                                        }
+                                    }}
+                                />
+                            </Form.Item>
+                            <Form.Item label="价格/库存编辑渠道">
+                                <Select
+                                    placeholder="选择价格/库存渠道"
+                                    value={activeChannelId}
+                                    disabled={selectedChannelIds.length === 0}
+                                    options={selectedChannelOptions}
+                                    onChange={(v) => setActiveChannelId(v)}
                                 />
                             </Form.Item>
                         </Col>
@@ -803,7 +842,7 @@ export default function SKUListPage() {
                         <SKUCalendarEditor
                             ref={calendarEditorRef}
                             skuId={editingSku?.id ? Number(editingSku.id) : undefined}
-                            channelId={selectedChannelId ? Number(selectedChannelId) : undefined}
+                            channelId={activeChannelId ? Number(activeChannelId) : undefined}
                             stockLimitData={channelStockLimitMap}
                             readonlyStock
                         />

@@ -7,7 +7,7 @@ import {
     LockOutlined, UnlockOutlined, KeyOutlined, ArrowLeftOutlined
 } from '@ant-design/icons'
 import type { UploadProps, MenuProps, TreeProps } from 'antd'
-import { getToken, api, apiRequest } from '@/lib/api'
+import { getToken, api, apiRequest, handleAuthExpiredResponse } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface FolderItem {
@@ -310,6 +310,9 @@ export default function FilesPage() {
                 },
                 body: JSON.stringify({ folder_ids: selectedFolderIds })
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
             if (!response.ok) {
                 let errMsg = '下载失败'
                 try {
@@ -349,6 +352,9 @@ export default function FilesPage() {
                 },
                 body: JSON.stringify({ file_ids: selectedFileIds })
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
             if (!response.ok) {
                 let errMsg = '下载失败'
                 try {
@@ -435,6 +441,9 @@ export default function FilesPage() {
                 headers: { 'Authorization': `Bearer ${getToken()}` },
                 body: formData
             })
+            if (handleAuthExpiredResponse(response)) {
+                throw new Error('登录已过期，请重新登录')
+            }
             const result = await response.json()
             if (!response.ok) throw new Error(result.detail || '上传失败')
             if (result.success?.length > 0) {

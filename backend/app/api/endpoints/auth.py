@@ -82,6 +82,9 @@ async def update_user_role(
     user = await db.get(UserModel, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+    if user.username == "admin" and user.role == "super_admin" and payload.role != "super_admin":
+        raise HTTPException(status_code=400, detail="admin 账号的超级管理员角色不可修改")
     
     user.role = payload.role
     await db.commit()
