@@ -1,5 +1,5 @@
-import { Descriptions, Tag, Empty, Divider } from 'antd'
-import type { Resource, POI } from '@/types'
+﻿import { Descriptions, Tag, Empty, Divider } from 'antd'
+import type { Resource, POI, ResourceCombinationMember } from '@/types'
 import ContactTableDisplay from '@/components/ContactTableDisplay'
 
 interface ResourceDetailsPanelProps {
@@ -22,12 +22,32 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
     const poiAttrs: any = poi?.attrs || {}
     const resourceType = resource.resource_type
     const businessContacts = Array.isArray(poiAttrs.business_contacts) ? poiAttrs.business_contacts : []
+    const combinationMembers = Array.isArray(resource.combination_members) ? resource.combination_members : []
 
     const renderTagList = (labels: string[]) => {
         if (!labels.length) return '-'
         return labels.map((label) => (
             <Tag key={label} color="blue">{label}</Tag>
         ))
+    }
+
+    const renderCombinationMembers = (members: ResourceCombinationMember[]) => {
+        if (!members.length) return '-'
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {members.map((member) => (
+                    <div
+                        key={`${member.resource_id}-${member.resource_name}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                        <Tag color={member.is_combination ? 'purple' : 'blue'}>
+                            {member.is_combination ? '组合' : member.resource_type}
+                        </Tag>
+                        <span>{member.resource_name}</span>
+                    </div>
+                ))}
+            </div>
+        )
     }
 
     // 渲染POI通用字段 (所有类型通用，但字段可能略有不同，这里显示最核心的)
@@ -236,6 +256,9 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                 <Descriptions.Item label="子资源类型">
                     <Tag color="blue">{resourceType}</Tag>
                 </Descriptions.Item>
+                <Descriptions.Item label="组合资源">
+                    {resource.is_combination ? <Tag color="purple">是</Tag> : '否'}
+                </Descriptions.Item>
                 <Descriptions.Item label="状态">
                     <Tag color={resource.status === 'active' ? 'green' : 'default'}>
                         {resource.status === 'active' ? '启用' : '停用'}
@@ -243,8 +266,21 @@ export default function ResourceDetailsPanel({ resource, poi }: ResourceDetailsP
                 </Descriptions.Item>
             </Descriptions>
 
+            {resource.is_combination && (
+                <>
+                    <Divider orientation="left" style={{ margin: '12px 0', fontSize: 14, color: '#666' }}>
+                        组合成员
+                    </Divider>
+                    <Descriptions bordered size="small" column={1}>
+                        <Descriptions.Item label="成员资源">
+                            {renderCombinationMembers(combinationMembers)}
+                        </Descriptions.Item>
+                    </Descriptions>
+                </>
+            )}
+
             {/* 第三部分：子资源独属详细信息 */}
-            {(resourceType === '景区' || resourceType === '酒店' || resourceType === '餐饮' || resourceType === '交通') && (
+            {!resource.is_combination && (resourceType === '景区' || resourceType === '酒店' || resourceType === '餐饮' || resourceType === '交通') && (
                 <>
                     <Divider orientation="left" style={{ margin: '12px 0', fontSize: 14, color: '#666' }}>
                         📑 {resourceType}独属信息

@@ -1,4 +1,3 @@
-﻿
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
     Form, Input, Button, Select, Card, Space, InputNumber, Switch, Table,
@@ -70,8 +69,9 @@ interface ResourceSelectorProps {
 function ResourceSelector({ visible, onCancel, onSelect, existingIds }: ResourceSelectorProps) {
     const { data, loadData } = useData()
     const poiList = data?.poi ?? []
-    const resourceTypes = ['景区', '酒店', '餐饮', '交通']
-    const poiTypeOptions = ['全部', ...resourceTypes]
+    const poiResourceTypes = ['景区', '酒店', '餐饮', '交通']
+    const selectableResourceTypes = [...poiResourceTypes, '组合']
+    const poiTypeOptions = ['全部', ...poiResourceTypes]
 
     const [list, setList] = useState<Resource[]>([])
     const [loading, setLoading] = useState(false)
@@ -80,7 +80,7 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
     const [poiTypeFilter, setPoiTypeFilter] = useState<string>('全部')
     const [selectedIds, setSelectedIds] = useState<string[]>([])
     const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
-    const [selectedType, setSelectedType] = useState<string>(resourceTypes[0])
+    const [selectedType, setSelectedType] = useState<string>(poiResourceTypes[0])
 
     const filteredPoiList = useMemo(() => {
         let list = poiList
@@ -114,7 +114,11 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
 
     useEffect(() => {
         if (!visible) return
-        if (selectedPoi?.poi_type && selectedPoi.poi_type !== selectedType) {
+        if (
+            selectedPoi?.poi_type &&
+            selectedType !== selectedPoi.poi_type &&
+            selectedType !== '组合'
+        ) {
             setSelectedType(selectedPoi.poi_type)
         }
     }, [visible, selectedPoi, selectedType])
@@ -232,11 +236,11 @@ function ResourceSelector({ visible, onCancel, onSelect, existingIds }: Resource
                             optionType="button"
                             buttonStyle="solid"
                         >
-                            {resourceTypes.map((t) => (
+                            {selectableResourceTypes.map((t) => (
                                 <Radio.Button
                                     key={t}
                                     value={t}
-                                    disabled={selectedPoi?.poi_type ? t !== selectedPoi.poi_type : false}
+                                    disabled={selectedPoi?.poi_type ? (t !== selectedPoi.poi_type && t !== '组合') : false}
                                 >
                                     {t}
                                 </Radio.Button>

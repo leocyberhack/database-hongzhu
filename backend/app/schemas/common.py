@@ -80,11 +80,13 @@ class ResourceBase(BaseModel):
     # - "酒店" -> HotelAttrs
     # - others -> GenericAttrs or custom dict
     attrs: Optional[dict] = Field(None, description="Resource type-specific attributes (JSONB)")
+    is_combination: bool = False
+    combination_members: Optional[list[int]] = None
     status: Optional[str] = None
 
 
 class ResourceCreate(ResourceBase):
-    pass
+    create_mode: Optional[str] = None
 
 
 class ResourceUpdate(BaseModel):
@@ -93,11 +95,24 @@ class ResourceUpdate(BaseModel):
     resource_code: Optional[str] = None
     resource_type: Optional[str] = None
     attrs: Optional[dict] = None
+    is_combination: Optional[bool] = None
+    combination_members: Optional[list[int]] = None
+    status: Optional[str] = None
+
+
+class ResourceCompositionMemberRead(BaseModel):
+    resource_id: int
+    resource_name: str
+    resource_type: str
+    poi_id: int
+    is_combination: bool = False
     status: Optional[str] = None
 
 
 class ResourceRead(ResourceBase, ORMBase):
     id: int
+    combination_updated_at: Optional[datetime] = None
+    combination_members: list[ResourceCompositionMemberRead] = Field(default_factory=list)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

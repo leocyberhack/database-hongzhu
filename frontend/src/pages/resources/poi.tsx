@@ -19,6 +19,7 @@ import POIDetailDrawer from '@/components/POIDetailDrawer'
 import PresetAgreementEditor from '@/components/PresetAgreementEditor'
 
 const POI_TYPES = ['景区', '酒店', '餐饮', '交通'] // POI类型（不含组合）
+const COMBINATION_RESOURCE_TYPE = '组合'
 
 interface FilterState {
     keyword: string
@@ -66,6 +67,7 @@ export default function ResourcePage() {
     const [poiForm] = Form.useForm()
     const [poiEditForm] = Form.useForm()
     const [batchUpdateForm] = Form.useForm()
+    const [memberCreateForm] = Form.useForm()
     const [selectedPoi, setSelectedPoi] = useState<POI | null>(null)
     const [searchParams] = useSearchParams()
     const [detailAutoOpened, setDetailAutoOpened] = useState(false)
@@ -88,6 +90,9 @@ export default function ResourcePage() {
     const [creatingPoi, setCreatingPoi] = useState(false)
     const [fileManagerPoi, setFileManagerPoi] = useState<POI | null>(null)  // 文件管理Modal的目标POI
     const [resourceStatuses, setResourceStatuses] = useState<Record<number, { saving?: boolean; saved?: boolean }>>({})
+    const [memberCreateModalVisible, setMemberCreateModalVisible] = useState(false)
+    const [memberCreateTarget, setMemberCreateTarget] = useState<{ resourceIndex: number; fieldKey: number } | null>(null)
+    const [memberCreateType, setMemberCreateType] = useState<string | null>(null)
     const [provinceOptions, setProvinceOptions] = useState<RegionOption[]>([])
     const [createCityOptions, setCreateCityOptions] = useState<RegionOption[]>([])
     const [createDistrictOptions, setCreateDistrictOptions] = useState<RegionOption[]>([])
@@ -111,6 +116,8 @@ export default function ResourcePage() {
             poiForm.setFieldValue('resources', [
                 {
                     resource_type: poiType,
+                    is_combination: false,
+                    combination_members: [],
                     supplier_bindings: [],
                 },
             ])
@@ -118,8 +125,9 @@ export default function ResourcePage() {
         }
         const nextResources = currentResources.map((resource: any) => ({
             ...resource,
-            resource_type: poiType,
-            attrs: resource.resource_type === poiType ? resource.attrs : undefined,
+            resource_type: resource.is_combination ? COMBINATION_RESOURCE_TYPE : poiType,
+            attrs: resource.is_combination ? undefined : (resource.resource_type === poiType ? resource.attrs : undefined),
+            combination_members: resource.is_combination ? (resource.combination_members || []) : [],
         }))
         poiForm.setFieldValue('resources', nextResources)
     }, [createResourceEnabled, poiType, poiForm])
@@ -188,6 +196,32 @@ export default function ResourcePage() {
     const resources = data?.resources ?? []
     const suppliers = data?.suppliers ?? []
     const supplierResources = data?.supplier_resources ?? []
+
+    const normalizeMemberIds = (values: any): number[] => {
+        if (!Array.isArray(values)) return []
+        return Array.from(new Set(values.map((id) => Number(id)).filter((id) => Number.isFinite(id))))
+    }
+
+    const combinationMemberOptions = useMemo(() => {
+        return resources.map((resource: any) => {
+            const poiName = poiList.find((poi) => String(poi.id) === String(resource.poi_id))?.poi_name || '-'
+            return {
+                value: Number(resource.id),
+                label: `${resource.resource_name} (${poiName} / ${resource.is_combination ? COMBINATION_RESOURCE_TYPE : resource.resource_type})`,
+            }
+        })
+    }, [resources, poiList])
+
+    const memberCreatePoiOptions = useMemo(() => {
+        const merged = [...poiList]
+        if (createdPoi && !merged.some((poi) => String(poi.id) === String(createdPoi.id))) {
+            merged.push(createdPoi)
+        }
+        return merged.map((poi) => ({
+            value: Number(poi.id),
+            label: `${poi.poi_name} (${poi.city})`,
+        }))
+    }, [poiList, createdPoi])
 
     // 过滤逻辑
     const filteredPoiList = useMemo(() => {
@@ -349,10 +383,14 @@ export default function ResourcePage() {
     const resetCreateModal = () => {
         setCreateModalVisible(false)
         poiForm.resetFields()
+        memberCreateForm.resetFields()
         setPoiType(null)
         setCreateResourceEnabled(false)
         setCreatedPoi(null)
         setResourceStatuses({})
+        setMemberCreateModalVisible(false)
+        setMemberCreateTarget(null)
+        setMemberCreateType(null)
         setCreatingPoi(false)
         setCreateCityOptions([])
         setCreateDistrictOptions([])
@@ -371,6 +409,65 @@ export default function ResourcePage() {
         }))
     }
     const getPresetKey = (resourceIndex: number, supplierIndex: number) => `${resourceIndex}:${supplierIndex}`
+
+    const openMemberCreateModal = (resourceIndex: number, fieldKey: number) => {
+        if (memberCreatePoiOptions.length === 0) {
+            message.warning('暂无可用资源，请先创建资源')
+            return
+        }
+        setMemberCreateTarget({ resourceIndex, fieldKey })
+        setMemberCreateType(null)
+        memberCreateForm.resetFields()
+        memberCreateForm.setFieldsValue({
+            poi_id: createdPoi ? Number(createdPoi.id) : undefined,
+            is_combination: false,
+        })
+        setMemberCreateModalVisible(true)
+    }
+
+    const handleCreateCombinationMember = async (values: any) => {
+        if (!memberCreateTarget) {
+            message.warning('未找到目标组合子资源，请重试')
+            return
+        }
+        try {
+            const payload: any = {
+                poi_id: values.poi_id,
+                resource_name: values.resource_name,
+                resource_code: values.resource_code,
+                resource_type: values.resource_type,
+                attrs: values.attrs,
+                is_combination: false,
+                create_mode: 'combination_member',
+                status: 'active',
+            }
+            const created = await apiRequest<{ id: number }>('/api/resources', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            })
+            await loadData(['poi', 'resources', 'suppliers', 'supplier_resources'], { force: true })
+
+            const targetResource = poiForm.getFieldValue(['resources', memberCreateTarget.resourceIndex])
+            if (!targetResource) {
+                message.warning('目标组合子资源已不存在，请重新选择')
+            } else {
+                const current = normalizeMemberIds(targetResource.combination_members)
+                poiForm.setFieldValue(
+                    ['resources', memberCreateTarget.resourceIndex, 'combination_members'],
+                    Array.from(new Set([...current, Number(created.id)]))
+                )
+                updateResourceStatus(memberCreateTarget.fieldKey, { saved: false })
+                message.success('成员资源已创建并加入组合')
+            }
+
+            setMemberCreateModalVisible(false)
+            setMemberCreateTarget(null)
+            setMemberCreateType(null)
+            memberCreateForm.resetFields()
+        } catch (err: any) {
+            message.error(err?.message || '成员资源创建失败')
+        }
+    }
 
     const createPoi = async () => {
         setCreatingPoi(true)
@@ -476,12 +573,19 @@ export default function ResourcePage() {
         if (resourceStatuses[fieldKey]?.saving) return
         updateResourceStatus(fieldKey, { saving: true })
         try {
-            await poiForm.validateFields([
+            const draftResource = poiForm.getFieldValue(['resources', resourceIndex]) || {}
+            const isCombinationDraft = !!draftResource.is_combination
+            const fieldsToValidate: (string | number)[][] = [
                 ['resources', resourceIndex, 'resource_name'],
                 ['resources', resourceIndex, 'resource_type'],
-                ['resources', resourceIndex, 'attrs'],
                 ['resources', resourceIndex, 'supplier_bindings'],
-            ])
+            ]
+            if (isCombinationDraft) {
+                fieldsToValidate.push(['resources', resourceIndex, 'combination_members'])
+            } else {
+                fieldsToValidate.push(['resources', resourceIndex, 'attrs'])
+            }
+            await poiForm.validateFields(fieldsToValidate)
 
             const hadPoi = !!createdPoi
             const targetPoi = await ensureCreatedPoi()
@@ -490,14 +594,22 @@ export default function ResourcePage() {
             const resource = poiForm.getFieldValue(['resources', resourceIndex]) || {}
             const resourceId = resource.id || resource.resource_id
             const agreementErrors: string[] = []
+            const isCombination = !!resource.is_combination
+            const memberIds = normalizeMemberIds(resource.combination_members)
+            if (isCombination && memberIds.length < 2) {
+                message.error('组合资源至少需要2个成员资源')
+                return
+            }
             const resourcePayload: any = {
                 poi_id: targetPoi.id,
                 resource_name: resource.resource_name,
                 resource_code: resource.resource_code,
-                resource_type: targetPoi.poi_type || poiType,
+                resource_type: isCombination ? COMBINATION_RESOURCE_TYPE : (targetPoi.poi_type || poiType),
+                is_combination: isCombination,
+                combination_members: isCombination ? memberIds : [],
                 status: 'active',
             }
-            if (resource.attrs) {
+            if (!isCombination && resource.attrs) {
                 resourcePayload.attrs = resource.attrs
             }
             if (resourceId) {
@@ -699,6 +811,17 @@ export default function ResourcePage() {
     }
 
     const handleRemoveResource = (fieldKey: number, remove: (index: number) => void, index: number) => {
+        if (memberCreateTarget?.resourceIndex === index) {
+            setMemberCreateModalVisible(false)
+            setMemberCreateTarget(null)
+            setMemberCreateType(null)
+            memberCreateForm.resetFields()
+        } else if (memberCreateTarget && memberCreateTarget.resourceIndex > index) {
+            setMemberCreateTarget({
+                ...memberCreateTarget,
+                resourceIndex: memberCreateTarget.resourceIndex - 1,
+            })
+        }
         setResourceStatuses((prev) => {
             const next = { ...prev }
             delete next[fieldKey]
@@ -1150,6 +1273,8 @@ export default function ResourcePage() {
                                     poiForm.setFieldValue('resources', [
                                         {
                                             resource_type: poiType,
+                                            is_combination: false,
+                                            combination_members: [],
                                             supplier_bindings: [],
                                         },
                                     ])
@@ -1213,20 +1338,106 @@ export default function ResourcePage() {
                                                                     </Form.Item>
                                                                 </Col>
                                                                 <Col span={12}>
-                                                                    <Form.Item name={[field.name, 'resource_type']} label="子资源类型" rules={[{ required: true, message: '请选择子资源类型' }]}>
-                                                                        <Select
-                                                                            placeholder="子资源类型"
-                                                                            disabled
-                                                                            options={poiType ? [{ value: poiType, label: poiType }] : []}
+                                                                    <Form.Item
+                                                                        noStyle
+                                                                        shouldUpdate={(prevValues, currentValues) =>
+                                                                            prevValues?.resources?.[field.name]?.is_combination !== currentValues?.resources?.[field.name]?.is_combination
+                                                                        }
+                                                                    >
+                                                                        {({ getFieldValue }) => {
+                                                                            const isCombination = !!getFieldValue(['resources', field.name, 'is_combination'])
+                                                                            const resolvedType = isCombination ? COMBINATION_RESOURCE_TYPE : poiType
+                                                                            return (
+                                                                                <Form.Item name={[field.name, 'resource_type']} label="子资源类型" rules={[{ required: true, message: '请选择子资源类型' }]}>
+                                                                                    <Select
+                                                                                        placeholder="子资源类型"
+                                                                                        disabled
+                                                                                        options={resolvedType ? [{ value: resolvedType, label: resolvedType }] : []}
+                                                                                    />
+                                                                                </Form.Item>
+                                                                            )
+                                                                        }}
+                                                                    </Form.Item>
+                                                                    <Form.Item name={[field.name, 'is_combination']} label="组合资源" valuePropName="checked">
+                                                                        <Switch
+                                                                            checkedChildren="是"
+                                                                            unCheckedChildren="否"
+                                                                            onChange={(checked) => {
+                                                                                if (checked) {
+                                                                                    poiForm.setFieldValue(['resources', field.name, 'attrs'], undefined)
+                                                                                    poiForm.setFieldValue(['resources', field.name, 'resource_type'], COMBINATION_RESOURCE_TYPE)
+                                                                                } else {
+                                                                                    poiForm.setFieldValue(['resources', field.name, 'combination_members'], [])
+                                                                                    poiForm.setFieldValue(['resources', field.name, 'resource_type'], poiType)
+                                                                                }
+                                                                            }}
                                                                         />
                                                                     </Form.Item>
                                                                 </Col>
                                                             </Row>
 
-                                                            {poiType === '景区' && <TicketResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
-                                                            {poiType === '酒店' && <HotelResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
-                                                            {poiType === '餐饮' && <DiningResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
-                                                            {poiType === '交通' && <TransportResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
+                                                            <Form.Item
+                                                                noStyle
+                                                                shouldUpdate={(prevValues, currentValues) =>
+                                                                    prevValues?.resources?.[field.name]?.is_combination !== currentValues?.resources?.[field.name]?.is_combination ||
+                                                                    prevValues?.resources?.[field.name]?.id !== currentValues?.resources?.[field.name]?.id
+                                                                }
+                                                            >
+                                                                {({ getFieldValue }) => {
+                                                                    const isCombination = !!getFieldValue(['resources', field.name, 'is_combination'])
+                                                                    const currentResourceId = Number(
+                                                                        getFieldValue(['resources', field.name, 'id']) ||
+                                                                        getFieldValue(['resources', field.name, 'resource_id']) ||
+                                                                        0
+                                                                    )
+                                                                    const memberOptions = combinationMemberOptions.filter(
+                                                                        option => Number(option.value) !== currentResourceId
+                                                                    )
+                                                                    if (isCombination) {
+                                                                        return (
+                                                                            <>
+                                                                                <Form.Item
+                                                                                    name={[field.name, 'combination_members']}
+                                                                                    label="组合成员"
+                                                                                    tooltip="可选择本POI或其他POI下的已创建子资源"
+                                                                                    rules={[
+                                                                                        ({ getFieldValue: getValue }) => ({
+                                                                                            validator(_, value) {
+                                                                                                const enabled = !!getValue(['resources', field.name, 'is_combination'])
+                                                                                                if (!enabled) return Promise.resolve()
+                                                                                                if (normalizeMemberIds(value).length >= 2) return Promise.resolve()
+                                                                                                return Promise.reject(new Error('组合资源至少需要2个成员资源'))
+                                                                                            },
+                                                                                        }),
+                                                                                    ]}
+                                                                                >
+                                                                                    <Select
+                                                                                        mode="multiple"
+                                                                                        placeholder="请选择2个或以上成员资源"
+                                                                                        optionFilterProp="label"
+                                                                                        showSearch
+                                                                                        options={memberOptions}
+                                                                                    />
+                                                                                </Form.Item>
+                                                                                <Form.Item style={{ marginTop: -8 }}>
+                                                                                    <Button onClick={() => openMemberCreateModal(field.name, field.key)}>
+                                                                                        新建成员资源
+                                                                                    </Button>
+                                                                                </Form.Item>
+                                                                            </>
+                                                                        )
+                                                                    }
+
+                                                                    return (
+                                                                        <>
+                                                                            {poiType === '景区' && <TicketResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
+                                                                            {poiType === '酒店' && <HotelResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
+                                                                            {poiType === '餐饮' && <DiningResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
+                                                                            {poiType === '交通' && <TransportResourceFields prefix={[field.name, 'attrs']} typeOptions={currentTypeOptions} onOptionsChange={handleTypeOptionsChange} onOptionAdd={handleTypeOptionAdd} onOptionDelete={handleTypeOptionDelete} onOptionRename={handleTypeOptionRename} />}
+                                                                        </>
+                                                                    )
+                                                                }}
+                                                            </Form.Item>
                                                         </Col>
                                                         <Col span={10}>
                                                             <div style={{ padding: 12, background: '#fff', borderRadius: 8, border: '1px solid #f0f0f0' }}>
@@ -1336,7 +1547,7 @@ export default function ResourcePage() {
                                         })}
                                         <Button
                                             type="dashed"
-                                            onClick={() => add({ resource_type: poiType, supplier_bindings: [] })}
+                                            onClick={() => add({ resource_type: poiType, is_combination: false, combination_members: [], supplier_bindings: [] })}
                                             block
                                             icon={<PlusOutlined />}
                                         >
@@ -1361,6 +1572,74 @@ export default function ResourcePage() {
                             </Button>
                             <Button type="primary" onClick={handleCreatePoi} loading={creatingPoi}>
                                 {createdPoi ? '完成' : '创建 资源'}
+                            </Button>
+                        </Space>
+                    </Form.Item>
+                </Form>
+            </Modal>
+
+            <Modal
+                title="新建组合成员资源"
+                open={memberCreateModalVisible}
+                onCancel={() => {
+                    setMemberCreateModalVisible(false)
+                    setMemberCreateTarget(null)
+                    setMemberCreateType(null)
+                    memberCreateForm.resetFields()
+                }}
+                footer={null}
+                width={720}
+            >
+                <Form form={memberCreateForm} layout="vertical" onFinish={handleCreateCombinationMember}>
+                    <Form.Item name="poi_id" label="所属资源" rules={[{ required: true, message: '请选择所属资源' }]}>
+                        <Select
+                            showSearch
+                            optionFilterProp="label"
+                            placeholder="选择资源"
+                            options={memberCreatePoiOptions}
+                        />
+                    </Form.Item>
+                    <Form.Item name="resource_name" label="成员资源名称" rules={[{ required: true, message: '请输入成员资源名称' }]}>
+                        <Input placeholder="例如：标准双床房" />
+                    </Form.Item>
+                    <Form.Item name="resource_code" label="成员资源编码">
+                        <Input placeholder="例如：RES-001" />
+                    </Form.Item>
+                    <Form.Item name="resource_type" label="成员资源类型" rules={[{ required: true, message: '请选择成员资源类型' }]}>
+                        <Select
+                            placeholder="选择类型"
+                            options={POI_TYPES.map((t) => ({ value: t, label: t }))}
+                            onChange={(value) => {
+                                setMemberCreateType(value)
+                                memberCreateForm.setFieldValue('attrs', undefined)
+                            }}
+                        />
+                    </Form.Item>
+
+                    {!memberCreateType && (
+                        <p style={{ color: '#999', marginBottom: 12 }}>选择成员资源类型后可填写对应字段</p>
+                    )}
+                    {memberCreateType === '景区' && <TicketResourceFields />}
+                    {memberCreateType === '酒店' && <HotelResourceFields />}
+                    {memberCreateType === '餐饮' && <DiningResourceFields />}
+                    {memberCreateType === '交通' && <TransportResourceFields />}
+
+                    <p style={{ color: '#666', fontSize: 12, marginBottom: 16 }}>
+                        成员资源创建后会自动加入当前组合，不会自动绑定供应商。
+                    </p>
+
+                    <Form.Item style={{ marginBottom: 0 }}>
+                        <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                            <Button onClick={() => {
+                                setMemberCreateModalVisible(false)
+                                setMemberCreateTarget(null)
+                                setMemberCreateType(null)
+                                memberCreateForm.resetFields()
+                            }}>
+                                取消
+                            </Button>
+                            <Button type="primary" htmlType="submit">
+                                创建并加入组合
                             </Button>
                         </Space>
                     </Form.Item>

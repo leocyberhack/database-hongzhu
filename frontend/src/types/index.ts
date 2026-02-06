@@ -25,9 +25,21 @@ export interface Resource {
     resource_code?: string
     resource_type: string
     attrs?: Record<string, unknown>
+    is_combination?: boolean
+    combination_members?: ResourceCombinationMember[]
+    combination_updated_at?: string
     status?: string
     created_at?: string
     updated_at?: string
+}
+
+export interface ResourceCombinationMember {
+    resource_id: string
+    resource_name: string
+    resource_type: string
+    poi_id: string
+    is_combination?: boolean
+    status?: string
 }
 
 export interface Supplier {
@@ -276,8 +288,34 @@ export interface Order {
     disputed_qty?: number
     disputed_amount?: number
     disputed_at?: string
+    resource_details?: OrderResourceDetail[]
     created_at?: string
     updated_at?: string
+}
+
+export interface OrderResourceDetail {
+    order_resource_id: string
+    resource_id: string
+    resource_name: string
+    resource_type: string
+    is_combination?: boolean
+    supplier_id: string
+    supplier_name?: string
+    travel_date?: string
+    quantity: number
+    settlement_price?: number
+    cost_amount?: number
+    composition_snapshot?: CombinationSnapshotNode[]
+    composition_snapshot_at?: string
+}
+
+export interface CombinationSnapshotNode {
+    resource_id: string
+    resource_name: string
+    resource_type: string
+    poi_id?: string
+    is_combination?: boolean
+    members?: CombinationSnapshotNode[]
 }
 
 export interface OrderStatusHistory {

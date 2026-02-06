@@ -1,6 +1,7 @@
-﻿from datetime import datetime
+from datetime import datetime
 from app.utils.time import now_china
 from typing import Optional
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, delete
@@ -9,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import User, get_current_user, require_roles
 from app.api.deps import DbSession
 from app.api.endpoints.files import _delete_folders_with_files
-from app.models import AuditLog, Poi, Resource, ProductResource
+from app.models import AuditLog, Poi, Resource, ProductResource, ResourceComposition
 from app.schemas.common import (
     ListResponse,
     Pagination,
@@ -22,6 +23,139 @@ from app.schemas.common import (
 )
 
 router = APIRouter()
+VALID_POI_TYPES = ["景区", "酒店", "餐饮", "交通"]
+COMBINATION_CREATE_MODE = "combination_member"
+COMBINATION_RESOURCE_TYPE = "组合"
+
+
+def _normalize_combination_members(member_ids: Optional[list[int]]) -> list[int]:
+    if not member_ids:
+        return []
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for value in member_ids:
+        try:
+            rid = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="组合成员资源ID无效")
+        if rid in seen:
+            raise HTTPException(status_code=400, detail=f"组合成员资源重复: {rid}")
+        seen.add(rid)
+        normalized.append(rid)
+    return normalized
+
+
+def _has_path(graph: dict[int, list[int]], start: int, target: int) -> bool:
+    stack = [start]
+    visited: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if current == target:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        stack.extend(graph.get(current, []))
+    return False
+
+
+async def _validate_combination_members(
+    db: AsyncSession,
+    parent_resource_id: int,
+    member_ids: list[int],
+) -> None:
+    if len(member_ids) < 2:
+        raise HTTPException(status_code=400, detail="组合资源至少需要 2 个成员资源")
+    if parent_resource_id in member_ids:
+        raise HTTPException(status_code=400, detail="组合资源不能包含自身")
+
+    rows = list(await db.scalars(select(Resource).where(Resource.id.in_(member_ids))))
+    if len(rows) != len(member_ids):
+        found_ids = {r.id for r in rows}
+        missing = [rid for rid in member_ids if rid not in found_ids]
+        raise HTTPException(status_code=404, detail=f"组合成员资源不存在: {missing}")
+
+    graph: dict[int, list[int]] = defaultdict(list)
+    relation_rows = await db.execute(
+        select(ResourceComposition.parent_resource_id, ResourceComposition.child_resource_id)
+    )
+    for pid, cid in relation_rows.all():
+        graph[pid].append(cid)
+    graph[parent_resource_id] = list(member_ids)
+
+    for child_id in member_ids:
+        if _has_path(graph, child_id, parent_resource_id):
+            raise HTTPException(
+                status_code=400,
+                detail=f"组合关系存在循环依赖（成员资源 {child_id} 会回指当前资源）",
+            )
+
+
+async def _set_resource_composition(
+    db: AsyncSession,
+    parent_resource_id: int,
+    member_ids: list[int],
+) -> None:
+    await db.execute(
+        delete(ResourceComposition).where(ResourceComposition.parent_resource_id == parent_resource_id)
+    )
+    if not member_ids:
+        return
+    for position, child_id in enumerate(member_ids):
+        db.add(
+            ResourceComposition(
+                parent_resource_id=parent_resource_id,
+                child_resource_id=child_id,
+                position=position,
+            )
+        )
+
+
+async def _fetch_resource_members_map(
+    db: AsyncSession,
+    parent_resource_ids: list[int],
+) -> dict[int, list[dict]]:
+    if not parent_resource_ids:
+        return {}
+
+    rows = await db.execute(
+        select(ResourceComposition, Resource)
+        .join(Resource, Resource.id == ResourceComposition.child_resource_id)
+        .where(ResourceComposition.parent_resource_id.in_(parent_resource_ids))
+        .order_by(
+            ResourceComposition.parent_resource_id.asc(),
+            ResourceComposition.position.asc(),
+            ResourceComposition.id.asc(),
+        )
+    )
+    members_map: dict[int, list[dict]] = defaultdict(list)
+    for composition, child in rows.all():
+        members_map[composition.parent_resource_id].append(
+            {
+                "resource_id": child.id,
+                "resource_name": child.resource_name,
+                "resource_type": COMBINATION_RESOURCE_TYPE if child.is_combination else child.resource_type,
+                "poi_id": child.poi_id,
+                "is_combination": bool(child.is_combination),
+                "status": child.status,
+            }
+        )
+    return members_map
+
+
+async def _to_resource_read_list(
+    db: AsyncSession,
+    resources: list[Resource],
+) -> list[ResourceRead]:
+    member_map = await _fetch_resource_members_map(db, [r.id for r in resources])
+    output: list[ResourceRead] = []
+    for resource in resources:
+        data = ResourceRead.model_validate(resource).model_dump()
+        if resource.is_combination:
+            data["resource_type"] = COMBINATION_RESOURCE_TYPE
+        data["combination_members"] = member_map.get(resource.id, [])
+        output.append(ResourceRead.model_validate(data))
+    return output
 
 
 @router.get("/poi", response_model=ListResponse)
@@ -80,7 +214,13 @@ async def list_resources(
     if poi_id:
         stmt = stmt.where(Resource.poi_id == poi_id)
     if resource_type:
-        stmt = stmt.where(Resource.resource_type == resource_type)
+        if resource_type == COMBINATION_RESOURCE_TYPE:
+            stmt = stmt.where(Resource.is_combination.is_(True))
+        else:
+            stmt = stmt.where(
+                Resource.resource_type == resource_type,
+                Resource.is_combination.is_(False),
+            )
     if keyword:
         stmt = stmt.where(Resource.resource_name.ilike(f"%{keyword}%"))
         
@@ -96,9 +236,10 @@ async def list_resources(
         stmt = stmt.order_by(Resource.poi_id.asc(), Resource.id.desc())
 
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
+    rows = list(await db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)))
+    items = await _to_resource_read_list(db, rows)
     return ListResponse(
-        items=[ResourceRead.model_validate(r) for r in rows],
+        items=items,
         pagination=Pagination(total=total or 0, page=page, page_size=page_size),
     )
 
@@ -116,11 +257,10 @@ async def create_poi(
         raise HTTPException(status_code=400, detail="POI 类型不能为空")
     
     # poi_type枚举值校验
-    valid_types = ["景区", "酒店", "餐饮", "交通"]
-    if payload.poi_type not in valid_types:
+    if payload.poi_type not in VALID_POI_TYPES:
         raise HTTPException(
             status_code=400, 
-            detail=f"无效的 POI 类型，必须是: {', '.join(valid_types)}"
+            detail=f"无效的 POI 类型，必须是: {', '.join(VALID_POI_TYPES)}"
         )
     
     # Unique check by name（全局不重复，编辑未改名允许）
@@ -212,11 +352,10 @@ async def update_poi(
             )
         
         # poi_type枚举值校验
-        valid_types = ["景区", "酒店", "餐饮", "交通"]
-        if payload.poi_type not in valid_types:
+        if payload.poi_type not in VALID_POI_TYPES:
             raise HTTPException(
                 status_code=400, 
-                detail=f"无效的 POI 类型，必须是: {', '.join(valid_types)}"
+                detail=f"无效的 POI 类型，必须是: {', '.join(VALID_POI_TYPES)}"
             )
     
     # Capture before state (include poi_type and attrs)
@@ -398,11 +537,10 @@ async def batch_update_poi(
             raise HTTPException(status_code=400, detail="POI 名称已存在")
 
     if "poi_type" in fields:
-        valid_types = ["景区", "酒店", "餐饮", "交通"]
-        if fields["poi_type"] not in valid_types:
+        if fields["poi_type"] not in VALID_POI_TYPES:
             raise HTTPException(
                 status_code=400,
-                detail=f"无效的 POI 类型，必须是: {', '.join(valid_types)}",
+                detail=f"无效的 POI 类型，必须是: {', '.join(VALID_POI_TYPES)}",
             )
         # Prevent changing type if POI has resources
         resource_counts = await db.execute(
@@ -447,32 +585,56 @@ async def create_resource(
     if dup:
         raise HTTPException(status_code=400, detail="资源名称已存在")
     
-    # 获取POI信息，自动继承poi_type作为resource_type
     poi = await db.get(Poi, payload.poi_id)
     if not poi:
         raise HTTPException(status_code=404, detail="POI 不存在")
-    
-    # 强制：resource_type必须与POI的poi_type一致
-    # 如果payload中提供了resource_type，检查是否一致
-    if payload.resource_type and payload.resource_type != poi.poi_type:
+
+    is_combination = bool(payload.is_combination)
+    is_manual_type_create = payload.create_mode == COMBINATION_CREATE_MODE
+    resolved_resource_type = poi.poi_type
+    if is_manual_type_create:
+        if payload.resource_type not in VALID_POI_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"无效的资源类型，必须是: {', '.join(VALID_POI_TYPES)}",
+            )
+        resolved_resource_type = payload.resource_type
+    elif is_combination:
+        resolved_resource_type = COMBINATION_RESOURCE_TYPE
+    elif payload.resource_type and payload.resource_type != poi.poi_type:
         raise HTTPException(
-            status_code=400, 
-            detail=f"资源类型必须与POI类型一致。该POI类型为: {poi.poi_type}"
+            status_code=400,
+            detail=f"资源类型必须与POI类型一致。该POI类型为: {poi.poi_type}",
         )
-    
-    # 自动设置resource_type为POI的poi_type
-    payload_dict = payload.model_dump()
-    payload_dict['resource_type'] = poi.poi_type
+
+    member_ids = _normalize_combination_members(payload.combination_members)
+    if not is_combination and member_ids:
+        raise HTTPException(status_code=400, detail="非组合资源不能设置组合成员")
+
+    payload_dict = payload.model_dump(exclude={"create_mode", "combination_members"})
+    payload_dict["resource_type"] = resolved_resource_type
+    payload_dict["is_combination"] = is_combination
+    payload_dict["combination_updated_at"] = now_china() if is_combination else None
+    if is_combination:
+        payload_dict["attrs"] = None
 
     obj = Resource(**payload_dict)
     db.add(obj)
     await db.flush()
+
+    if is_combination:
+        await _validate_combination_members(db, obj.id, member_ids)
+        await _set_resource_composition(db, obj.id, member_ids)
+    else:
+        await _set_resource_composition(db, obj.id, [])
     
     # Record audit log with complete resource data including attrs
     audit_data = {
         "resource_name": obj.resource_name,
         "resource_code": obj.resource_code,
         "resource_type": obj.resource_type,
+        "is_combination": obj.is_combination,
+        "combination_members": member_ids,
         "poi_id": obj.poi_id,
         "status": obj.status
     }
@@ -493,7 +655,8 @@ async def create_resource(
     
     await db.commit()
     await db.refresh(obj)
-    return ResourceRead.model_validate(obj)
+    resources = await _to_resource_read_list(db, [obj])
+    return resources[0]
 
 
 @router.put("/resources/{resource_id}", response_model=ResourceRead)
@@ -512,25 +675,41 @@ async def update_resource(
         if dup:
             raise HTTPException(status_code=400, detail="资源名称已存在")
 
+    existing_members_map = await _fetch_resource_members_map(db, [resource_id])
+    existing_member_ids = [int(m["resource_id"]) for m in existing_members_map.get(resource_id, [])]
+    target_is_combination = resource.is_combination if payload.is_combination is None else bool(payload.is_combination)
+    incoming_member_ids = (
+        _normalize_combination_members(payload.combination_members)
+        if payload.combination_members is not None
+        else existing_member_ids
+    )
+    target_member_ids = incoming_member_ids if target_is_combination else []
+    if not target_is_combination and incoming_member_ids:
+        raise HTTPException(status_code=400, detail="非组合资源不能设置组合成员")
+
+    target_poi = await db.get(Poi, resource.poi_id)
+    if not target_poi:
+        raise HTTPException(status_code=404, detail="POI 不存在")
     if payload.poi_id and payload.poi_id != resource.poi_id:
-        new_poi = await db.get(Poi, payload.poi_id)
-        if not new_poi:
+        target_poi = await db.get(Poi, payload.poi_id)
+        if not target_poi:
             raise HTTPException(status_code=404, detail="POI 不存在")
-        if new_poi.poi_type != resource.resource_type:
-            raise HTTPException(status_code=400, detail="资源类型必须与POI类型一致")
-    
-    # 禁止修改resource_type（因为它继承自POI的poi_type）
-    if payload.resource_type:
-        raise HTTPException(
-            status_code=400, 
-            detail="无法修改资源类型。资源类型继承自POI，如需修改请修改对应的POI类型"
-        )
+    target_resource_type = (
+        COMBINATION_RESOURCE_TYPE
+        if target_is_combination
+        else target_poi.poi_type
+    )
+
+    if target_is_combination:
+        await _validate_combination_members(db, resource_id, target_member_ids)
     
     # Capture before state with all important fields including attrs
     before_data = {
         "resource_name": resource.resource_name,
         "resource_code": resource.resource_code,
         "resource_type": resource.resource_type,
+        "is_combination": resource.is_combination,
+        "combination_members": existing_member_ids,
         "status": resource.status,
         "poi_id": resource.poi_id
     }
@@ -538,7 +717,7 @@ async def update_resource(
         before_data["attrs"] = resource.attrs
     
     # Validations
-    update_data = payload.model_dump(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True, exclude={"combination_members", "resource_type"})
     
     # Logic Lock 1: Active resources used by products cannot be deactivated
     if "status" in update_data and update_data["status"] != resource.status:
@@ -551,6 +730,18 @@ async def update_resource(
 
     for field, value in update_data.items():
         setattr(resource, field, value)
+
+    resource.resource_type = target_resource_type
+    if target_is_combination:
+        resource.attrs = None
+        update_data["attrs"] = None
+    resource.is_combination = target_is_combination
+    resource.combination_updated_at = now_china() if target_is_combination else None
+    await _set_resource_composition(db, resource_id, target_member_ids if target_is_combination else [])
+
+    update_data["resource_type"] = target_resource_type
+    update_data["is_combination"] = target_is_combination
+    update_data["combination_members"] = target_member_ids if target_is_combination else []
     
     # Record audit log with complete before/after data
     audit = AuditLog(
@@ -566,7 +757,8 @@ async def update_resource(
     
     await db.commit()
     await db.refresh(resource)
-    return ResourceRead.model_validate(resource)
+    resources = await _to_resource_read_list(db, [resource])
+    return resources[0]
 
 
 @router.delete("/resources/{resource_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -580,6 +772,14 @@ async def delete_resource(
     resource = await db.get(Resource, resource_id)
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
+
+    composition_ref_count = await db.scalar(
+        select(func.count()).select_from(ResourceComposition).where(
+            ResourceComposition.child_resource_id == resource_id
+        )
+    )
+    if composition_ref_count and composition_ref_count > 0:
+        raise HTTPException(status_code=400, detail=f"无法删除资源：已被 {composition_ref_count} 个组合资源引用")
     
     # Only check if resource is referenced by products (ProductResource)
     product_resource_count = await db.scalar(
@@ -608,6 +808,7 @@ async def delete_resource(
     # Note: ResourceInventory records are automatically cascade-deleted via SupplierResource FK
     from sqlalchemy import delete
     await db.execute(delete(SupplierResource).where(SupplierResource.resource_id == resource_id))
+    await db.execute(delete(ResourceComposition).where(ResourceComposition.parent_resource_id == resource_id))
     
     await db.delete(resource)
     await db.commit()
@@ -636,10 +837,21 @@ async def batch_delete_resources(
         if product_usage and product_usage > 0:
             # 跳过被引用的资源
             continue
+
+        composition_ref_count = await db.scalar(
+            select(func.count()).select_from(ResourceComposition).where(
+                ResourceComposition.child_resource_id == resource_id
+            )
+        )
+        if composition_ref_count and composition_ref_count > 0:
+            continue
         
         # 先删除关联的SupplierResource记录
         await db.execute(
             delete(SupplierResource).where(SupplierResource.resource_id == resource_id)
+        )
+        await db.execute(
+            delete(ResourceComposition).where(ResourceComposition.parent_resource_id == resource_id)
         )
         
         # 再删除Resource (ResourceInventory会通过CASCADE自动删除)
@@ -677,6 +889,8 @@ async def batch_update_resources(
 
     if "resource_type" in fields:
         raise HTTPException(status_code=400, detail="批量更新不允许修改资源类型")
+    if "is_combination" in fields or "combination_members" in fields:
+        raise HTTPException(status_code=400, detail="批量更新不支持修改组合配置")
 
     if "resource_name" in fields:
         if len(resource_ids) > 1:
@@ -716,6 +930,8 @@ async def batch_update_resources(
 
     if new_poi is not None:
         for resource in resources:
+            if resource.is_combination:
+                continue
             if new_poi.poi_type != resource.resource_type:
                 raise HTTPException(status_code=400, detail="资源类型必须与POI类型一致")
     

@@ -1,10 +1,10 @@
-﻿import { useState, useEffect, useCallback, useMemo } from 'react'
-import type { Dayjs } from 'dayjs'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import dayjs, { type Dayjs } from 'dayjs'
 import { Table, Tag, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Radio, Divider, Card, Row, Col } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { useData } from '@/contexts/DataContext'
 import { apiRequest } from '@/lib/api'
-import type { Order, ProductResource, Resource, SKUChannel } from '@/types'
+import type { Order, ProductResource, Resource, SKUChannel, OrderResourceDetail, CombinationSnapshotNode } from '@/types'
 
 interface OptionItem {
     value: string
@@ -67,7 +67,10 @@ export default function OrdersPage() {
     const [loading, setLoading] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
     const [createModalVisible, setCreateModalVisible] = useState(false)
+    const [decisionModalVisible, setDecisionModalVisible] = useState(false)
+    const [decisionOrder, setDecisionOrder] = useState<Order | null>(null)
     const [form] = Form.useForm()
+    const [decisionForm] = Form.useForm()
     const [filters, setFilters] = useState<OrderFilters>(INITIAL_FILTERS)
 
     const [skuOptions, setSkuOptions] = useState<OptionItem[]>([])
@@ -296,6 +299,146 @@ export default function OrdersPage() {
         }
     }
 
+    const openDecisionModal = (record: Order, action?: string) => {
+        setDecisionOrder(record)
+        setDecisionModalVisible(true)
+        decisionForm.resetFields()
+        decisionForm.setFieldsValue({
+            action: action || 'verify',
+            at: dayjs(),
+        })
+    }
+
+    const handleDecision = async () => {
+        if (!decisionOrder) return
+        try {
+            const values = await decisionForm.validateFields()
+            const payload: any = {
+                action: values.action,
+                at: values.at.format('YYYY-MM-DD HH:mm'),
+                qty: decisionOrder.quantity,
+            }
+            if (values.comment) {
+                payload.comment = values.comment
+            }
+            await apiRequest(`/api/orders/${decisionOrder.id}/decision`, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            })
+            message.success('操作成功')
+            setDecisionModalVisible(false)
+            decisionForm.resetFields()
+            setDecisionOrder(null)
+            await fetchOrders()
+        } catch (err: any) {
+            message.error(err.message || '操作失败')
+        }
+    }
+
+    const renderStatusTags = useCallback((record: Record<string, any>) => {
+        const tags = STATUS_GROUPS.filter((group) => record[`is_${group.key}`])
+        if (!tags.length) {
+            return <span>-</span>
+        }
+        return (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {tags.map((group) => (
+                    <Tag key={group.key} color={group.tagColor}>
+                        {group.tagLabel}
+                    </Tag>
+                ))}
+            </div>
+        )
+    }, [])
+
+    const renderCombinationSnapshot = useCallback((nodes: CombinationSnapshotNode[] | undefined, level = 0): any => {
+        if (!nodes || nodes.length === 0) return null
+        return nodes.map((node, index) => (
+            <div key={`${node.resource_id}-${level}-${index}`} style={{ marginLeft: level * 14, marginTop: 4 }}>
+                <Space size={6} wrap>
+                    <span>{node.resource_name || `资源 ${node.resource_id}`}</span>
+                    <Tag>{node.resource_type || '-'}</Tag>
+                    {node.is_combination && node.resource_type !== '组合' ? <Tag color="purple">组合</Tag> : null}
+                </Space>
+                {node.members && node.members.length > 0 ? renderCombinationSnapshot(node.members, level + 1) : null}
+            </div>
+        ))
+    }, [])
+
+    const resourceDetailColumns = useMemo(() => [
+        {
+            title: '资源',
+            dataIndex: 'resource_name',
+            render: (_: string, detail: OrderResourceDetail) => (
+                <Space size={6} wrap>
+                    <span>{detail.resource_name}</span>
+                    <Tag>{detail.resource_type}</Tag>
+                    {detail.is_combination && detail.resource_type !== '组合' ? <Tag color="purple">组合</Tag> : null}
+                </Space>
+            ),
+        },
+        {
+            title: '供应商',
+            dataIndex: 'supplier_name',
+            render: (_: string, detail: OrderResourceDetail) => detail.supplier_name || detail.supplier_id || '-',
+        },
+        { title: '数量', dataIndex: 'quantity' },
+        {
+            title: '结算单价',
+            dataIndex: 'settlement_price',
+            render: (value?: number) => value == null ? '-' : `￥${value}`,
+        },
+        {
+            title: '成本金额',
+            dataIndex: 'cost_amount',
+            render: (value?: number) => value == null ? '-' : `￥${value}`,
+        },
+        { title: '出行日期', dataIndex: 'travel_date', render: (value?: string) => value || '-' },
+        {
+            title: '状态',
+            key: 'status_flags',
+            render: (_: string, detail: OrderResourceDetail) => renderStatusTags(detail as unknown as Record<string, any>),
+        },
+        {
+            title: '成员明细',
+            key: 'composition_snapshot',
+            width: 360,
+            render: (_: string, detail: OrderResourceDetail) => {
+                if (!detail.is_combination) {
+                    return <span>-</span>
+                }
+                const snapshotNodes = detail.composition_snapshot || []
+                const snapshotAt = detail.composition_snapshot_at
+                    ? dayjs(detail.composition_snapshot_at).format('YYYY-MM-DD HH:mm:ss')
+                    : '-'
+                return (
+                    <div>
+                        <div style={{ color: '#666', marginBottom: 4 }}>快照时间：{snapshotAt}</div>
+                        {snapshotNodes.length > 0
+                            ? renderCombinationSnapshot(snapshotNodes)
+                            : <span style={{ color: '#999' }}>无成员快照</span>}
+                    </div>
+                )
+            },
+        },
+    ], [renderStatusTags, renderCombinationSnapshot])
+
+    const renderResourceDetails = useCallback((record: Order) => {
+        const details = record.resource_details || []
+        if (details.length === 0) {
+            return <div style={{ color: '#999' }}>无资源明细</div>
+        }
+        return (
+            <Table<OrderResourceDetail>
+                rowKey={(detail) => String(detail.order_resource_id || `${detail.resource_id}-${detail.supplier_id}`)}
+                columns={resourceDetailColumns as any}
+                dataSource={details}
+                pagination={false}
+                size="small"
+            />
+        )
+    }, [resourceDetailColumns])
+
     const columns = [
         {
             title: '订单号',
@@ -480,28 +623,14 @@ export default function OrdersPage() {
         {
             title: '状态',
             key: 'status_flags',
-            render: (_: string, record: Order) => {
-                const tags = STATUS_GROUPS.filter(group => (record as any)[`is_${group.key}`])
-                if (!tags.length) {
-                    return <span>-</span>
-                }
-                return (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {tags.map(group => (
-                            <Tag key={group.key} color={group.tagColor}>
-                                {group.tagLabel}
-                            </Tag>
-                        ))}
-                    </div>
-                )
-            },
+            render: (_: string, record: Order) => renderStatusTags(record as unknown as Record<string, any>),
         },
         {
             title: '操作',
-            render: () => (
+            render: (_: any, record: Order) => (
                 <Space>
                     <Button type="link" size="small">查看</Button>
-                    <Button type="link" size="small">核销</Button>
+                    <Button type="link" size="small" onClick={() => openDecisionModal(record)}>状态操作</Button>
                 </Space>
             ),
         },
@@ -623,6 +752,10 @@ export default function OrdersPage() {
                     columns={columns}
                     dataSource={rows}
                     loading={loading}
+                    expandable={{
+                        expandedRowRender: renderResourceDetails,
+                        rowExpandable: (record) => (record.resource_details?.length || 0) > 0,
+                    }}
                     pagination={{
                         current: pagination.current,
                         pageSize: pagination.pageSize,
@@ -888,6 +1021,44 @@ export default function OrdersPage() {
                                 创建
                             </Button>
                         </Space>
+                    </Form.Item>
+                </Form>
+            </Modal>
+
+            <Modal
+                title="状态操作"
+                open={decisionModalVisible}
+                onCancel={() => {
+                    setDecisionModalVisible(false)
+                    decisionForm.resetFields()
+                    setDecisionOrder(null)
+                }}
+                onOk={handleDecision}
+                okText="提交"
+                cancelText="取消"
+            >
+                {decisionOrder && (
+                    <div style={{ marginBottom: 8, color: '#666' }}>
+                        订单号：{decisionOrder.order_no}
+                    </div>
+                )}
+                <Form form={decisionForm} layout="vertical">
+                    <Form.Item name="action" label="操作类型" rules={[{ required: true, message: '请选择操作类型' }]}>
+                        <Select
+                            placeholder="选择操作"
+                            options={[
+                                { value: 'issue', label: '出票/预约' },
+                                { value: 'unissue', label: '取消出票/预约' },
+                                { value: 'verify', label: '核销/消耗' },
+                                { value: 'unverify', label: '取消核销/消耗' },
+                            ]}
+                        />
+                    </Form.Item>
+                    <Form.Item name="at" label="操作时间" rules={[{ required: true, message: '请选择操作时间' }]}>
+                        <DatePicker style={{ width: '100%' }} showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" />
+                    </Form.Item>
+                    <Form.Item name="comment" label="备注">
+                        <Input.TextArea rows={3} placeholder="可选" />
                     </Form.Item>
                 </Form>
             </Modal>

@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text, Enum as SaEnum
+﻿from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text, Enum as SaEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
@@ -7,7 +7,7 @@ from app.core.database import Base
 
 
 class AssetType(str, enum.Enum):
-    """资源/POI类型枚举"""
+    """璧勬簮/POI绫诲瀷鏋氫妇"""
     TICKET = "景区"
     HOTEL = "酒店"
     DINING = "餐饮"
@@ -88,12 +88,32 @@ class Resource(Base):
     resource_name: Mapped[str] = mapped_column(String, nullable=False)
     resource_code: Mapped[str | None] = mapped_column(String, nullable=True)
     resource_type: Mapped[str] = mapped_column(String, nullable=False)
+    is_combination: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     attrs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    combination_updated_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default=text("'draft'"))
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
     poi = relationship("Poi")
+
+
+class ResourceComposition(Base):
+    __tablename__ = "resource_composition"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    parent_resource_id: Mapped[int] = mapped_column(ForeignKey("resource.id", ondelete="CASCADE"), nullable=False)
+    child_resource_id: Mapped[int] = mapped_column(ForeignKey("resource.id", ondelete="RESTRICT"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+
+    __table_args__ = (
+        UniqueConstraint("parent_resource_id", "child_resource_id", name="uq_resource_composition_parent_child"),
+    )
+
+    parent_resource = relationship("Resource", foreign_keys=[parent_resource_id])
+    child_resource = relationship("Resource", foreign_keys=[child_resource_id])
 
 
 class Supplier(Base):
@@ -152,7 +172,7 @@ class SupplierResourcePriceHistory(Base):
 
 
 class SupplierResourceAgreement(Base):
-    """供应商资源协议表"""
+    """渚涘簲鍟嗚祫婧愬崗璁〃"""
     __tablename__ = "supplier_resource_agreements"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -166,9 +186,9 @@ class SupplierResourceAgreement(Base):
     payment_method: Mapped[str | None] = mapped_column(String(100), nullable=True)
     requires_invoice: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     invoice_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    discount_methods: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {"满减": true, "满送": false}
+    discount_methods: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {"婊″噺": true, "婊￠€?: false}
     discount_policy: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {"x": 100, "y": 10, "a": 200, "b": 1}
-    attached_files: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # [{"file_id": 1, "filename": "合同.pdf"}]
+    attached_files: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # [{"file_id": 1, "filename": "鍚堝悓.pdf"}]
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
@@ -190,7 +210,7 @@ class Product(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     product_name: Mapped[str] = mapped_column(String, nullable=False)
-    product_code: Mapped[str | None] = mapped_column(String, nullable=True)  # 产品编码
+    product_code: Mapped[str | None] = mapped_column(String, nullable=True)  # 浜у搧缂栫爜
     category: Mapped[str | None] = mapped_column(String, nullable=True)  # Legacy or simple string if not using FK
     # Using FK for category management as requested
     category_id: Mapped[int | None] = mapped_column(ForeignKey("product_category.id", ondelete="SET NULL"), nullable=True)
@@ -213,24 +233,22 @@ class Product(Base):
 
 class ProductResource(Base):
     """
-    产品资源组合表
-    
-    supplier_mode: 供应商选择模式
-        - 'auto': 自动模式，所有可用供应商都可提供，下单时选择最低价
-        - 'locked': 锁定模式，只有指定的供应商可以提供
-    
-    supplier_ids: 锁定模式下的供应商ID列表 (JSONB存储)
-        - 自动模式下为 None 或空列表
-        - 锁定模式下至少包含一个供应商ID
+    浜у搧璧勬簮缁勫悎琛?    
+    supplier_mode: 渚涘簲鍟嗛€夋嫨妯″紡
+        - 'auto': 鑷姩妯″紡锛屾墍鏈夊彲鐢ㄤ緵搴斿晢閮藉彲鎻愪緵锛屼笅鍗曟椂閫夋嫨鏈€浣庝环
+        - 'locked': 閿佸畾妯″紡锛屽彧鏈夋寚瀹氱殑渚涘簲鍟嗗彲浠ユ彁渚?    
+    supplier_ids: 閿佸畾妯″紡涓嬬殑渚涘簲鍟咺D鍒楄〃 (JSONB瀛樺偍)
+        - 鑷姩妯″紡涓嬩负 None 鎴栫┖鍒楄〃
+        - 閿佸畾妯″紡涓嬭嚦灏戝寘鍚竴涓緵搴斿晢ID
     """
     __tablename__ = "product_resource"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("product.id", ondelete="CASCADE"), nullable=False)
     resource_id: Mapped[int] = mapped_column(ForeignKey("resource.id", ondelete="RESTRICT"), nullable=False)
-    # 新增: 供应商选择模式 ('auto' 或 'locked')
+    # 鏂板: 渚涘簲鍟嗛€夋嫨妯″紡 ('auto' 鎴?'locked')
     supplier_mode: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'auto'"))
-    # 新增: 锁定模式下的供应商ID列表
+    # 鏂板: 閿佸畾妯″紡涓嬬殑渚涘簲鍟咺D鍒楄〃
     supplier_ids: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     required_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
@@ -264,8 +282,8 @@ class Channel(Base):
 
 class Spu(Base):
     """
-    SPU (Standard Product Unit) - 标准产品单位
-    SKU的父级概念，用于对SKU进行分组管理
+    SPU (Standard Product Unit) - 鏍囧噯浜у搧鍗曚綅
+    SKU鐨勭埗绾ф蹇碉紝鐢ㄤ簬瀵筍KU杩涜鍒嗙粍绠＄悊
     """
     __tablename__ = "spu"
 
@@ -467,11 +485,8 @@ class Order(Base):
 
 class OrderResource(Base):
     """
-    订单资源明细表
-    
-    记录订单中每个资源实际使用的供应商和结算价
-    用于多供应商模式下的精确成本追溯和库存扣减
-    """
+    璁㈠崟璧勬簮鏄庣粏琛?    
+    璁板綍璁㈠崟涓瘡涓祫婧愬疄闄呬娇鐢ㄧ殑渚涘簲鍟嗗拰缁撶畻浠?    鐢ㄤ簬澶氫緵搴斿晢妯″紡涓嬬殑绮剧‘鎴愭湰杩芥函鍜屽簱瀛樻墸鍑?    """
     __tablename__ = "order_resource"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -480,8 +495,10 @@ class OrderResource(Base):
     supplier_id: Mapped[int] = mapped_column(ForeignKey("supplier.id", ondelete="RESTRICT"), nullable=False)
     travel_date: Mapped[Date] = mapped_column(Date, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    settlement_price: Mapped[Numeric] = mapped_column(Numeric(12, 2), nullable=False)  # 实际结算价
-    cost_amount: Mapped[Numeric] = mapped_column(Numeric(12, 2), nullable=False)  # 成本小计 = settlement_price * quantity
+    settlement_price: Mapped[Numeric] = mapped_column(Numeric(12, 2), nullable=False)
+    cost_amount: Mapped[Numeric] = mapped_column(Numeric(12, 2), nullable=False)
+    composition_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    composition_snapshot_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     is_issued: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     issued_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -594,6 +611,7 @@ __all__ = [
     "Base",
     "Poi",
     "Resource",
+    "ResourceComposition",
     "Supplier",
     "SupplierResource",
     "SupplierResourcePriceHistory",
@@ -611,6 +629,7 @@ __all__ = [
     "InventoryLog",
     "ResourceInventoryLog",
     "Order",
+    "OrderResource",
     "OrderStatusHistory",
     "Approval",
     "AuditLog",
@@ -621,10 +640,10 @@ __all__ = [
 ]
 
 
-# ========================= 文件系统 =========================
+# ========================= 鏂囦欢绯荤粺 =========================
 
 class Folder(Base):
-    """文件夹表"""
+    """鏂囦欢澶硅〃"""
     __tablename__ = "folder"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -650,12 +669,14 @@ class File(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     filename: Mapped[str] = mapped_column(String(500), nullable=False)  # 原始文件名
-    object_name: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)  # MinIO 中的路径
-    url: Mapped[str] = mapped_column(String(1000), nullable=False)  # 公网 URL
-    size: Mapped[int] = mapped_column(BigInteger, nullable=False)  # 文件大小 (bytes)
-    content_type: Mapped[str] = mapped_column(String(100), nullable=False)  # MIME 类型
+    object_name: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)  # MinIO 路径
+    url: Mapped[str] = mapped_column(String(1000), nullable=False)  # 鍏綉 URL
+    size: Mapped[int] = mapped_column(BigInteger, nullable=False)  # 鏂囦欢澶у皬 (bytes)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)  # MIME 绫诲瀷
     folder_id: Mapped[int | None] = mapped_column(ForeignKey("folder.id", ondelete="SET NULL"), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
 
     folder = relationship("Folder", back_populates="files")
+
+

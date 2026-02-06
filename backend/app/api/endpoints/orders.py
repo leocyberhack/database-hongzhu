@@ -1,11 +1,12 @@
-﻿from datetime import datetime
+from datetime import datetime
 from datetime import date, time
 from app.utils.time import now_china
 import csv
 import io
 import re
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional
+from typing import Optional, Callable
+from collections import defaultdict
 
 from openpyxl import load_workbook, Workbook
 from pydantic import ValidationError
@@ -29,6 +30,9 @@ from app.models import (
     Channel,
     Spu,
     SkuChannel,
+    Supplier,
+    Resource,
+    ResourceComposition,
     SupplierResource,
     ResourceInventory,
     ResourceInventoryLog,
@@ -37,6 +41,7 @@ from app.schemas.common import ListResponse, Pagination
 from app.schemas.order import OrderCreate, OrderDecision, OrderRead, OrderResourceCreate
 
 router = APIRouter()
+COMBINATION_RESOURCE_TYPE = "组合"
 
 STATUS_FIELDS = [
     "is_paid",
@@ -158,7 +163,10 @@ STATUS_TEMPLATE_FIELDS = [
 STATUS_META = {
     "paid": {"label": "支付", "time_label": "支付时间", "amount_label": "支付金额"},
     "issued": {"label": "出票/预约（资源可用）", "time_label": "出票/预约时间", "amount_label": "出票/预约金额"},
+    "issue": {"label": "出票/预约", "time_label": "出票/预约时间", "amount_label": "出票/预约金额"},
+    "unissue": {"label": "取消出票/预约", "time_label": "取消出票/预约时间", "amount_label": "出票/预约金额"},
     "verified": {"label": "核销/消耗", "time_label": "核销/消耗时间", "amount_label": "核销/消耗金额"},
+    "unverify": {"label": "取消核销/消耗", "time_label": "取消核销/消耗时间", "amount_label": "核销/消耗金额"},
     "reserved": {"label": "出票/预约（资源可用）", "time_label": "出票/预约时间", "amount_label": "出票/预约金额"},
     "refund_unverified": {"label": "未核销/消耗退款", "time_label": "未核销/消耗退款时间", "amount_label": "未核销/消耗退款金额"},
     "refund_unreserved": {"label": "未出票/预约退款", "time_label": "未出票/预约退款时间", "amount_label": "未出票/预约退款金额"},
@@ -839,6 +847,32 @@ async def _consume_inventory(db: DbSession, sku_id: int, travel_date, qty: int, 
     db.add_all([inv, log])
 
 
+async def _unconsume_inventory(db: DbSession, sku_id: int, travel_date, qty: int, operator: str, order_id: int):
+    inv = await db.scalar(
+        select(Inventory).where(Inventory.sku_id == sku_id, Inventory.inventory_date == travel_date).with_for_update()
+    )
+    if not inv:
+        raise HTTPException(status_code=400, detail="SKU 库存未初始化")
+    if inv.sold_qty < qty:
+        raise HTTPException(status_code=400, detail="SKU 已售库存不足")
+    before = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
+    inv.sold_qty -= qty
+    inv.frozen_qty += qty
+    inv.updated_at = now_china()
+    after = {"total": inv.total_qty, "frozen": inv.frozen_qty, "sold": inv.sold_qty}
+    log = InventoryLog(
+        sku_id=sku_id,
+        inventory_date=travel_date,
+        change_type="unconsume",
+        before_qty=before,
+        after_qty=after,
+        related_order_id=order_id,
+        operator=operator,
+        operated_at=now_china(),
+    )
+    db.add_all([inv, log])
+
+
 async def _return_inventory(db: DbSession, sku_id: int, travel_date, qty: int, operator: str, order_id: int):
     inv = await db.scalar(
         select(Inventory).where(Inventory.sku_id == sku_id, Inventory.inventory_date == travel_date).with_for_update()
@@ -893,6 +927,7 @@ async def _apply_resource_inventory(
     qty: int,
     operator: str,
     action: str,
+    resource_predicate: Optional[Callable[[OrderResource], bool]] = None,
 ):
     if qty <= 0:
         return
@@ -906,6 +941,8 @@ async def _apply_resource_inventory(
         .where(OrderResource.order_id == order.id)
     )
     resources = rows.all()
+    if resource_predicate:
+        resources = [(order_resource, supplier_resource) for order_resource, supplier_resource in resources if resource_predicate(order_resource)]
     if not resources:
         return
 
@@ -992,6 +1029,11 @@ async def _apply_resource_inventory(
                 if inv.sold_qty < resource_qty:
                     raise HTTPException(status_code=400, detail="资源已售库存不足")
                 inv.sold_qty -= resource_qty
+            elif action == "unconsume":
+                if inv.sold_qty < resource_qty:
+                    raise HTTPException(status_code=400, detail="资源已售库存不足")
+                inv.sold_qty -= resource_qty
+                inv.frozen_qty += resource_qty
             else:
                 raise HTTPException(status_code=400, detail="不支持的资源库存操作")
 
@@ -1008,6 +1050,75 @@ async def _apply_resource_inventory(
                 operated_at=now_china(),
             )
             db.add_all([inv, log])
+
+
+async def _build_combination_snapshots(
+    db: DbSession,
+    root_resource_ids: list[int],
+) -> dict[int, list[dict]]:
+    if not root_resource_ids:
+        return {}
+
+    root_resources = list(await db.scalars(select(Resource).where(Resource.id.in_(root_resource_ids))))
+    root_combo_ids = [r.id for r in root_resources if r.is_combination]
+    if not root_combo_ids:
+        return {}
+
+    relation_rows = (
+        await db.execute(
+            select(
+                ResourceComposition.parent_resource_id,
+                ResourceComposition.child_resource_id,
+                ResourceComposition.position,
+            ).order_by(
+                ResourceComposition.parent_resource_id.asc(),
+                ResourceComposition.position.asc(),
+                ResourceComposition.id.asc(),
+            )
+        )
+    ).all()
+
+    resource_ids: set[int] = set(root_combo_ids)
+    children_map: dict[int, list[int]] = defaultdict(list)
+    for parent_id, child_id, _ in relation_rows:
+        resource_ids.add(parent_id)
+        resource_ids.add(child_id)
+        children_map[parent_id].append(child_id)
+
+    resources = list(await db.scalars(select(Resource).where(Resource.id.in_(resource_ids))))
+    resource_map = {resource.id: resource for resource in resources}
+
+    def build_member_node(resource_id: int, stack: set[int]) -> Optional[dict]:
+        resource = resource_map.get(resource_id)
+        if not resource:
+            return None
+        node = {
+            "resource_id": resource.id,
+            "resource_name": resource.resource_name,
+            "resource_type": COMBINATION_RESOURCE_TYPE if resource.is_combination else resource.resource_type,
+            "poi_id": resource.poi_id,
+            "is_combination": bool(resource.is_combination),
+        }
+        if resource.is_combination:
+            children: list[dict] = []
+            for child_id in children_map.get(resource_id, []):
+                if child_id in stack:
+                    continue
+                child_node = build_member_node(child_id, stack | {resource_id})
+                if child_node:
+                    children.append(child_node)
+            node["members"] = children
+        return node
+
+    snapshots: dict[int, list[dict]] = {}
+    for root_id in root_combo_ids:
+        members: list[dict] = []
+        for child_id in children_map.get(root_id, []):
+            child_node = build_member_node(child_id, {root_id})
+            if child_node:
+                members.append(child_node)
+        snapshots[root_id] = members
+    return snapshots
 
 
 @router.get("/orders", response_model=ListResponse)
@@ -1063,16 +1174,44 @@ async def list_orders(
     rows = result.all()
     order_ids = [order.id for order, *_ in rows]
     resource_summary: dict[int, dict] = {}
+    resource_details_map: dict[int, list[dict]] = {}
     if order_ids:
-        res_rows = await db.scalars(select(OrderResource).where(OrderResource.order_id.in_(order_ids)))
-        for res in res_rows:
-            summary = resource_summary.setdefault(res.order_id, {"travel_date": None, "flags": {}})
-            if res.travel_date:
-                if summary["travel_date"] is None or res.travel_date < summary["travel_date"]:
-                    summary["travel_date"] = res.travel_date
+        res_rows = (
+            await db.execute(
+                select(OrderResource, Resource, Supplier)
+                .join(Resource, Resource.id == OrderResource.resource_id)
+                .join(Supplier, Supplier.id == OrderResource.supplier_id)
+                .where(OrderResource.order_id.in_(order_ids))
+                .order_by(OrderResource.order_id.asc(), OrderResource.id.asc())
+            )
+        ).all()
+        for order_resource, resource, supplier in res_rows:
+            summary = resource_summary.setdefault(order_resource.order_id, {"travel_date": None, "flags": {}})
+            if order_resource.travel_date:
+                if summary["travel_date"] is None or order_resource.travel_date < summary["travel_date"]:
+                    summary["travel_date"] = order_resource.travel_date
             for flag in RESOURCE_STATUS_FLAG_FIELDS:
-                if getattr(res, flag, False):
+                if getattr(order_resource, flag, False):
                     summary["flags"][flag] = True
+
+            detail = {
+                "order_resource_id": order_resource.id,
+                "resource_id": resource.id,
+                "resource_name": resource.resource_name,
+                "resource_type": COMBINATION_RESOURCE_TYPE if resource.is_combination else resource.resource_type,
+                "is_combination": bool(resource.is_combination),
+                "supplier_id": supplier.id,
+                "supplier_name": supplier.supplier_name,
+                "travel_date": order_resource.travel_date,
+                "quantity": order_resource.quantity,
+                "settlement_price": float(order_resource.settlement_price) if order_resource.settlement_price is not None else None,
+                "cost_amount": float(order_resource.cost_amount) if order_resource.cost_amount is not None else None,
+                "composition_snapshot": order_resource.composition_snapshot,
+                "composition_snapshot_at": order_resource.composition_snapshot_at,
+            }
+            for field in RESOURCE_STATUS_FIELDS:
+                detail[field] = getattr(order_resource, field, None)
+            resource_details_map.setdefault(order_resource.order_id, []).append(detail)
 
     items = []
     for order, channel_name, sku_name, product_name, spu_id, spu_name in rows:
@@ -1082,6 +1221,7 @@ async def list_orders(
         payload["product_name"] = product_name
         payload["spu_id"] = spu_id
         payload["spu_name"] = spu_name
+        payload["resource_details"] = resource_details_map.get(order.id, [])
         summary = resource_summary.get(order.id)
         if summary:
             if summary.get("travel_date"):
@@ -1215,6 +1355,10 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
     if sku.travel_end and any(d > sku.travel_end for d in resource_dates):
         raise HTTPException(status_code=400, detail="出行日期晚于可用范围")
     primary_travel_date = min(resource_dates) if resource_dates else None
+    combination_snapshots = await _build_combination_snapshots(
+        db,
+        [line.resource_id for line in pres],
+    )
 
     for line in pres:
         qty_needed = line.quantity * payload.quantity
@@ -1227,6 +1371,7 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
         travel_date = resource_input.travel_date
         if not travel_date:
             raise HTTPException(status_code=400, detail="资源出行日期不能为空")
+        composition_snapshot = combination_snapshots.get(line.resource_id)
             
         # Determine candidate suppliers
         candidates = []
@@ -1331,6 +1476,8 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
                 "cost_amount": cost_amount,
                 "travel_date": travel_date,
                 "status_payload": status_payload,
+                "composition_snapshot": composition_snapshot,
+                "composition_snapshot_at": payload.paid_at if composition_snapshot else None,
             })
 
     if not primary_travel_date:
@@ -1419,6 +1566,8 @@ async def create_order(payload: OrderCreate, db: DbSession, user: User = Depends
             quantity=item["quantity"],
             settlement_price=item["settlement_price"],
             cost_amount=item["cost_amount"],
+            composition_snapshot=item.get("composition_snapshot"),
+            composition_snapshot_at=item.get("composition_snapshot_at"),
             **status_payload,
         )
         db.add(or_rec)
@@ -1816,7 +1965,10 @@ async def decide_order(
         action = "refund_unverified"
 
     action_meta_map = {
+        "issue": "issue",
         "verify": "verified",
+        "unverify": "unverify",
+        "unissue": "unissue",
         "refund_unverified": "refund_unverified",
         "refund_unreserved": "refund_unreserved",
         "refund_verified": "refund_verified",
@@ -1835,7 +1987,56 @@ async def decide_order(
         label = STATUS_META.get(meta_key, {}).get("amount_label", "金额") if meta_key else "金额"
         raise HTTPException(status_code=400, detail=f"{label}不能小于 0")
 
-    if action == "verify":
+    if action == "issue":
+        target_qty, delta_qty = _resolve_qty(order, payload.qty, order.issued_qty)
+        if delta_qty > 0:
+            for travel_date in travel_dates:
+                await _freeze_inventory(db, order.sku_id, order.channel_id, travel_date, delta_qty, user.username, order.id)
+            await _apply_resource_inventory(db, order, delta_qty, user.username, "freeze")
+        order.is_issued = True
+        order.issued_at = event_time
+        order.issued_qty = target_qty
+        if payload.amount is not None:
+            order.issued_amount = payload.amount
+        for res in order_resources:
+            res.is_issued = True
+            res.issued_at = event_time
+            res.issued_qty = target_qty
+            if payload.amount is not None:
+                res.issued_amount = payload.amount
+    elif action == "unissue":
+        if order.is_verified or any(res.is_verified for res in order_resources):
+            raise HTTPException(status_code=400, detail="核销/消耗未取消，不能取消出票/预约")
+        issued_qty = order.issued_qty
+        if issued_qty is None:
+            issued_qty = order.quantity if (order.is_issued or any(res.is_issued for res in order_resources)) else 0
+        if issued_qty <= 0:
+            raise HTTPException(status_code=400, detail="订单未出票/预约")
+        issued_dates = sorted({r.travel_date for r in order_resources if r.travel_date and r.is_issued})
+        if not issued_dates:
+            issued_dates = travel_dates
+        for travel_date in issued_dates:
+            await _consume_inventory(db, order.sku_id, travel_date, issued_qty, user.username, order.id, "release")
+        await _apply_resource_inventory(
+            db,
+            order,
+            issued_qty,
+            user.username,
+            "release",
+            resource_predicate=lambda r: r.is_issued,
+        )
+        order.is_issued = False
+        order.issued_at = None
+        order.issued_qty = None
+        order.issued_amount = None
+        for res in order_resources:
+            if res.is_issued:
+                res.is_issued = False
+                res.issued_at = None
+                res.issued_qty = None
+                res.issued_amount = None
+                res.issued_remark = None
+    elif action == "verify":
         target_qty, delta_qty = _resolve_qty(order, payload.qty, order.verified_qty)
         if amount_val is not None:
             base_amount = _to_decimal(order.paid_amount) or _to_decimal(order.sale_amount)
@@ -1857,6 +2058,36 @@ async def decide_order(
             res.verified_qty = target_qty
             if payload.amount is not None:
                 res.verified_amount = payload.amount
+    elif action == "unverify":
+        verified_qty = order.verified_qty
+        if verified_qty is None:
+            verified_qty = order.quantity if (order.is_verified or any(res.is_verified for res in order_resources)) else 0
+        if verified_qty <= 0:
+            raise HTTPException(status_code=400, detail="订单未核销/消耗")
+        verified_dates = sorted({r.travel_date for r in order_resources if r.travel_date and r.is_verified})
+        if not verified_dates:
+            verified_dates = travel_dates
+        for travel_date in verified_dates:
+            await _unconsume_inventory(db, order.sku_id, travel_date, verified_qty, user.username, order.id)
+        await _apply_resource_inventory(
+            db,
+            order,
+            verified_qty,
+            user.username,
+            "unconsume",
+            resource_predicate=lambda r: r.is_verified,
+        )
+        order.is_verified = False
+        order.verified_at = None
+        order.verified_qty = None
+        order.verified_amount = None
+        for res in order_resources:
+            if res.is_verified:
+                res.is_verified = False
+                res.verified_at = None
+                res.verified_qty = None
+                res.verified_amount = None
+                res.verified_remark = None
     elif action in {"refund_unverified", "refund_unreserved"}:
         field_qty = order.refund_unverified_qty if action == "refund_unverified" else order.refund_unreserved_qty
         target_qty, delta_qty = _resolve_qty(order, payload.qty, field_qty)

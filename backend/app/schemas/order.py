@@ -167,7 +167,10 @@ class OrderRead(OrderStatusFields):
 
 class OrderDecision(BaseModel):
     action: Literal[
+        "issue",
         "verify",
+        "unverify",
+        "unissue",
         "refund",
         "refund_unverified",
         "refund_unreserved",
